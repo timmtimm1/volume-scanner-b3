@@ -89,13 +89,33 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | Fase | Escopo | Estado |
 |---|---|---|
 | F0 | Fundação: estrutura, lint, tipos, testes, Docker, Alembic, CLI | ✅ |
-| F1 | Calendário B3 + universo com filtro de liquidez | ⬜ |
+| F1 | Calendário B3 + universo com filtro de liquidez | ✅ código / ⏳ contagem do universo depende da F2 |
 | F2 | Parser e carga COTAHIST | ⬜ |
 | F3 | Z-scores + features de contexto | ⬜ |
 | F4 | Alertas + Telegram | ⬜ |
 | F5 | Deploy: Neon, Actions, secrets | ⬜ |
 | F6 | Interface: scanner, ficha do papel, histórico | ⬜ |
 | F7 | PWA | ⬜ |
+
+## Calendário da B3
+
+A B3 só para em **feriado nacional**. Desde 2022 ela negocia normalmente nos
+feriados estaduais e municipais de São Paulo — **25 de janeiro e 9 de julho são
+pregão**. Além dos nacionais, ela fecha em **24 e 31 de dezembro** por conta do
+expediente interno dos bancos, e o 20 de novembro entrou como feriado nacional
+**a partir de 2024** (Lei 14.759/2023).
+
+Quarta-feira de Cinzas **é pregão**, com abertura às 13h — o horário reduzido não
+suprime a barra diária, que é o que este projeto consome.
+
+As datas móveis (carnaval, Sexta-feira Santa, Corpus Christi) são derivadas da
+Páscoa por algoritmo, nunca tabeladas: tabela de data móvel envelhece em silêncio.
+
+```bash
+scanner calendar holidays --year 2026
+scanner calendar sessions --start 2026-01-01 --end 2026-01-31
+scanner universe show --date today
+```
 
 ## Segredos
 

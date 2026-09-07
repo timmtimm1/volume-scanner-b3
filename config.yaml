@@ -20,6 +20,7 @@ universe:
   # Filtro de liquidez do universo (F1).
   min_median_volume_brl: 500000
   lookback_sessions: 60
+  min_session_coverage: 0.8   # fracao minima de pregoes negociados na janela
 
 retention:
   # O banco hospedado guarda os ultimos N pregoes de barras (secao 5).

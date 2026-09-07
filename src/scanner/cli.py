@@ -25,12 +25,16 @@ ingest_app = typer.Typer(help="Carga de dados COTAHIST.", no_args_is_help=True)
 metrics_app = typer.Typer(help="Calculo de z-scores e features.", no_args_is_help=True)
 report_app = typer.Typer(help="Relatorios de consulta.", no_args_is_help=True)
 config_app = typer.Typer(help="Inspecao da configuracao.", no_args_is_help=True)
+calendar_app = typer.Typer(help="Calendario de pregoes da B3.", no_args_is_help=True)
+universe_app = typer.Typer(help="Universo de papeis acompanhados.", no_args_is_help=True)
 db_app = typer.Typer(help="Operacoes de banco.", no_args_is_help=True)
 
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(metrics_app, name="metrics")
 app.add_typer(report_app, name="report")
 app.add_typer(config_app, name="config")
+app.add_typer(calendar_app, name="calendar")
+app.add_typer(universe_app, name="universe")
 app.add_typer(db_app, name="db")
 
 
@@ -73,6 +77,64 @@ def db_ping() -> None:
     except Exception as exc:
         typer.secho(f"[erro] conexao falhou: {exc}", fg=typer.colors.RED, err=True)
         raise typer.Exit(code=1) from exc
+
+
+@calendar_app.command("holidays")
+def calendar_holidays(
+    year: Annotated[int, typer.Option("--year", help="Ano a listar.")],
+) -> None:
+    """Lista os dias sem pregao do ano, com o dia da semana."""
+    from scanner.calendar import UnsupportedYearError, holidays
+
+    try:
+        dias = sorted(holidays(year))
+    except UnsupportedYearError as exc:
+        typer.secho(f"[erro] {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    semana = ("seg", "ter", "qua", "qui", "sex", "sab", "dom")
+    for dia in dias:
+        typer.echo(f"{dia.isoformat()}  {semana[dia.weekday()]}")
+    typer.echo(f"total: {len(dias)}")
+
+
+@calendar_app.command("sessions")
+def calendar_sessions(
+    start: Annotated[str, typer.Option("--start", help="Data inicial (AAAA-MM-DD).")],
+    end: Annotated[str, typer.Option("--end", help="Data final. Padrao: hoje.")] = "today",
+) -> None:
+    """Conta e lista os pregoes do intervalo."""
+    from scanner.calendar import UnsupportedYearError, trading_days
+
+    try:
+        dias = trading_days(parse_trade_date(start), parse_trade_date(end))
+    except (UnsupportedYearError, ValueError) as exc:
+        typer.secho(f"[erro] {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    for dia in dias:
+        typer.echo(dia.isoformat())
+    typer.echo(f"total: {len(dias)}")
+
+
+@universe_app.command("show")
+def universe_show(
+    trade_date: Annotated[str, typer.Option("--date", help="Pregao de referencia.")] = "today",
+) -> None:
+    """Universo vigente, do mais liquido para o menos."""
+    from scanner.storage.engine import build_engine
+    from scanner.universe import load_universe
+
+    as_of = parse_trade_date(trade_date)
+    universo = load_universe(build_engine(), as_of, load_config().universe)
+
+    for ticker, linha in universo.iterrows():
+        typer.echo(
+            f"{ticker:<8} mediana R$ {linha['median_volume']:>15,.2f}"
+            f"  pregoes {int(linha['sessions_traded']):>3}"
+            f"  cobertura {linha['coverage']:.0%}"
+        )
+    typer.echo(f"total: {len(universo)} tickers em {as_of.isoformat()}")
 
 
 @ingest_app.command("backfill")

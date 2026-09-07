@@ -27,3 +27,6 @@ out/
 
 .DS_Store
 Thumbs.db
+
+# Permissoes locais do Claude Code, por desenvolvedor.
+.claude/settings.local.json

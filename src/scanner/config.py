@@ -56,6 +56,12 @@ class IngestConfig(BaseModel):
     tpmerc: str = "010"
     price_check_tolerance: float = 0.01
     price_check_max_failure: float = 0.005
+    # Como validar VOLTOT contra PREMED x QUATOT / FATCOT:
+    #   "relative"   - desvio relativo <= price_check_tolerance (a regra do plano)
+    #   "truncation" - VOLTOT dentro de [PREMED, PREMED+0,01) x QUATOT / FATCOT
+    # PREMED e truncado a 2 casas, entao para papel abaixo de R$ 1,00 o erro de
+    # quantizacao sozinho passa de 1% e "relative" e inalcancavel. Ver README.
+    price_check_mode: Literal["relative", "truncation"] = "truncation"
 
 
 class UniverseConfig(BaseModel):

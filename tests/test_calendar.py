@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import date
 
 import pytest
+from sqlalchemy import Engine
 
 from scanner.calendar import (
     UnsupportedYearError,
@@ -197,3 +198,27 @@ def test_quantidade_de_pregoes_no_ano_e_plausivel(year: int) -> None:
 def test_pregoes_do_ano_excluem_todos_os_feriados() -> None:
     sessoes = set(trading_days(date(2025, 1, 1), date(2025, 12, 31)))
     assert sessoes.isdisjoint(holidays(2025))
+
+
+@pytest.mark.db
+def test_calendario_bate_com_os_pregoes_reais_do_cotahist(engine: Engine) -> None:
+    """O gabarito definitivo: os pregoes que a B3 de fato publicou.
+
+    Pula se o banco nao tiver carga. Com os dados de 2024-2026 carregados, a
+    checagem cobre mais de 600 pregoes reais.
+    """
+    from sqlalchemy import text as sql
+
+    with engine.connect() as conn:
+        reais = {
+            row[0]
+            for row in conn.execute(
+                sql("SELECT DISTINCT trade_date FROM volume_scanner.daily_bars")
+            )
+        }
+    if len(reais) < 200:
+        pytest.skip("sem carga suficiente; rode scanner ingest backfill --start 2024-01-01")
+
+    calculados = set(trading_days(min(reais), max(reais)))
+    assert calculados - reais == set(), "calendario diz pregao mas a B3 nao publicou"
+    assert reais - calculados == set(), "a B3 publicou pregao que o calendario chama de feriado"

@@ -145,7 +145,11 @@ def test_load_universe_le_do_banco(engine: Engine, janela: list[date]) -> None:
             s.add_all(linhas)
 
         universo = load_universe(engine, AS_OF, CONFIG)
-        assert tickers(universo) == ["DBLQ4"]
+        # O banco pode ter carga real junto: verifica os dois sinteticos, nao a
+        # lista inteira.
+        presentes = set(tickers(universo))
+        assert "DBLQ4" in presentes
+        assert "DBIL3" not in presentes
         assert universo.loc["DBLQ4", "sessions_traded"] == len(janela)
     finally:
         with session_scope(engine) as s:

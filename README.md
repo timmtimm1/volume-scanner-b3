@@ -89,8 +89,8 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | Fase | Escopo | Estado |
 |---|---|---|
 | F0 | Fundação: estrutura, lint, tipos, testes, Docker, Alembic, CLI | ✅ |
-| F1 | Calendário B3 + universo com filtro de liquidez | ✅ código / ⏳ contagem do universo depende da F2 |
-| F2 | Parser e carga COTAHIST | ⬜ |
+| F1 | Calendário B3 + universo com filtro de liquidez | ✅ |
+| F2 | Parser e carga COTAHIST | ✅ |
 | F3 | Z-scores + features de contexto | ⬜ |
 | F4 | Alertas + Telegram | ⬜ |
 | F5 | Deploy: Neon, Actions, secrets | ⬜ |
@@ -116,6 +116,30 @@ scanner calendar holidays --year 2026
 scanner calendar sessions --start 2026-01-01 --end 2026-01-31
 scanner universe show --date today
 ```
+
+## Duas coisas que o layout da B3 esconde
+
+**`FATCOT` (fator de cotação, posições 211–217)** não está na tabela da seção 2 do
+plano, mas é obrigatório: em 0,5% das linhas o preço é cotado por lote de 100, 1.000
+ou 1.000.000 de ações. Sem dividir por ele, `close × volume_shares` erra por 1000× e
+o gráfico mostra um preço mil vezes maior que o real.
+
+**`PREMED` é truncado a 2 casas, nunca arredondado.** Verificado em 100,0000% das
+linhas de um arquivo real: `PREMED × QUATOT / FATCOT ≤ VOLTOT`, sempre. A consequência
+é que a validação `VOLTOT ≈ PREMED × QUATOT` com tolerância de 1% é **inalcançável**
+para papel abaixo de R$ 1,00 — o erro de quantização sozinho já passa disso. Acima de
+R$ 1,00 não há uma única falha em 53 mil linhas.
+
+Por isso o `price_check_mode` do `config.yaml` tem dois modos:
+
+| Modo | Regra | Falha em 2026 |
+|---|---|---|
+| `relative` | desvio relativo ≤ `price_check_tolerance` (regra literal do plano) | 1,59% |
+| `truncation` | `VOLTOT` dentro de `[PREMED, PREMED+0,01) × QUATOT / FATCOT` | 0,07% |
+
+`truncation` é o padrão. Não é uma tolerância afrouxada: é a aritmética exata de um
+campo truncado, e continua estreita o bastante para pegar desalinhamento real — em
+papel de R$ 20 a folga é de 0,05%.
 
 ## Segredos
 

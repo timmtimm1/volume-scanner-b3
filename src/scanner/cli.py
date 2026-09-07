@@ -143,9 +143,14 @@ def ingest_backfill(
     end: Annotated[str, typer.Option("--end", help="Data final. Padrao: hoje.")] = "today",
 ) -> None:
     """Carga historica do COTAHIST a partir dos arquivos anuais."""
-    parse_trade_date(start)
-    parse_trade_date(end)
-    _pending("F2", "carga historica do COTAHIST")
+    from scanner.ingest.pipeline import ingest_range
+
+    inicio, fim = parse_trade_date(start), parse_trade_date(end)
+    if fim < inicio:
+        raise typer.BadParameter(f"intervalo invertido: {inicio} > {fim}")
+
+    for relatorio in ingest_range(inicio, fim, load_config().ingest):
+        typer.echo(relatorio)
 
 
 @ingest_app.command("daily")
@@ -153,8 +158,14 @@ def ingest_daily(
     trade_date: Annotated[str, typer.Option("--date", help="Pregao a carregar.")] = "today",
 ) -> None:
     """Carga incremental do arquivo diario."""
-    parse_trade_date(trade_date)
-    _pending("F2", "carga diaria do COTAHIST")
+    from scanner.calendar import is_trading_day
+    from scanner.ingest.pipeline import ingest_day
+
+    dia = parse_trade_date(trade_date)
+    if not is_trading_day(dia):
+        typer.secho(f"[pulado] {dia.isoformat()} nao e pregao.", fg=typer.colors.YELLOW)
+        return
+    typer.echo(ingest_day(dia, load_config().ingest))
 
 
 @metrics_app.command("compute")

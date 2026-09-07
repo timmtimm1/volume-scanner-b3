@@ -63,6 +63,10 @@ class UniverseConfig(BaseModel):
 
     min_median_volume_brl: float = 500_000.0
     lookback_sessions: int = 60
+    # Fracao minima dos pregoes da janela em que o papel negociou. E o que
+    # torna "ticker ativo" verificavel: sem isso, um papel que negociou 2 de 60
+    # pregoes com volume alto teria mediana alta e entraria no universo.
+    min_session_coverage: float = 0.8
 
 
 class RetentionConfig(BaseModel):

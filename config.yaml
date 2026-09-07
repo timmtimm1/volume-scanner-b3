@@ -13,8 +13,12 @@ ingest:
   codbdi: "02"
   tpmerc: "010"
   # Validacao VOLTOT ~= PREMED * QUATOT
-  price_check_tolerance: 0.01   # 1% por linha
+  price_check_tolerance: 0.01   # 1% por linha, usado no modo "relative"
   price_check_max_failure: 0.005  # aborta a carga acima de 0,5% das linhas
+  # PREMED e truncado a 2 casas: em papel abaixo de R$ 1,00 o erro de quantizacao
+  # sozinho passa de 1%, e "relative" fica inalcancavel. "truncation" checa se
+  # VOLTOT cai em [PREMED, PREMED+0,01) x QUATOT / FATCOT -- a aritmetica exata.
+  price_check_mode: truncation
 
 universe:
   # Filtro de liquidez do universo (F1).

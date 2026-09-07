@@ -1,3 +1,5 @@
 * text=auto eol=lf
 *.png binary
 *.ico binary
+# Fixture posicional: viaja byte a byte, sem conversao de quebra de linha.
+tests/fixtures/*.txt binary

@@ -35,14 +35,12 @@ def test_config_show_nao_imprime_url_do_banco() -> None:
 @pytest.mark.parametrize(
     "argv",
     [
-        ["ingest", "backfill", "--start", "2024-01-01"],
-        ["ingest", "daily"],
         ["metrics", "compute", "--mode", "incremental"],
         ["scan", "--date", "today", "--dry-run"],
         ["report", "ticker", "PETR4", "--window", "60"],
     ],
 )
-def test_comandos_do_plano_existem_e_sinalizam_pendencia(argv: list[str]) -> None:
+def test_comandos_ainda_nao_implementados_sinalizam_a_fase(argv: list[str]) -> None:
     result = runner.invoke(app, argv)
     # Argumentos validos: nao pode ser erro de uso (2), e sim pendencia declarada (1).
     assert result.exit_code == 1, result.output
@@ -97,3 +95,12 @@ def test_calendar_sessions_intervalo_invertido_sai_com_erro() -> None:
     )
     assert result.exit_code == 1
     assert "invertido" in result.output
+
+
+@pytest.mark.parametrize("argv", [["ingest", "backfill"], ["ingest", "daily"]])
+def test_comandos_de_ingestao_ja_estao_implementados(argv: list[str]) -> None:
+    # Implementados na F2: o --help nao pode mais anunciar pendencia, e o comando
+    # tem de existir de verdade no grupo `ingest`.
+    result = runner.invoke(app, [*argv, "--help"])
+    assert result.exit_code == 0
+    assert "[pendente]" not in result.output

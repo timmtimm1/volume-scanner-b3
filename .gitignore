@@ -19,6 +19,7 @@ data/
 *.parquet
 *.ZIP
 *.TXT
+!tests/fixtures/*.txt
 
 node_modules/
 .next/

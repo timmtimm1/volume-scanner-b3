@@ -1,0 +1,26 @@
+# Configuracao do scanner. Segredos NAO ficam aqui - apenas em variavel de ambiente.
+
+alert:
+  metric: z_log             # z_log | z_raw | z_robust
+  threshold: 6.0
+  windows: [30, 45, 60]
+  require_all_windows: false  # false = qualquer janela cruzando dispara
+  min_volume_brl: 500000      # piso de sanidade: papel morto nao interessa
+
+ingest:
+  # Filtros posicionais do COTAHIST (secao 2 do plano).
+  tipreg: "01"
+  codbdi: "02"
+  tpmerc: "010"
+  # Validacao VOLTOT ~= PREMED * QUATOT
+  price_check_tolerance: 0.01   # 1% por linha
+  price_check_max_failure: 0.005  # aborta a carga acima de 0,5% das linhas
+
+universe:
+  # Filtro de liquidez do universo (F1).
+  min_median_volume_brl: 500000
+  lookback_sessions: 60
+
+retention:
+  # O banco hospedado guarda os ultimos N pregoes de barras (secao 5).
+  keep_sessions: 400

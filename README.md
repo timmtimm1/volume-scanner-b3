@@ -104,6 +104,22 @@ uv run pytest                 # testes
 uv run ruff check . && uv run mypy src/
 ```
 
+O `.env` de desenvolvimento aponta para o **Postgres local**, não para o Neon.
+Isso não é detalhe de conforto:
+
+- a suíte roda em ~20s contra o local, e em minutos contra o Neon;
+- os testes criam um banco isolado `<db>_pytest` — que você não quer criando
+  dentro do projeto de produção;
+- o plano gratuito do Neon tem 100 CU-hours/mês, e rodar teste contra ele
+  queima essas horas à toa.
+
+A string do Neon vive nos **GitHub Secrets** e nas variáveis da Vercel. No `.env`
+ela fica comentada, para o caso de você precisar apontar para produção de
+propósito.
+
+**O Docker só é necessário para desenvolver.** O pipeline de produção roda no
+GitHub Actions contra o Neon — se o seu PC estiver desligado, ele funciona igual.
+
 ## Comandos
 
 ```bash

@@ -23,9 +23,7 @@ import pandas as pd
 from sqlalchemy import Engine
 
 from scanner.config import ScannerConfig
-from scanner.features import compute_features
-from scanner.metrics import compute_zscores
-from scanner.storage.repository import load_bars
+from scanner.recompute import Contexto, carregar_contexto
 
 RESUMO_COLUMNS = (
     "ticker",
@@ -160,14 +158,16 @@ def run_resumo(
     *,
     notifier: Any = None,
     bars: pd.DataFrame | None = None,
+    contexto: Contexto | None = None,
 ) -> Resumo:
     """Monta o resumo do pregao e envia.
 
-    `bars` permite passar as barras prontas em vez de reler o banco; o pipeline
-    nao usa, os testes usam.
+    `bars` permite passar as barras prontas em vez de reler o banco; os testes
+    usam. `contexto` vai um passo alem: o calculo ja veio pronto de fora, como
+    no `scanner daily`.
     """
-    barras = load_bars(engine) if bars is None else bars
-    if barras.empty:
+    ctx = carregar_contexto(engine, config, bars=bars) if contexto is None else contexto
+    if ctx.vazio:
         return Resumo(
             trade_date,
             pd.DataFrame(columns=list(RESUMO_COLUMNS)),
@@ -177,10 +177,7 @@ def run_resumo(
             None,
         )
 
-    janelas = sorted({*config.alert.windows, config.digest.window})
-    metrics = compute_zscores(barras, janelas)
-    features = compute_features(barras, max(janelas), metrics)
-    resumo = montar_resumo(metrics, barras, features, config, trade_date)
+    resumo = montar_resumo(ctx.metrics, ctx.bars, ctx.features, config, trade_date)
 
     if notifier is not None and not resumo.vazio:
         notifier.send_resumo(payload_do_resumo(resumo))

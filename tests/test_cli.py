@@ -105,3 +105,110 @@ def test_scan_pula_dia_sem_pregao() -> None:
     result = runner.invoke(app, ["scan", "--date", "2026-09-07", "--dry-run"])
     assert result.exit_code == 0
     assert "[pulado]" in result.output
+
+
+# --- scanner daily -----------------------------------------------------------
+
+
+def test_daily_pula_dia_sem_pregao() -> None:
+    # Feriado nao pode nem tentar baixar arquivo nem notificar nada.
+    result = runner.invoke(app, ["daily", "--date", "2026-09-07"])
+    assert result.exit_code == 0
+    assert "[pulado]" in result.output
+
+
+class _EtapasFalsas:
+    """Substitui cada etapa do pregao e anota o que foi chamado.
+
+    O `daily` importa as funcoes dentro do corpo, entao o patch vai no modulo
+    de origem, nao em `scanner.cli`.
+    """
+
+    def __init__(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        import pandas as pd
+
+        from scanner import alerts, digest, recompute
+        from scanner.alerts import ScanReport
+        from scanner.digest import Resumo
+        from scanner.ingest import pipeline
+        from scanner.recompute import Contexto, RecomputeReport
+        from scanner.storage import engine as engine_mod
+        from scanner.storage import repository
+
+        self.chamadas: list[str] = []
+        self.contextos: list[object] = []
+        barras = pd.DataFrame(
+            {"ticker": ["AAAA3"], "trade_date": [pd.Timestamp("2026-09-04")]},
+        )
+        self.contexto = Contexto(barras, pd.DataFrame(), pd.DataFrame(), (30,))
+
+        def anota(nome: str, retorno: object) -> object:
+            self.chamadas.append(nome)
+            return retorno
+
+        monkeypatch.setattr(engine_mod, "build_engine", lambda: object())
+        monkeypatch.setattr(
+            pipeline, "ingest_day", lambda *a, **k: str(anota("ingest", "carregado"))
+        )
+
+        def carregar(*a: object, **k: object) -> Contexto:
+            anota("contexto", None)
+            return self.contexto
+
+        monkeypatch.setattr(recompute, "carregar_contexto", carregar)
+
+        def metricas(*a: object, **k: object) -> RecomputeReport:
+            self.contextos.append(k.get("contexto"))
+            anota("metricas", None)
+            return RecomputeReport("incremental", 1, 1, 1, 1, None, None)
+
+        monkeypatch.setattr(recompute, "refresh_metrics", metricas)
+
+        def scan(*a: object, **k: object) -> tuple[ScanReport, object]:
+            self.contextos.append(k.get("contexto"))
+            anota("scan", None)
+            return ScanReport(date(2026, 9, 4), 1, 0, 0, 0, 0, False), pd.DataFrame()
+
+        monkeypatch.setattr(alerts, "run_scan", scan)
+
+        def resumo(*a: object, **k: object) -> Resumo:
+            self.contextos.append(k.get("contexto"))
+            anota("resumo", None)
+            return Resumo(date(2026, 9, 4), pd.DataFrame(), 1, 0, 6.0, None)
+
+        monkeypatch.setattr(digest, "run_resumo", resumo)
+        monkeypatch.setattr(repository, "retention_cutoff", lambda *a: date(2025, 1, 30))
+        monkeypatch.setattr(repository, "prune_bars", lambda *a: (anota("poda", None), (0, 0))[1])
+
+
+def test_daily_roda_as_seis_etapas_do_pregao(monkeypatch: pytest.MonkeyPatch) -> None:
+    etapas = _EtapasFalsas(monkeypatch)
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
+
+    assert result.exit_code == 0, result.output
+    assert etapas.chamadas == ["ingest", "contexto", "metricas", "scan", "resumo", "poda"]
+    for numero in range(1, 7):
+        assert f"[{numero}/6]" in result.output
+
+
+def test_daily_calcula_uma_vez_so_e_reusa(monkeypatch: pytest.MonkeyPatch) -> None:
+    # A razao do comando existir. Se alguem soltar o `contexto=` de uma das
+    # etapas, ela volta a reler o banco e a refazer o calculo -- e o alerta e o
+    # resumo do mesmo pregao passam a vir de contas independentes.
+    etapas = _EtapasFalsas(monkeypatch)
+    assert runner.invoke(app, ["daily", "--date", "2026-09-04"]).exit_code == 0
+
+    assert etapas.chamadas.count("contexto") == 1
+    assert len(etapas.contextos) == 3
+    assert all(c is etapas.contexto for c in etapas.contextos)
+
+
+def test_daily_em_ensaio_nao_grava_nem_carrega(monkeypatch: pytest.MonkeyPatch) -> None:
+    etapas = _EtapasFalsas(monkeypatch)
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04", "--dry-run"])
+
+    assert result.exit_code == 0, result.output
+    assert "ingest" not in etapas.chamadas
+    assert "metricas" not in etapas.chamadas
+    assert "poda" not in etapas.chamadas
+    assert etapas.chamadas == ["contexto", "scan", "resumo"]

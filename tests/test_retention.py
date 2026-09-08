@@ -26,6 +26,7 @@ from scanner.storage.repository import (
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "daily.yml"
+WORKFLOWS = sorted((PROJECT_ROOT / ".github" / "workflows").glob("*.yml"))
 
 FIM = date(2026, 6, 30)
 SESSOES = 50
@@ -248,6 +249,22 @@ def test_saida_do_pregao_nao_mascara_o_codigo_de_saida(workflow: dict[Any, Any])
     run = str(pregao.get("run", ""))
     assert "tee" in run
     assert "set -o pipefail" in run, "tee sem pipefail esconde a falha"
+
+
+@pytest.mark.parametrize("arquivo", WORKFLOWS, ids=lambda p: p.name)
+def test_nenhum_workflow_tem_segredo_escrito(arquivo: Path) -> None:
+    """Vale para todo workflow, nao so o diario.
+
+    O repositorio e publico e o GitHub so mascara `secrets` no log -- um valor
+    escrito no arquivo fica a vista de qualquer um, para sempre, inclusive no
+    historico do git depois de removido.
+    """
+    texto = arquivo.read_text(encoding="utf-8")
+    assert "postgresql://" not in texto, "connection string no arquivo"
+    # Um token do Telegram e "bot" seguido de digitos; a URL montada com a
+    # variavel de ambiente vira "bot$" ou "bot${", e passa.
+    assert re.search(r"bot\d", texto) is None, "token do Telegram no arquivo"
+    assert not re.search(r"hooks?/[A-Za-z0-9]{12,}", texto), "deploy hook no arquivo"
 
 
 def test_guarda_impede_teste_de_abrir_o_banco_de_trabalho() -> None:

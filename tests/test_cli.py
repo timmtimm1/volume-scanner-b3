@@ -34,11 +34,7 @@ def test_config_show_nao_imprime_url_do_banco() -> None:
 
 @pytest.mark.parametrize(
     "argv",
-    [
-        ["metrics", "compute", "--mode", "incremental"],
-        ["scan", "--date", "today", "--dry-run"],
-        ["report", "ticker", "PETR4", "--window", "60"],
-    ],
+    [["scan", "--date", "today", "--dry-run"]],
 )
 def test_comandos_ainda_nao_implementados_sinalizam_a_fase(argv: list[str]) -> None:
     result = runner.invoke(app, argv)
@@ -97,10 +93,12 @@ def test_calendar_sessions_intervalo_invertido_sai_com_erro() -> None:
     assert "invertido" in result.output
 
 
-@pytest.mark.parametrize("argv", [["ingest", "backfill"], ["ingest", "daily"]])
-def test_comandos_de_ingestao_ja_estao_implementados(argv: list[str]) -> None:
-    # Implementados na F2: o --help nao pode mais anunciar pendencia, e o comando
-    # tem de existir de verdade no grupo `ingest`.
+@pytest.mark.parametrize(
+    "argv",
+    [["ingest", "backfill"], ["ingest", "daily"], ["metrics", "compute"], ["report", "ticker"]],
+)
+def test_comandos_ja_implementados_nao_anunciam_pendencia(argv: list[str]) -> None:
+    # Implementados nas F2 e F3: o --help nao pode mais anunciar pendencia.
     result = runner.invoke(app, [*argv, "--help"])
     assert result.exit_code == 0
     assert "[pendente]" not in result.output

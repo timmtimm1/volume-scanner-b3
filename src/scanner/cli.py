@@ -10,6 +10,7 @@ import json
 from datetime import date
 from typing import Annotated, NoReturn
 
+import pandas as pd
 import typer
 
 from scanner import __version__
@@ -173,9 +174,12 @@ def metrics_compute(
     mode: Annotated[str, typer.Option("--mode", help="incremental | full")] = "incremental",
 ) -> None:
     """Calcula z-scores e features de contexto."""
+    from scanner.recompute import refresh_metrics
+    from scanner.storage.engine import build_engine
+
     if mode not in {"incremental", "full"}:
         raise typer.BadParameter("--mode aceita 'incremental' ou 'full'")
-    _pending("F3", "calculo de z-scores e features")
+    typer.echo(refresh_metrics(build_engine(), load_config(), mode=mode).summary())
 
 
 @app.command("scan")
@@ -197,11 +201,30 @@ def report_ticker(
     window: Annotated[int, typer.Option("--window", help="Janela em pregoes.")] = 60,
 ) -> None:
     """Historico de eventos e metricas de um papel."""
+    from scanner.recompute import ticker_history
+    from scanner.storage.engine import build_engine
+
     if not ticker.strip():
         raise typer.BadParameter("informe um ticker")
     if window < 2:
         raise typer.BadParameter("--window minimo e 2")
-    _pending("F3", "relatorio por papel")
+
+    linhas = ticker_history(build_engine(), ticker, window)
+    if linhas.empty:
+        typer.secho(f"[vazio] sem barras para {ticker.upper()}.", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"{ticker.upper()} - ultimos {len(linhas)} pregoes, janela {window}")
+    typer.echo(f"{'data':<12}{'fech.':>9}{'ret':>8}{'z_log':>8}{'rvol':>8}{'ticket':>12}")
+    for _, r in linhas.iterrows():
+        z = "-" if pd.isna(r["z_log"]) else f"{r['z_log']:.2f}"
+        rv = "-" if pd.isna(r["rvol"]) else f"{r['rvol']:.1f}x"
+        tk = "-" if pd.isna(r["avg_ticket"]) else f"{r['avg_ticket']:,.0f}"
+        ret = "-" if pd.isna(r["ret_day"]) else f"{r['ret_day']:+.1%}"
+        typer.echo(
+            f"{r['trade_date'].date().isoformat():<12}{float(r['close']):>9.2f}"
+            f"{ret:>8}{z:>8}{rv:>8}{tk:>12}"
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

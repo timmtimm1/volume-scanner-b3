@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import Annotated, NoReturn
+from typing import Annotated
 
 import pandas as pd
 import typer
@@ -37,12 +37,6 @@ app.add_typer(config_app, name="config")
 app.add_typer(calendar_app, name="calendar")
 app.add_typer(universe_app, name="universe")
 app.add_typer(db_app, name="db")
-
-
-def _pending(phase: str, what: str) -> NoReturn:
-    """Encerra um comando ainda nao implementado, nomeando a fase responsavel."""
-    typer.secho(f"[pendente] {what} entra na fase {phase}.", fg=typer.colors.YELLOW, err=True)
-    raise typer.Exit(code=1)
 
 
 def parse_trade_date(value: str) -> date:
@@ -190,9 +184,39 @@ def scan(
     ] = False,
 ) -> None:
     """Aplica a regra de alerta e notifica os eventos do pregao."""
-    parse_trade_date(trade_date)
-    _ = dry_run
-    _pending("F4", "regra de alerta e notificacao")
+    from scanner.alerts import run_scan
+    from scanner.calendar import is_trading_day
+    from scanner.config import get_settings
+    from scanner.notify.telegram import ConsoleNotifier, TelegramNotifier
+    from scanner.storage.engine import build_engine
+
+    dia = parse_trade_date(trade_date)
+    if not is_trading_day(dia):
+        typer.secho(f"[pulado] {dia.isoformat()} nao e pregao.", fg=typer.colors.YELLOW)
+        return
+
+    settings = get_settings()
+    notifier: object
+    if dry_run:
+        notifier = ConsoleNotifier(base_url=settings.web_base_url)
+    elif settings.telegram_bot_token and settings.telegram_chat_id:
+        notifier = TelegramNotifier(
+            token=settings.telegram_bot_token.get_secret_value(),
+            chat_id=settings.telegram_chat_id,
+            base_url=settings.web_base_url,
+        )
+    else:
+        # Sem Telegram configurado, o alerta vai para o terminal: perder o evento
+        # em silencio seria pior do que nao mandar pelo canal certo.
+        typer.secho(
+            "[aviso] SCANNER_TELEGRAM_BOT_TOKEN/CHAT_ID ausentes; os alertas saem no terminal.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        notifier = ConsoleNotifier(base_url=settings.web_base_url)
+
+    relatorio, _ = run_scan(build_engine(), load_config(), dia, dry_run=dry_run, notifier=notifier)
+    typer.echo(relatorio.summary())
 
 
 @report_app.command("ticker")

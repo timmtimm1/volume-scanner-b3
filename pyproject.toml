@@ -62,6 +62,11 @@ select = [
 "src/scanner/storage/migrations/*" = ["N999", "E501"]
 # `open` e `id` sao nomes de coluna definidos pelo modelo de dados da secao 8.
 "src/scanner/storage/models.py" = ["A003"]
+# O formato da mensagem da secao 4 do plano usa sinais tipograficos de proposito:
+# x de multiplicacao, travessao e seta. Nao sao homoglifos acidentais.
+"src/scanner/notify/telegram.py" = ["RUF001", "RUF002", "RUF003"]
+# O teste compara a mensagem literal do plano, com os mesmos sinais.
+"tests/test_telegram.py" = ["RUF001", "RUF002", "RUF003"]
 
 [tool.mypy]
 # Sem `python_version` fixo: os stubs do numpy usam `type X = ...` e so parseiam

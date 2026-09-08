@@ -8,15 +8,16 @@ NAO e tocado no conflito, para que rodar duas vezes deixe o banco identico.
 from __future__ import annotations
 
 import io
+from collections.abc import Sequence
 from datetime import date
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import Engine, func, select
+from sqlalchemy import Engine, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from scanner.ingest.cotahist import BAR_COLUMNS
-from scanner.storage.models import SCHEMA, DailyBar, VolumeMetric
+from scanner.storage.models import SCHEMA, DailyBar, Event, VolumeMetric
 
 # Colunas reescritas quando a linha ja existe. `ingested_at` fica de fora.
 _UPDATABLE = tuple(c for c in BAR_COLUMNS if c not in ("ticker", "trade_date"))
@@ -170,3 +171,74 @@ def last_metric_date(engine: Engine) -> date | None:
     """Ultimo pregao com metrica calculada."""
     with engine.connect() as conn:
         return conn.execute(select(func.max(VolumeMetric.trade_date))).scalar_one()
+
+
+def insert_events(engine: Engine, events: pd.DataFrame) -> int:
+    """Grava eventos novos. Devolve quantos de fato entraram.
+
+    `ON CONFLICT DO NOTHING` sobre (ticker, trade_date) e o dedupe da secao 4:
+    rodar o scan de novo nao cria evento repetido nem reabre a notificacao.
+    """
+    if events.empty:
+        return 0
+
+    linhas: list[dict[str, Any]] = []
+    for _, evento in events.iterrows():
+        linhas.append(
+            {
+                "ticker": str(evento["ticker"]),
+                "trade_date": pd.Timestamp(evento["trade_date"]).date(),
+                "max_z_log": float(evento["max_z_log"]),
+                "triggered_windows": [int(w) for w in evento["triggered_windows"]],
+                "volume_financial": float(evento["volume_financial"]),
+                "features": evento["features"],
+            }
+        )
+
+    # RETURNING porque `rowcount` devolve -1 em executemany com DO NOTHING:
+    # so as linhas de fato inseridas voltam, e e isso que se quer contar.
+    statement = (
+        insert(Event)
+        .on_conflict_do_nothing(index_elements=["ticker", "trade_date"])
+        .returning(Event.id)
+    )
+    with engine.begin() as conn:
+        return len(conn.execute(statement, linhas).fetchall())
+
+
+def pending_events(engine: Engine, trade_date: date) -> pd.DataFrame:
+    """Eventos do pregao ainda nao notificados, do maior z para o menor."""
+    stmt = (
+        select(
+            Event.id,
+            Event.ticker,
+            Event.trade_date,
+            Event.max_z_log,
+            Event.triggered_windows,
+            Event.volume_financial,
+            Event.features,
+        )
+        .where(Event.trade_date == trade_date)
+        .where(Event.notified_at.is_(None))
+        .order_by(Event.max_z_log.desc())
+    )
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)
+
+
+def mark_notified(engine: Engine, event_ids: Sequence[int]) -> int:
+    """Carimba os eventos como notificados."""
+    if not event_ids:
+        return 0
+    with engine.begin() as conn:
+        resultado = conn.execute(
+            update(Event).where(Event.id.in_(list(event_ids))).values(notified_at=func.now())
+        )
+        return int(resultado.rowcount)
+
+
+def events_for_date(engine: Engine, trade_date: date) -> pd.DataFrame:
+    """Todos os eventos de um pregao, notificados ou nao."""
+    stmt = select(Event).where(Event.trade_date == trade_date).order_by(Event.max_z_log.desc())
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)

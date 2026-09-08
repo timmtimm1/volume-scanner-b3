@@ -1,4 +1,4 @@
-"""CLI: os comandos da secao 11 existem, validam argumentos e sinalizam a fase."""
+"""CLI: todos os comandos da secao 11 existem e validam seus argumentos."""
 
 from __future__ import annotations
 
@@ -34,13 +34,20 @@ def test_config_show_nao_imprime_url_do_banco() -> None:
 
 @pytest.mark.parametrize(
     "argv",
-    [["scan", "--date", "today", "--dry-run"]],
+    [
+        ["ingest", "backfill"],
+        ["ingest", "daily"],
+        ["metrics", "compute"],
+        ["report", "ticker"],
+        ["scan"],
+    ],
 )
-def test_comandos_ainda_nao_implementados_sinalizam_a_fase(argv: list[str]) -> None:
-    result = runner.invoke(app, argv)
-    # Argumentos validos: nao pode ser erro de uso (2), e sim pendencia declarada (1).
-    assert result.exit_code == 1, result.output
-    assert "[pendente]" in result.output
+def test_comandos_ja_implementados_nao_anunciam_pendencia(argv: list[str]) -> None:
+    # Todos os comandos da secao 11 estao implementados: nenhum pode anunciar
+    # pendencia no --help.
+    result = runner.invoke(app, [*argv, "--help"])
+    assert result.exit_code == 0
+    assert "[pendente]" not in result.output
 
 
 @pytest.mark.parametrize(
@@ -93,12 +100,8 @@ def test_calendar_sessions_intervalo_invertido_sai_com_erro() -> None:
     assert "invertido" in result.output
 
 
-@pytest.mark.parametrize(
-    "argv",
-    [["ingest", "backfill"], ["ingest", "daily"], ["metrics", "compute"], ["report", "ticker"]],
-)
-def test_comandos_ja_implementados_nao_anunciam_pendencia(argv: list[str]) -> None:
-    # Implementados nas F2 e F3: o --help nao pode mais anunciar pendencia.
-    result = runner.invoke(app, [*argv, "--help"])
+def test_scan_pula_dia_sem_pregao() -> None:
+    # 07/09/2026 e Independencia: nao ha pregao, e o scan nao pode nem tentar.
+    result = runner.invoke(app, ["scan", "--date", "2026-09-07", "--dry-run"])
     assert result.exit_code == 0
-    assert "[pendente]" not in result.output
+    assert "[pulado]" in result.output

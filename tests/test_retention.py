@@ -163,16 +163,25 @@ def test_workflow_roda_o_pipeline_completo(workflow: dict[Any, Any], comando: st
     assert comando in WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_workflow_roda_em_dia_util_as_23h_utc(workflow: dict[Any, Any]) -> None:
-    # 23:00 UTC = 20:00 em Brasilia. As 21:00 UTC (18:00 BRT, o minuto do
-    # fechamento) a B3 ainda nao publicou o arquivo do pregao e a carga daria
-    # 404 todo dia. Passar de 23:59 UTC viraria o dia no container e o
-    # "--date today" pediria o pregao de amanha.
-    #
+def test_workflow_roda_em_dia_util_no_fim_da_noite_utc(workflow: dict[Any, Any]) -> None:
+    """23:17 UTC = 20:17 em Brasilia.
+
+    As 21:00 UTC (18:00 BRT, o minuto do fechamento) a B3 ainda nao publicou o
+    arquivo e a carga daria 404 todo dia. Passar de 23:59 UTC viraria o dia no
+    container e o "--date today" pediria o pregao de amanha.
+
+    O minuto nao pode ser 0: agendamento no GitHub e melhor esforco e atrasa na
+    hora cheia, quando todo mundo agenda. Medido em 08/09/2026, "0 23" nao tinha
+    comecado 9 minutos depois do horario.
+    """
     # A chave `on` do YAML e lida como booleano True por ser "on".
     gatilhos = workflow.get("on") or workflow.get(True)
     assert isinstance(gatilhos, dict)
-    assert gatilhos["schedule"] == [{"cron": "0 23 * * 1-5"}]
+    (agendamento,) = gatilhos["schedule"]
+    minuto, hora, *resto = str(agendamento["cron"]).split()
+    assert hora == "23", "fora da janela: antes disso a B3 nao publicou o arquivo"
+    assert minuto != "0", "minuto 0 cai na fila da hora cheia do GitHub"
+    assert resto == ["*", "*", "1-5"], "so em dia util"
     assert "workflow_dispatch" in gatilhos
 
 
@@ -203,6 +212,29 @@ def test_workflow_avisa_no_telegram_quando_falha(workflow: dict[Any, Any]) -> No
     assert "failure()" in str(ultimo.get("if", "")), "o aviso nao dispara em falha"
     assert "api.telegram.org" in str(ultimo.get("run", ""))
     assert "uv run" not in str(ultimo.get("run", "")), "o aviso nao pode depender do Python"
+
+
+def test_aviso_de_falha_diz_onde_parou(workflow: dict[Any, Any]) -> None:
+    """O aviso consulta o resultado de passos que existem de verdade.
+
+    `steps.<id>.outcome` de um id inexistente vira string vazia sem erro: a
+    mensagem degradaria para "passo desconhecido" e ninguem perceberia.
+    """
+    passos = _passos_do_job(workflow)
+    ids = {str(p["id"]) for p in passos if "id" in p}
+    citados = set(re.findall(r"steps\.([A-Za-z0-9_-]+)\.outcome", WORKFLOW.read_text("utf-8")))
+
+    assert citados, "o aviso nao consulta o resultado de nenhum passo"
+    assert citados <= ids, f"o aviso cita ids que nao existem: {sorted(citados - ids)}"
+
+
+def test_saida_do_pregao_nao_mascara_o_codigo_de_saida(workflow: dict[Any, Any]) -> None:
+    # O `tee` que alimenta o aviso troca o codigo de saida pelo dele: sem
+    # pipefail, um scanner que morre passaria como sucesso e o dia sumiria.
+    (pregao,) = [p for p in _passos_do_job(workflow) if p.get("id") == "pregao"]
+    run = str(pregao.get("run", ""))
+    assert "tee" in run
+    assert "set -o pipefail" in run, "tee sem pipefail esconde a falha"
 
 
 def test_guarda_impede_teste_de_abrir_o_banco_de_trabalho() -> None:

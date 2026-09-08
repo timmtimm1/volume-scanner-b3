@@ -36,8 +36,8 @@ const ITENS: Item[] = [
     ),
   },
   {
-    href: "/universo",
-    nome: "Universo",
+    href: "/papeis",
+    nome: "Papéis",
     icone: (
       <svg width="18" height="18" viewBox="0 0 20 20" {...traco}>
         <circle cx="10" cy="10" r="7" />

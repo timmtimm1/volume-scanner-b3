@@ -48,3 +48,22 @@ export type Papel = {
   /** Todos os eventos do papel no historico disponivel, para os marcadores. */
   eventos: Evento[];
 };
+
+export type PapelVigiado = {
+  ticker: string;
+  medianaVolume: number;
+  pregoesNegociados: number;
+  cobertura: number;
+  /** Último fechamento na janela, para dar contexto de preço. */
+  ultimoFechamento: number | null;
+};
+
+export type Universo = {
+  papeis: PapelVigiado[];
+  /** Pregões considerados na janela. */
+  janela: number;
+  pisoMediana: number;
+  coberturaMinima: number;
+  /** Quantos papéis negociaram na janela, antes dos cortes. */
+  avaliados: number;
+};

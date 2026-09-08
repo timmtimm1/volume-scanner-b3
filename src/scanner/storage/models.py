@@ -79,6 +79,23 @@ class VolumeMetric(Base):
     rvol: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
 
 
+class DailyFeature(Base):
+    """Contexto da secao 3.2 de um papel num pregao, tenha ele virado evento ou nao.
+
+    Existe porque a tela mostra uma faixa de z maior que a do alerta, e uma
+    linha sem contexto nao serve para ler nada. `Event.features` continua sendo
+    a verdade do que foi notificado; esta tabela e o contexto de tudo que se
+    calculou.
+    """
+
+    __tablename__ = "daily_features"
+    __table_args__ = (Index("ix_daily_features_trade_date", "trade_date"),)
+
+    ticker: Mapped[str] = mapped_column(Text, primary_key=True)
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    features: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+
+
 class Event(Base):
     """Evento que cruzou o limiar. Dedupe por (ticker, trade_date)."""
 

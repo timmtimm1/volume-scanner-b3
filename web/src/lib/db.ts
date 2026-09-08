@@ -8,6 +8,10 @@
  * A tela mostra eventos ABAIXO do limiar de alerta, para o filtro de z ter
  * faixa onde passear. O Telegram continua avisando so acima de `alert.threshold`
  * do config.yaml; `notificado` marca quais foram.
+ *
+ * O contexto da secao 3.2 vem de `daily_features`, que o pipeline grava para
+ * todo pregao avaliado. `events.features` entra so como reserva: linha antiga,
+ * gravada antes da tabela existir, ainda tem o contexto la.
  */
 
 import { Pool } from "pg";
@@ -78,12 +82,15 @@ async function lerEventos(where: string, params: unknown[]): Promise<Evento[]> {
   const { rows } = await conexao().query<LinhaEvento>(
     `SELECT m.ticker, m.trade_date, m.z_log, m.window_size, m.z_robust, m.rvol,
             b.close, b.volume_financial, b.trades_count, b.trades_censored,
-            e.features, (e.id IS NOT NULL AND e.notified_at IS NOT NULL) AS notificado
+            COALESCE(f.features, e.features) AS features,
+            (e.id IS NOT NULL AND e.notified_at IS NOT NULL) AS notificado
        FROM volume_scanner.volume_metrics m
        JOIN volume_scanner.daily_bars b
          ON b.ticker = m.ticker AND b.trade_date = m.trade_date
        LEFT JOIN volume_scanner.events e
          ON e.ticker = m.ticker AND e.trade_date = m.trade_date
+       LEFT JOIN volume_scanner.daily_features f
+         ON f.ticker = m.ticker AND f.trade_date = m.trade_date
       WHERE m.z_log IS NOT NULL
         AND b.volume_financial >= $1
         AND ${where}
@@ -154,8 +161,11 @@ export async function ultimoPregao(): Promise<Pregao> {
 
   const data = dia(rows[0].trade_date);
   const [{ rows: mkt }, { rows: not }] = await Promise.all([
+    // De `daily_features`, nao de `events`: em pregao sem nenhum cruzamento a
+    // tabela de eventos fica vazia e o z do mercado sumiria da tela.
     conexao().query<{ features: Record<string, number> | null }>(
-      `SELECT features FROM volume_scanner.events WHERE trade_date = $1 LIMIT 1`,
+      `SELECT features FROM volume_scanner.daily_features
+        WHERE trade_date = $1 AND features ? 'mkt_vol_z' LIMIT 1`,
       [data],
     ),
     conexao().query<{ n: string }>(

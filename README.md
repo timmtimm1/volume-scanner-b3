@@ -131,7 +131,7 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | F7 | PWA | ✅ |
 
 O critério de aceite da F5 — *três execuções agendadas consecutivas bem-sucedidas* —
-não é algo que se faça de uma vez: o cron roda às 21:00 UTC em dias úteis, então
+não é algo que se faça de uma vez: o cron roda às 23:00 UTC em dias úteis, então
 acumula sozinho. Uma execução manual já passou de ponta a ponta, com carga,
 métricas, scan e retenção.
 
@@ -266,7 +266,7 @@ Em **Settings → Secrets and variables → Actions**:
 
 ### 4. O job diário
 
-`.github/workflows/daily.yml` roda às **21:00 UTC (18:00 em Brasília), de segunda
+`.github/workflows/daily.yml` roda às **23:00 UTC (20:00 em Brasília), de segunda
 a sexta**, e faz: migrations → carga do pregão → métricas → scan → retenção →
 rebuild na Vercel.
 
@@ -276,9 +276,14 @@ e sai sem erro quando não houve pregão.
 Dá para disparar à mão em **Actions → daily → Run workflow**, inclusive apontando
 um pregão específico — é assim que se testa antes de esperar o cron.
 
-> **Verifique o horário no primeiro dia.** O plano fixa 21:00 UTC, mas se a B3
-> ainda não tiver publicado o arquivo diário nesse horário, o job falha na carga.
-> A falha é explícita, não silenciosa: é só atrasar o cron.
+> **Por que 20h e não 18h.** O plano fixa 21:00 UTC, que é o minuto do
+> fechamento. A B3 leva horas depois disso para publicar o arquivo do pregão —
+> medindo em 08/09/2026 às 15:12, o arquivo do dia ainda dava 404. Às 18h o job
+> falharia na carga todo dia. 23:00 UTC é o limite: passar de 23:59 viraria o dia
+> seguinte no container, e o job pediria o pregão errado.
+>
+> Ainda assim o download do arquivo diário tenta de novo em caso de 404, com
+> espera entre as tentativas. Atraso de um dia específico não derruba o job.
 
 ## Segredos
 

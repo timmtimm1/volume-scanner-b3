@@ -11,6 +11,7 @@ segunda chamada nao rebaixa, salvo `force=True`.
 
 from __future__ import annotations
 
+import time
 from datetime import date
 from pathlib import Path
 
@@ -21,9 +22,24 @@ DEFAULT_CACHE = Path("data/raw")
 TIMEOUT_SECONDS = 900.0
 CHUNK_BYTES = 1 << 20
 
+# O arquivo do pregao sai algumas horas depois do fechamento, com atraso
+# variavel. Quatro tentativas espacadas de 5 minutos cobrem 15 minutos de
+# espera, o que cabe no timeout de 30 do job diario.
+TENTATIVAS_DIARIAS = 4
+ESPERA_ENTRE_TENTATIVAS = 300.0
+
 
 class DownloadError(Exception):
     """A B3 nao entregou o arquivo pedido."""
+
+
+class AindaNaoPublicadoError(DownloadError):
+    """O arquivo do pregao ainda nao existe na B3 (404).
+
+    Separado do erro generico porque tem tratamento proprio: no dia do pregao a
+    B3 leva horas para publicar, e um 404 logo apos o fechamento significa
+    "espere", nao "deu errado".
+    """
 
 
 def annual_filename(year: int) -> str:
@@ -47,7 +63,7 @@ def _fetch(filename: str, destination: Path, *, force: bool) -> Path:
     try:
         with httpx.stream("GET", url, timeout=TIMEOUT_SECONDS, follow_redirects=True) as response:
             if response.status_code == httpx.codes.NOT_FOUND:
-                raise DownloadError(f"{filename} nao existe na B3 (404)")
+                raise AindaNaoPublicadoError(f"{filename} ainda nao esta na B3 (404)")
             response.raise_for_status()
             with partial.open("wb") as handle:
                 for chunk in response.iter_bytes(CHUNK_BYTES):
@@ -67,7 +83,30 @@ def download_annual(year: int, cache: Path = DEFAULT_CACHE, *, force: bool = Fal
     return _fetch(name, cache / name, force=force)
 
 
-def download_daily(day: date, cache: Path = DEFAULT_CACHE, *, force: bool = False) -> Path:
-    """Arquivo de um pregao, usado na carga incremental."""
+def download_daily(
+    day: date,
+    cache: Path = DEFAULT_CACHE,
+    *,
+    force: bool = False,
+    tentativas: int = TENTATIVAS_DIARIAS,
+    espera: float = ESPERA_ENTRE_TENTATIVAS,
+) -> Path:
+    """Arquivo de um pregao, usado na carga incremental.
+
+    A B3 leva horas depois do fechamento para publicar o arquivo do dia, e o
+    atraso varia. Um 404 aqui quase sempre quer dizer "ainda nao saiu", entao
+    vale esperar e tentar de novo -- mas so para 404: qualquer outro erro sobe
+    na hora, porque esperar nao conserta.
+    """
     name = daily_filename(day)
-    return _fetch(name, cache / name, force=force)
+    destino = cache / name
+
+    for tentativa in range(1, tentativas + 1):
+        try:
+            return _fetch(name, destino, force=force)
+        except AindaNaoPublicadoError:
+            if tentativa == tentativas:
+                raise
+            time.sleep(espera)
+
+    raise AindaNaoPublicadoError(f"{name} nao apareceu em {tentativas} tentativas")

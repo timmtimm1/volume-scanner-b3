@@ -163,26 +163,39 @@ def test_workflow_roda_o_pipeline_completo(workflow: dict[Any, Any], comando: st
     assert comando in WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_workflow_roda_em_dia_util_no_fim_da_noite_utc(workflow: dict[Any, Any]) -> None:
-    """23:17 UTC = 20:17 em Brasilia.
+def test_workflow_roda_de_manha_e_processa_o_pregao_anterior(
+    workflow: dict[Any, Any],
+) -> None:
+    """10:40 UTC = 07:40 em Brasilia, de terca a sabado.
 
-    As 21:00 UTC (18:00 BRT, o minuto do fechamento) a B3 ainda nao publicou o
-    arquivo e a carga daria 404 todo dia. Passar de 23:59 UTC viraria o dia no
-    container e o "--date today" pediria o pregao de amanha.
+    Rodar na mesma noite nao sobreviveu a B3: as 20:26 BRT o arquivo do dia
+    ainda dava 404, e o teto de 23:59 UTC deixava so 30 minutos de margem. De
+    manha o arquivo do dia anterior esta publicado ha horas.
 
-    O minuto nao pode ser 0: agendamento no GitHub e melhor esforco e atrasa na
-    hora cheia, quando todo mundo agenda. Medido em 08/09/2026, "0 23" nao tinha
-    comecado 9 minutos depois do horario.
+    Tem de terminar antes das 10h, que e quando o pregao abre -- e ai a leitura
+    deixa de ser preparacao e vira reacao.
     """
-    # A chave `on` do YAML e lida como booleano True por ser "on".
     gatilhos = workflow.get("on") or workflow.get(True)
     assert isinstance(gatilhos, dict)
     (agendamento,) = gatilhos["schedule"]
     minuto, hora, *resto = str(agendamento["cron"]).split()
-    assert hora == "23", "fora da janela: antes disso a B3 nao publicou o arquivo"
+
+    brasilia = int(hora) - 3
+    assert 6 <= brasilia < 10, "fora da janela util: depois das 10h o pregao ja abriu"
     assert minuto != "0", "minuto 0 cai na fila da hora cheia do GitHub"
-    assert resto == ["*", "*", "1-5"], "so em dia util"
+    # Terca a sabado: cada sessao e processada na manha seguinte, e a manha
+    # seguinte a sexta e o sabado.
+    assert resto == ["*", "*", "2-6"]
     assert "workflow_dispatch" in gatilhos
+
+
+def test_workflow_pede_o_ultimo_pregao_e_nao_o_dia_de_hoje(
+    workflow: dict[Any, Any],
+) -> None:
+    # De manha "today" seria o pregao que ainda nem abriu.
+    (job,) = workflow["jobs"].values()
+    assert "'ultimo'" in str(job["env"]["PREGAO"])
+    assert "'today'" not in str(job["env"]["PREGAO"])
 
 
 def test_workflow_le_os_segredos_pelos_nomes_certos(workflow: dict[Any, Any]) -> None:

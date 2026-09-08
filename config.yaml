@@ -7,6 +7,13 @@ alert:
   require_all_windows: false  # false = qualquer janela cruzando dispara
   min_volume_brl: 500000      # piso de sanidade: papel morto nao interessa
 
+digest:
+  # Resumo diario no Telegram depois do scan: os N papeis que mais fugiram do
+  # proprio normal, tenham cruzado o limiar ou nao.
+  enabled: true
+  top_n: 10
+  window: 30      # janela do z usada no ranking
+
 ingest:
   # Filtros posicionais do COTAHIST (secao 2 do plano).
   tipreg: "01"

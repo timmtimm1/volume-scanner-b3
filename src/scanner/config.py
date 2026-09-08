@@ -48,6 +48,28 @@ class AlertConfig(BaseModel):
         return value
 
 
+class DigestConfig(BaseModel):
+    """Resumo diario enviado depois do scan (fora do plano original).
+
+    Ordena pelo mesmo z-score que dispara o alerta, so que sem o corte: mostra
+    os papeis que mais fugiram do proprio normal no pregao, tenham cruzado o
+    limiar ou nao. Nao filtra por merito nem preve nada -- e o mesmo numero da
+    regra da secao 4, ordenado.
+    """
+
+    enabled: bool = True
+    top_n: int = 10
+    # Janela do z usada no ranking. A menor e a mais sensivel.
+    window: int = 30
+
+    @field_validator("top_n")
+    @classmethod
+    def _validate_top_n(cls, value: int) -> int:
+        if not 1 <= value <= 50:
+            raise ValueError("digest.top_n precisa ficar entre 1 e 50")
+        return value
+
+
 class IngestConfig(BaseModel):
     """Filtros posicionais e validacao do COTAHIST (secao 2 do plano)."""
 
@@ -85,6 +107,7 @@ class ScannerConfig(BaseModel):
     """Conteudo completo de `config.yaml`."""
 
     alert: AlertConfig = Field(default_factory=AlertConfig)
+    digest: DigestConfig = Field(default_factory=DigestConfig)
     ingest: IngestConfig = Field(default_factory=IngestConfig)
     universe: UniverseConfig = Field(default_factory=UniverseConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)

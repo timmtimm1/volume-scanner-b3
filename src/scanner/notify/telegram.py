@@ -151,6 +151,10 @@ class TelegramNotifier:
         """Formata e envia um evento."""
         return self.send_text(format_alert(payload, self.base_url))
 
+    def send_resumo(self, payload: Mapping[str, Any]) -> bool:
+        """Formata e envia o resumo do pregao."""
+        return self.send_text(format_resumo(payload))
+
 
 @dataclass(frozen=True)
 class ConsoleNotifier:
@@ -172,3 +176,56 @@ class ConsoleNotifier:
 
     def send_event(self, payload: Mapping[str, Any]) -> bool:
         return self.send_text(format_alert(payload, self.base_url))
+
+    def send_resumo(self, payload: Mapping[str, Any]) -> bool:
+        return self.send_text(format_resumo(payload))
+
+
+def _linha_do_resumo(
+    posicao: int,
+    ticker: str,
+    desvios: float | None,
+    preco: float | None,
+    variacao: float | None,
+    volume: float | None,
+) -> str:
+    """Uma linha da tabela do resumo, em largura fixa."""
+    return (
+        f"{posicao:>2} {ticker:<7}"
+        f"{br(desvios):>7}"
+        f"{br(preco):>9}"
+        f"{pct(variacao):>9}"
+        f"{money(volume):>14}"
+    )
+
+
+def format_resumo(resumo: Mapping[str, Any]) -> str:
+    """Resumo diario: tabela dos papeis que mais se afastaram do proprio normal.
+
+    Sem prosa e sem jargao nos cabecalhos. Os numeros sao os mesmos do alerta;
+    quem le decide o que fazer com eles.
+
+    Vai dentro de <pre> porque o Telegram so alinha coluna em monoespacado.
+    """
+    linhas = list(resumo.get("linhas") or [])
+    if not linhas:
+        return (
+            f"Resumo de {resumo['trade_date'].strftime('%d/%m/%Y')}\n\nSem dados para este pregao."
+        )
+
+    cabecalho = f"{'':>2} {'Papel':<7}{'Desvios':>7}{'Preco':>9}{'Variacao':>9}{'Volume':>14}"
+    corpo = "\n".join(
+        _linha_do_resumo(
+            i,
+            str(linha["ticker"]),
+            linha.get("desvios"),
+            linha.get("preco"),
+            linha.get("variacao"),
+            linha.get("volume"),
+        )
+        for i, linha in enumerate(linhas, 1)
+    )
+
+    return (
+        f"Resumo de {resumo['trade_date'].strftime('%d/%m/%Y')}\n\n<pre>{cabecalho}\n{corpo}</pre>"
+    )

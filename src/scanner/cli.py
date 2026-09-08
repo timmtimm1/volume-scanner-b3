@@ -287,6 +287,48 @@ def scan(
     typer.echo(relatorio.summary())
 
 
+@app.command("resumo")
+def resumo(
+    trade_date: Annotated[str, typer.Option("--date", help="Pregao a resumir.")] = "today",
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Mostra sem enviar ao Telegram.")
+    ] = False,
+) -> None:
+    """Manda o resumo do pregao: os papeis que mais fugiram do proprio normal."""
+    from scanner.calendar import is_trading_day
+    from scanner.config import get_settings
+    from scanner.digest import run_resumo
+    from scanner.notify.telegram import ConsoleNotifier, TelegramNotifier
+    from scanner.storage.engine import build_engine
+
+    dia = parse_trade_date(trade_date)
+    if not is_trading_day(dia):
+        typer.secho(f"[pulado] {dia.isoformat()} nao e pregao.", fg=typer.colors.YELLOW)
+        return
+
+    config = load_config()
+    if not config.digest.enabled:
+        typer.secho("[pulado] digest.enabled esta false no config.", fg=typer.colors.YELLOW)
+        return
+
+    settings = get_settings()
+    notifier: object
+    if dry_run or not (settings.telegram_bot_token and settings.telegram_chat_id):
+        notifier = ConsoleNotifier(base_url=settings.web_base_url)
+    else:
+        notifier = TelegramNotifier(
+            token=settings.telegram_bot_token.get_secret_value(),
+            chat_id=settings.telegram_chat_id,
+            base_url=settings.web_base_url,
+        )
+
+    saida = run_resumo(build_engine(), config, dia, notifier=notifier)
+    typer.echo(
+        f"{dia.isoformat()}: {len(saida.linhas)} papeis no resumo, "
+        f"{saida.avaliados} avaliados, {saida.cruzaram} acima do limiar"
+    )
+
+
 @report_app.command("ticker")
 def report_ticker(
     ticker: Annotated[str, typer.Argument(help="Codigo do papel, ex.: PETR4.")],

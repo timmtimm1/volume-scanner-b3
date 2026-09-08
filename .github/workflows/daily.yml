@@ -65,6 +65,11 @@ jobs:
       - name: Avaliar e notificar
         run: uv run scanner scan --date "$PREGAO"
 
+      - name: Resumo do pregao
+        # Vai mesmo quando nada cruzou o limiar: e o que faz o dia calmo nao
+        # virar silencio. Ordenado pelo mesmo z do alerta.
+        run: uv run scanner resumo --date "$PREGAO"
+
       - name: Aplicar retencao
         # A secao 5 do plano guarda os ultimos 400 pregoes de barras. Eventos
         # nunca sao apagados.

@@ -18,11 +18,24 @@ def test_todas_as_tabelas_no_schema_do_projeto() -> None:
 
 
 def test_nomes_das_tabelas() -> None:
+    # `daily_features` nao esta na secao 8 do plano: foi acrescentada para a
+    # tela poder mostrar contexto abaixo do limiar de alerta, onde a tabela
+    # `events` nao tem linha. Ver a migration 0002.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
         "events",
+        "daily_features",
     }
+
+
+def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
+    # As features da secao 3.2 nao dependem de janela, diferente das metricas:
+    # uma linha por (papel, pregao) e o suficiente.
+    assert [c.name for c in table("daily_features").primary_key] == [
+        "ticker",
+        "trade_date",
+    ]
 
 
 @pytest.mark.parametrize(

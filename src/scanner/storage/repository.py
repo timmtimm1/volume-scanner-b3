@@ -7,7 +7,9 @@ NAO e tocado no conflito, para que rodar duas vezes deixe o banco identico.
 
 from __future__ import annotations
 
+import csv
 import io
+import json
 from collections.abc import Sequence
 from datetime import date
 from typing import Any
@@ -16,8 +18,9 @@ import pandas as pd
 from sqlalchemy import Engine, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
+from scanner.features import FEATURE_COLUMNS
 from scanner.ingest.cotahist import BAR_COLUMNS
-from scanner.storage.models import SCHEMA, DailyBar, Event, VolumeMetric
+from scanner.storage.models import SCHEMA, DailyBar, DailyFeature, Event, VolumeMetric
 
 # Colunas reescritas quando a linha ja existe. `ingested_at` fica de fora.
 _UPDATABLE = tuple(c for c in BAR_COLUMNS if c not in ("ticker", "trade_date"))
@@ -286,3 +289,64 @@ def retention_cutoff(engine: Engine, keep_sessions: int) -> date | None:
             .limit(1)
             .offset(keep_sessions - 1)
         ).scalar_one_or_none()
+
+
+def upsert_features(engine: Engine, features: pd.DataFrame) -> int:
+    """Grava o contexto da secao 3.2 de cada (papel, pregao).
+
+    Vai por COPY numa temporaria, como as metricas: sao ~300 linhas por pregao,
+    mas um recalculo full traz centenas de milhares de uma vez.
+
+    Linhas sem nenhuma feature calculada nao entram: papel novo demais para ter
+    qualquer janela ainda nao tem contexto, e uma linha de nulos so ocuparia
+    espaco.
+    """
+    if features.empty:
+        return 0
+
+    colunas_de_feature = [c for c in FEATURE_COLUMNS if c in features.columns]
+    prontas = features.loc[:, ["ticker", "trade_date", *colunas_de_feature]].copy()
+    prontas["trade_date"] = pd.to_datetime(prontas["trade_date"]).dt.date
+
+    valores = prontas[colunas_de_feature]
+    prontas = prontas[valores.notna().any(axis=1)]
+    if prontas.empty:
+        return 0
+
+    def como_json(linha: pd.Series) -> str:
+        corpo = {
+            nome: (None if pd.isna(linha[nome]) else float(linha[nome]))
+            for nome in colunas_de_feature
+        }
+        return json.dumps(corpo, allow_nan=False)
+
+    payload = io.StringIO()
+    pd.DataFrame(
+        {
+            "ticker": prontas["ticker"],
+            "trade_date": prontas["trade_date"],
+            "features": prontas.apply(como_json, axis=1),
+        }
+    ).to_csv(payload, sep="\t", header=False, index=False, quoting=csv.QUOTE_NONE, escapechar="\\")
+
+    with engine.begin() as conn:
+        raw = conn.connection.driver_connection
+        with raw.cursor() as cur:  # type: ignore[union-attr]
+            cur.execute(
+                f"CREATE TEMP TABLE tmp_features "
+                f"(LIKE {SCHEMA}.daily_features INCLUDING DEFAULTS) ON COMMIT DROP"
+            )
+            with cur.copy("COPY tmp_features (ticker, trade_date, features) FROM STDIN") as copy:
+                copy.write(payload.getvalue())
+            cur.execute(
+                f"INSERT INTO {SCHEMA}.daily_features (ticker, trade_date, features) "
+                f"SELECT ticker, trade_date, features FROM tmp_features "
+                f"ON CONFLICT (ticker, trade_date) DO UPDATE SET features = EXCLUDED.features"
+            )
+    return len(prontas)
+
+
+def count_features(engine: Engine) -> int:
+    """Total de linhas de contexto armazenadas."""
+    with engine.connect() as conn:
+        return int(conn.execute(select(func.count()).select_from(DailyFeature)).scalar_one())

@@ -97,7 +97,7 @@ export function Navegacao() {
         </nav>
       </aside>
 
-      <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-linha bg-painel md:hidden">
+      <nav className="fixed inset-x-0 bottom-0 z-20 flex border-t border-linha bg-painel pb-[env(safe-area-inset-bottom)] md:hidden">
         {ITENS.map((item) => {
           const on = ativo(pathname, item.href);
           return (

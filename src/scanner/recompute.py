@@ -13,10 +13,12 @@ import pandas as pd
 from sqlalchemy import Engine
 
 from scanner.config import ScannerConfig
+from scanner.features import compute_features
 from scanner.metrics import compute_zscores
 from scanner.storage.repository import (
     last_metric_date,
     load_bars,
+    upsert_features,
     upsert_metrics,
 )
 
@@ -29,6 +31,7 @@ class RecomputeReport:
     bars_read: int
     rows_computed: int
     rows_written: int
+    features_written: int
     first_written: date | None
     last_written: date | None
 
@@ -42,7 +45,8 @@ class RecomputeReport:
         return (
             f"modo {self.mode}: {self.bars_read:,} barras lidas, "
             f"{self.rows_computed:,} metricas calculadas, "
-            f"{self.rows_written:,} gravadas{faixa}"
+            f"{self.rows_written:,} gravadas{faixa}; "
+            f"{self.features_written:,} linhas de contexto"
         )
 
 
@@ -69,12 +73,23 @@ def refresh_metrics(
             to_write = metrics[metrics["trade_date"] >= pd.Timestamp(marker)]
 
     written = upsert_metrics(engine, to_write, replace_all=(mode == "full"))
+
+    # O contexto da secao 3.2 e persistido para tudo que se calculou, nao so
+    # para o que virou alerta: a tela mostra uma faixa de z maior que a do
+    # Telegram, e linha sem contexto nao serve para ler nada.
+    features = compute_features(bars, max(config.alert.windows), metrics)
+    if not to_write.empty:
+        janela = set(pd.to_datetime(to_write["trade_date"]).unique())
+        features = features[pd.to_datetime(features["trade_date"]).isin(janela)]
+    features_written = upsert_features(engine, features)
+
     dates = pd.to_datetime(to_write["trade_date"]) if not to_write.empty else None
     return RecomputeReport(
         mode=mode,
         bars_read=len(bars),
         rows_computed=len(metrics),
         rows_written=written,
+        features_written=features_written,
         first_written=dates.min().date() if dates is not None else None,
         last_written=dates.max().date() if dates is not None else None,
     )
@@ -83,10 +98,8 @@ def refresh_metrics(
 def ticker_history(engine: Engine, ticker: str, window: int, *, limit: int = 30) -> pd.DataFrame:
     """Os pregoes mais recentes de um papel, com metrica e contexto.
 
-    Alimenta o `scanner report ticker` e, mais adiante, a ficha do papel.
+    Alimenta o `scanner report ticker` e a ficha do papel.
     """
-    from scanner.features import compute_features
-
     bars = load_bars(engine)
     alvo = bars[bars["ticker"] == ticker.upper()]
     if alvo.empty:

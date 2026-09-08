@@ -1,0 +1,147 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0a0e14; color:#e8eef6;
+         font-family:'IBM Plex Sans',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#ffb020; text-decoration:none; }
+  a:hover { color:#ffc659; }
+  .num { font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+  .lbl { font-size:9px; letter-spacing:.08em; text-transform:uppercase; color:#5d7186; font-weight:600; }
+  </style>
+</helmet>
+
+<div style="width:390px; height:844px; display:flex; flex-direction:column; overflow:hidden;">
+
+  <div style="padding:14px 16px 12px; border-bottom:1px solid #1f2937; background:#10161f;">
+    <div style="display:flex; align-items:center; gap:9px;">
+      <svg width="19" height="19" viewBox="0 0 24 24" fill="none">
+        <rect x="2" y="13" width="3.4" height="8" fill="#2a3543"></rect>
+        <rect x="7" y="9" width="3.4" height="12" fill="#2a3543"></rect>
+        <rect x="12" y="3" width="3.4" height="18" fill="#ffb020"></rect>
+        <rect x="17" y="11" width="3.4" height="10" fill="#2a3543"></rect>
+      </svg>
+      <div style="flex:1;">
+        <div style="font-size:15px; font-weight:700;">Scanner do dia</div>
+        <div class="num" style="font-size:10px; color:#5d7186;">14/08/2026 &middot; sexta</div>
+      </div>
+      <div style="width:34px; height:34px; border-radius:6px; background:#151d28; border:1px solid #2a3543; display:flex; align-items:center; justify-content:center;">
+        <svg width="15" height="15" viewBox="0 0 20 20" fill="none" stroke="#94a6ba" stroke-width="1.7"><circle cx="9" cy="9" r="6"></circle><path d="M13.5 13.5L17 17" stroke-linecap="round"></path></svg>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex; align-items:center; gap:9px; padding:9px 16px; background:#151d28; border-bottom:1px solid #1f2937;">
+    <span style="width:7px; height:7px; border-radius:50%; background:#26c281;"></span>
+    <span style="font-size:11px; color:#94a6ba; flex:1;">Mercado normal &middot; <span class="num">z 1,00</span></span>
+    <span class="num" style="font-size:11px; color:#5d7186;">276 avaliados</span>
+  </div>
+
+  <div style="padding:13px 16px 9px;">
+    <div style="display:flex; align-items:baseline; justify-content:space-between; margin-bottom:8px;">
+      <span class="lbl">Mostrar a partir de</span>
+      <span class="num" style="font-size:13px; color:#ffb020; font-weight:600;">4,0 &sigma;</span>
+    </div>
+    <div style="position:relative; height:6px; background:#2a3543; border-radius:3px;">
+      <div style="position:absolute; left:0; width:33%; top:0; bottom:0; background:#ffb020; border-radius:3px;"></div>
+      <div style="position:absolute; left:33%; top:-9px; width:24px; height:24px; margin-left:-12px; background:#ffb020; border-radius:50%; border:3px solid #0a0e14;"></div>
+    </div>
+    <div style="display:flex; justify-content:space-between; margin-top:6px;">
+      <span class="num" style="font-size:9px; color:#5d7186;">2&sigma;</span>
+      <span class="num" style="font-size:9px; color:#5d7186;">alerta em 6&sigma;</span>
+      <span class="num" style="font-size:9px; color:#5d7186;">8&sigma;</span>
+    </div>
+  </div>
+
+  <div style="flex:1; padding:4px 16px 16px; display:flex; flex-direction:column; gap:9px; overflow:hidden;">
+
+    <div style="background:#10161f; border:1px solid #1f2937; border-left:2px solid #ffb020; border-radius:0 7px 7px 0; padding:13px 14px; min-height:88px;">
+      <div style="display:flex; align-items:baseline; gap:9px;">
+        <span style="font-size:17px; font-weight:700;">LWSA3</span>
+        <span class="num" style="font-size:15px; font-weight:600; color:#26c281;">+7,8%</span>
+        <span style="flex:1;"></span>
+        <span class="num" style="font-size:19px; font-weight:600; color:#ffb020;">6,90</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:14px; margin-top:9px;">
+        <span class="num" style="font-size:12px; color:#94a6ba;">9,7&times; o normal</span>
+        <span class="num" style="font-size:12px; color:#94a6ba;">R$ 78,0 mi</span>
+        <span style="flex:1;"></span>
+        <span class="num" style="font-size:11px; color:#5d7186;">ticket 3.875</span>
+      </div>
+    </div>
+
+    <div style="background:#10161f; border:1px solid #1f2937; border-radius:7px; padding:13px 14px; min-height:88px;">
+      <div style="display:flex; align-items:baseline; gap:9px;">
+        <span style="font-size:17px; font-weight:700;">GMAT3</span>
+        <span class="num" style="font-size:15px; font-weight:600; color:#26c281;">+5,0%</span>
+        <span style="flex:1;"></span>
+        <span class="num" style="font-size:19px; font-weight:600; color:#e8eef6;">5,12</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:14px; margin-top:9px;">
+        <span class="num" style="font-size:12px; color:#94a6ba;">5,5&times; o normal</span>
+        <span class="num" style="font-size:12px; color:#94a6ba;">R$ 88,4 mi</span>
+        <span style="flex:1;"></span>
+        <span class="num" style="font-size:11px; color:#5d7186;">ticket 6.267</span>
+      </div>
+    </div>
+
+    <div style="background:#10161f; border:1px solid #1f2937; border-radius:7px; padding:13px 14px; min-height:88px;">
+      <div style="display:flex; align-items:baseline; gap:9px;">
+        <span style="font-size:17px; font-weight:700;">CPFE3</span>
+        <span class="num" style="font-size:15px; font-weight:600; color:#ff5c5c;">-4,5%</span>
+        <span style="flex:1;"></span>
+        <span class="num" style="font-size:19px; font-weight:600; color:#e8eef6;">4,69</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:14px; margin-top:9px;">
+        <span class="num" style="font-size:12px; color:#94a6ba;">4,4&times; o normal</span>
+        <span class="num" style="font-size:12px; color:#94a6ba;">R$ 211,7 mi</span>
+        <span style="flex:1;"></span>
+        <span class="num" style="font-size:11px; color:#5d7186;">ticket 9.596</span>
+      </div>
+    </div>
+
+    <div style="background:#10161f; border:1px solid #1f2937; border-radius:7px; padding:13px 14px; min-height:88px;">
+      <div style="display:flex; align-items:baseline; gap:9px;">
+        <span style="font-size:17px; font-weight:700;">SYNE3</span>
+        <span class="num" style="font-size:15px; font-weight:600; color:#ff5c5c;">-1,6%</span>
+        <span style="flex:1;"></span>
+        <span class="num" style="font-size:19px; font-weight:600; color:#e8eef6;">4,25</span>
+      </div>
+      <div style="display:flex; align-items:center; gap:14px; margin-top:9px;">
+        <span class="num" style="font-size:12px; color:#94a6ba;">6,3&times; o normal</span>
+        <span class="num" style="font-size:12px; color:#94a6ba;">R$ 5,5 mi</span>
+        <span style="flex:1;"></span>
+        <span class="num" style="font-size:11px; color:#5d7186;">ticket 1.388</span>
+      </div>
+    </div>
+  </div>
+
+  <div style="display:flex; border-top:1px solid #1f2937; background:#10161f;">
+    <div style="flex:1; padding:11px 0 13px; display:flex; flex-direction:column; align-items:center; gap:3px; min-height:56px;">
+      <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="#ffb020" stroke-width="1.6"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"></path></svg>
+      <span style="font-size:10px; color:#ffb020; font-weight:600;">Scanner</span>
+    </div>
+    <div style="flex:1; padding:11px 0 13px; display:flex; flex-direction:column; align-items:center; gap:3px; min-height:56px;">
+      <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="#5d7186" stroke-width="1.6" stroke-linecap="round"><path d="M10 5v5l3 2"></path><circle cx="10" cy="10" r="7"></circle></svg>
+      <span style="font-size:10px; color:#5d7186;">Historico</span>
+    </div>
+    <div style="flex:1; padding:11px 0 13px; display:flex; flex-direction:column; align-items:center; gap:3px; min-height:56px;">
+      <svg width="19" height="19" viewBox="0 0 20 20" fill="none" stroke="#5d7186" stroke-width="1.6"><circle cx="10" cy="10" r="7"></circle><path d="M3 10h14M10 3c2 2.5 2 11.5 0 14M10 3c-2 2.5-2 11.5 0 14"></path></svg>
+      <span style="font-size:10px; color:#5d7186;">Universo</span>
+    </div>
+  </div>
+</div>
+
+<script data-dc-script data-props='{"$preview":{"width":390,"height":844}}'>
+class Component extends DCLogic {}
+</script>
+</body>
+</html>

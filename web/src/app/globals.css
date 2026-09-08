@@ -1,0 +1,74 @@
+@import "tailwindcss";
+
+/*
+ * Escuro por padrao, densidade de terminal (secao 6 do plano).
+ *
+ * Regra de cor que nao se quebra: verde e vermelho existem SO para direcao de
+ * preco. O ambar e a cor de interface -- selecao, z-score, marcador de evento.
+ * Se algo alem de direcao precisar de destaque, usa ambar ou cinza, nunca as
+ * duas cores de direcao.
+ */
+@theme {
+  --color-fundo: #0a0e14;
+  --color-painel: #10161f;
+  --color-painel-2: #151d28;
+  --color-selecao: #1a2432;
+  --color-linha: #1f2937;
+  --color-linha-2: #2a3543;
+
+  --color-tinta: #e8eef6;
+  --color-tinta-2: #94a6ba;
+  --color-tinta-3: #5d7186;
+
+  --color-ambar: #ffb020;
+  --color-ambar-forte: #ffc659;
+  --color-alta: #26c281;
+  --color-baixa: #ff5c5c;
+
+  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+}
+
+html {
+  color-scheme: dark;
+}
+
+body {
+  background: var(--color-fundo);
+  color: var(--color-tinta);
+  font-family: var(--font-sans);
+  -webkit-font-smoothing: antialiased;
+}
+
+/*
+ * Numerais tabulares em toda coluna numerica. Sem isto as casas decimais
+ * dancam entre as linhas e a tabela parece amadora -- o plano e explicito.
+ */
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.rotulo {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-tinta-3);
+  font-weight: 600;
+}
+
+/* O alvo de toque no celular nunca fica abaixo de 44px. */
+@media (max-width: 767px) {
+  .toque {
+    min-height: 44px;
+  }
+}
+
+input[type="range"] {
+  accent-color: var(--color-ambar);
+}
+
+::selection {
+  background: var(--color-ambar);
+  color: var(--color-fundo);
+}

@@ -1,0 +1,170 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <style>
+  @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600;700&display=swap');
+  * { box-sizing:border-box; }
+  body { margin:0; background:#0a0e14; color:#e8eef6;
+         font-family:'IBM Plex Sans',system-ui,sans-serif; -webkit-font-smoothing:antialiased; }
+  a { color:#ffb020; text-decoration:none; }
+  a:hover { color:#ffc659; }
+  .num { font-family:'IBM Plex Mono',ui-monospace,monospace; font-variant-numeric:tabular-nums; }
+  .lbl { font-size:10px; letter-spacing:.08em; text-transform:uppercase; color:#5d7186; font-weight:600; }
+  .hrow { display:grid; grid-template-columns:92px 88px 68px 74px 78px 92px 110px 1fr; align-items:center; }
+  </style>
+</helmet>
+
+<div style="display:flex; width:1440px; height:900px; overflow:hidden;">
+
+  <aside style="width:206px; flex:0 0 206px; background:#10161f; border-right:1px solid #1f2937; display:flex; flex-direction:column; padding:16px 0;">
+    <div style="display:flex; align-items:center; gap:9px; padding:0 14px 18px;">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
+        <rect x="2" y="13" width="3.4" height="8" fill="#2a3543"></rect>
+        <rect x="7" y="9" width="3.4" height="12" fill="#2a3543"></rect>
+        <rect x="12" y="3" width="3.4" height="18" fill="#ffb020"></rect>
+        <rect x="17" y="11" width="3.4" height="10" fill="#2a3543"></rect>
+      </svg>
+      <div>
+        <div style="font-size:13px; font-weight:700; letter-spacing:.02em;">volume-scanner</div>
+        <div style="font-size:10px; color:#5d7186;">B3 &middot; volume anomalo</div>
+      </div>
+    </div>
+    <div style="display:flex; flex-direction:column; gap:2px;">
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; color:#94a6ba; border-left:2px solid transparent; border-radius:0 4px 4px 0; font-size:13px;">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 3h6v6H3zM11 3h6v6h-6zM3 11h6v6H3zM11 11h6v6h-6z"></path></svg>Scanner
+      </div>
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; color:#94a6ba; border-left:2px solid transparent; border-radius:0 4px 4px 0; font-size:13px;">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M4 16V8M8 16V4M12 16v-6M16 16v-9"></path></svg>Ficha do papel
+      </div>
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; background:#1a2432; color:#e8eef6; border-left:2px solid #ffb020; border-radius:0 4px 4px 0; font-size:13px; font-weight:600;">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M10 5v5l3 2"></path><circle cx="10" cy="10" r="7"></circle></svg>Historico
+      </div>
+      <div style="display:flex; align-items:center; gap:10px; padding:8px 12px; color:#94a6ba; border-left:2px solid transparent; border-radius:0 4px 4px 0; font-size:13px;">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="7"></circle><path d="M3 10h14M10 3c2 2.5 2 11.5 0 14M10 3c-2 2.5-2 11.5 0 14"></path></svg>Universo
+      </div>
+    </div>
+    <div style="margin-top:auto; padding:14px; border-top:1px solid #1f2937;">
+      <div class="lbl" style="margin-bottom:6px;">Retencao</div>
+      <div class="num" style="font-size:12px; color:#94a6ba;">400 pregoes de barras</div>
+      <div style="font-size:10px; color:#5d7186; margin-top:4px; line-height:1.4;">Eventos ficam para sempre, mesmo depois das barras sairem.</div>
+    </div>
+  </aside>
+
+  <main style="flex:1; display:flex; flex-direction:column; min-width:0;">
+
+    <div style="display:flex; align-items:center; padding:14px 22px; border-bottom:1px solid #1f2937; background:#10161f;">
+      <div>
+        <div style="font-size:17px; font-weight:700;">Historico de eventos</div>
+        <div class="num" style="font-size:11px; color:#5d7186; margin-top:1px;">30/01/2025 a 04/09/2026 &middot; 400 pregoes</div>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="display:flex; align-items:baseline; gap:7px;">
+        <span class="num" style="font-size:24px; font-weight:600; color:#ffb020;">62</span>
+        <span style="font-size:11px; color:#94a6ba; line-height:1.3;">eventos<br/>acima de 6&sigma;</span>
+      </div>
+    </div>
+
+    <div style="display:flex; gap:10px; padding:13px 22px; border-bottom:1px solid #1f2937; background:#151d28; align-items:flex-end;">
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Periodo</div>
+        <div style="display:flex; gap:1px; background:#1f2937; border-radius:5px; overflow:hidden; border:1px solid #1f2937;">
+          <span style="padding:5px 12px; font-size:11px; background:#10161f; color:#94a6ba;">30d</span>
+          <span style="padding:5px 12px; font-size:11px; font-weight:600; background:#1a2432; color:#e8eef6;">90d</span>
+          <span style="padding:5px 12px; font-size:11px; background:#10161f; color:#94a6ba;">1A</span>
+          <span style="padding:5px 12px; font-size:11px; background:#10161f; color:#94a6ba;">Tudo</span>
+        </div>
+      </div>
+      <div>
+        <div class="lbl" style="margin-bottom:5px;">Papel</div>
+        <div style="display:flex; align-items:center; gap:7px; padding:5px 10px; background:#10161f; border:1px solid #2a3543; border-radius:5px; width:150px;">
+          <svg width="12" height="12" viewBox="0 0 20 20" fill="none" stroke="#5d7186" stroke-width="1.8"><circle cx="9" cy="9" r="6"></circle><path d="M13.5 13.5L17 17" stroke-linecap="round"></path></svg>
+          <span style="font-size:11px; color:#5d7186;">todos</span>
+        </div>
+      </div>
+      <div style="flex:1; max-width:280px;">
+        <div style="display:flex; justify-content:space-between; margin-bottom:5px;">
+          <span class="lbl">Faixa de z</span>
+          <span class="num" style="font-size:11px; color:#ffb020; font-weight:600;">4,0 &ndash; 8,0</span>
+        </div>
+        <div style="position:relative; height:5px; background:#2a3543; border-radius:3px;">
+          <div style="position:absolute; left:22%; right:0; top:0; bottom:0; background:#ffb020; border-radius:3px;"></div>
+          <div style="position:absolute; left:22%; top:-4px; width:13px; height:13px; margin-left:-6px; background:#ffb020; border-radius:50%; border:2px solid #0a0e14;"></div>
+          <div style="position:absolute; right:0; top:-4px; width:13px; height:13px; margin-right:-6px; background:#ffb020; border-radius:50%; border:2px solid #0a0e14;"></div>
+        </div>
+      </div>
+      <div style="flex:1;"></div>
+      <div style="display:flex; align-items:center; gap:7px; padding:6px 12px; background:#10161f; border:1px solid #2a3543; border-radius:5px;">
+        <svg width="13" height="13" viewBox="0 0 20 20" fill="none" stroke="#94a6ba" stroke-width="1.6" stroke-linecap="round"><path d="M10 3v10M6 9.5l4 4 4-4M3.5 16.5h13"></path></svg>
+        <span style="font-size:11px; color:#94a6ba;">CSV</span>
+      </div>
+    </div>
+
+    <div style="flex:1; padding:14px 22px 20px; overflow:hidden;">
+      <div style="border:1px solid #1f2937; border-radius:6px; overflow:hidden; background:#10161f;">
+        <div class="hrow" style="padding:9px 14px; background:#151d28; border-bottom:1px solid #1f2937;">
+          <div class="lbl">Pregao</div>
+          <div class="lbl">Papel</div>
+          <div class="lbl" style="text-align:right;">z 30d</div>
+          <div class="lbl" style="text-align:right;">rvol</div>
+          <div class="lbl" style="text-align:right;">Var.</div>
+          <div class="lbl" style="text-align:right;">z liquido</div>
+          <div class="lbl" style="text-align:right;">Ticket</div>
+          <div class="lbl" style="text-align:right;">Volume</div>
+        </div>
+        <sc-for list="{{eventos}}" as="ev" hint-placeholder-count="12">
+          <div class="hrow" style="padding:8px 14px; border-bottom:1px solid #1f2937;">
+            <div class="num" style="font-size:12px; color:#94a6ba;">{{ev.data}}</div>
+            <div style="font-size:13px; font-weight:600;">{{ev.ticker}}</div>
+            <div class="num" style="text-align:right; font-size:13px; font-weight:600; color:{{ev.zCor}};">{{ev.z}}</div>
+            <div class="num" style="text-align:right; font-size:12px; color:#94a6ba;">{{ev.rvol}}</div>
+            <div class="num" style="text-align:right; font-size:12px; font-weight:600; color:{{ev.retCor}};">{{ev.ret}}</div>
+            <div class="num" style="text-align:right; font-size:12px;">{{ev.zx}}</div>
+            <div class="num" style="text-align:right; font-size:12px; color:#94a6ba;">{{ev.ticket}}</div>
+            <div class="num" style="text-align:right; font-size:12px;">{{ev.vol}}</div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="display:flex; align-items:center; justify-content:space-between; padding:11px 2px 0;">
+        <span style="font-size:11px; color:#5d7186;">Mostrando 12 de 47 eventos no periodo</span>
+        <div style="display:flex; gap:5px;">
+          <span class="num" style="padding:4px 10px; font-size:11px; background:#1a2432; color:#e8eef6; border-radius:4px; font-weight:600;">1</span>
+          <span class="num" style="padding:4px 10px; font-size:11px; color:#94a6ba; border-radius:4px;">2</span>
+          <span class="num" style="padding:4px 10px; font-size:11px; color:#94a6ba; border-radius:4px;">3</span>
+          <span class="num" style="padding:4px 10px; font-size:11px; color:#94a6ba; border-radius:4px;">4</span>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<script data-dc-script data-props='{"$preview":{"width":1440,"height":900}}'>
+class Component extends DCLogic {
+  renderVals() {
+    const G = '#26c281', R = '#ff5c5c', A = '#ffb020', N = '#e8eef6';
+    return {
+      eventos: [
+        { data:'04/09/2026', ticker:'RECV3', z:'5,55', zCor:N, rvol:'5,5x', ret:'-2,8%', retCor:R, zx:'4,12', ticket:'7.204', vol:'97,9 mi' },
+        { data:'02/09/2026', ticker:'MGLU3', z:'5,29', zCor:N, rvol:'3,8x', ret:'+4,1%', retCor:G, zx:'3,88', ticket:'4.910', vol:'352,2 mi' },
+        { data:'02/09/2026', ticker:'RIAA3', z:'4,67', zCor:N, rvol:'6,1x', ret:'+1,9%', retCor:G, zx:'3,26', ticket:'2.845', vol:'51,9 mi' },
+        { data:'02/09/2026', ticker:'VULC3', z:'4,52', zCor:N, rvol:'7,6x', ret:'-3,4%', retCor:R, zx:'3,11', ticket:'6.038', vol:'120,0 mi' },
+        { data:'01/09/2026', ticker:'EZTC3', z:'4,48', zCor:N, rvol:'8,5x', ret:'+6,2%', retCor:G, zx:'3,04', ticket:'8.117', vol:'197,6 mi' },
+        { data:'17/08/2026', ticker:'ETER3', z:'6,43', zCor:A, rvol:'16,2x', ret:'+9,7%', retCor:G, zx:'5,88', ticket:'1.052', vol:'2,8 mi' },
+        { data:'14/08/2026', ticker:'LWSA3', z:'6,90', zCor:A, rvol:'9,7x', ret:'+7,8%', retCor:G, zx:'3,67', ticket:'3.875', vol:'78,0 mi' },
+        { data:'14/08/2026', ticker:'GMAT3', z:'5,12', zCor:N, rvol:'5,5x', ret:'+5,0%', retCor:G, zx:'3,33', ticket:'6.267', vol:'88,4 mi' },
+        { data:'14/08/2026', ticker:'CPFE3', z:'4,69', zCor:N, rvol:'4,4x', ret:'-4,5%', retCor:R, zx:'1,94', ticket:'9.596', vol:'211,7 mi' },
+        { data:'13/08/2026', ticker:'HAPV3', z:'5,73', zCor:N, rvol:'7,2x', ret:'-6,1%', retCor:R, zx:'4,02', ticket:'5.431', vol:'332,7 mi' },
+        { data:'13/08/2026', ticker:'SBSP3', z:'4,37', zCor:N, rvol:'6,2x', ret:'+2,4%', retCor:G, zx:'2,66', ticket:'14.882', vol:'1.895,9 mi' },
+        { data:'12/08/2026', ticker:'VTRU3', z:'4,39', zCor:N, rvol:'4,5x', ret:'+3,3%', retCor:G, zx:'3,01', ticket:'4.190', vol:'24,0 mi' }
+      ]
+    };
+  }
+}
+</script>
+</body>
+</html>

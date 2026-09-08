@@ -1,11 +1,20 @@
 name: daily
 
-# 21:00 UTC = 18:00 em Brasilia, de segunda a sexta (secao 5 do plano).
+# 23:00 UTC = 20:00 em Brasilia, de segunda a sexta.
+#
+# A secao 5 do plano pede 21:00 UTC, que e 18:00 em Brasilia -- o minuto do
+# fechamento. A B3 leva horas depois disso para publicar o arquivo do pregao, e
+# medindo em 08/09/2026 as 15:12 o arquivo do dia ainda dava 404. As 18:00 o
+# job falharia na carga, todo dia.
+#
+# 23:00 UTC e o maximo possivel: o Brasil e UTC-3, entao passar de 23:59 UTC
+# viraria o dia seguinte no container, e o "--date today" pediria o pregao
+# errado -- o de amanha, que ainda nem aconteceu.
 # Feriado da B3 nao precisa de excecao aqui: `scanner ingest daily` reconhece
 # o calendario e sai sem erro quando nao houve pregao.
 on:
   schedule:
-    - cron: "0 21 * * 1-5"
+    - cron: "0 23 * * 1-5"
   workflow_dispatch:
     inputs:
       trade_date:

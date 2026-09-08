@@ -41,6 +41,26 @@ def barras() -> pd.DataFrame:
     return frame
 
 
+def patch_records(destino: Path, inicio: int, valor: bytes) -> int:
+    """Reescreve `valor` a partir da posicao `inicio` (0-indexada) de cada registro.
+
+    Devolve quantos registros foram alterados. Os testes exigem que esse numero
+    seja maior que zero: um patch que nao pega nada faria o teste passar sem
+    testar nada -- foi exatamente o que aconteceu quando o fixture trocou de
+    CRLF para LF e o split literal parou de casar.
+    """
+    linhas = FIXTURE.read_bytes().splitlines()
+    saida: list[bytes] = []
+    alterados = 0
+    for r in linhas:
+        if len(r) == RECORD_LENGTH and r[:2] == b"01":
+            r = r[:inicio] + valor + r[inicio + len(valor) :]
+            alterados += 1
+        saida.append(r)
+    destino.write_bytes(b"\n".join(saida) + b"\n")
+    return alterados
+
+
 def linha(frame: pd.DataFrame, ticker: str) -> pd.Series:
     achadas = frame[frame["ticker"] == ticker]
     assert len(achadas) == 1, f"{ticker}: {len(achadas)} linhas"
@@ -62,6 +82,16 @@ def test_leve3_campo_a_campo(barras: pd.DataFrame) -> None:
     assert r["volume_financial"] == pytest.approx(10_746_164.00)
     assert r["trades_count"] == 1954
     assert r["trades_censored"] is False or not bool(r["trades_censored"])
+
+
+def test_fixture_tem_os_100_registros_esperados() -> None:
+    # Guarda contra o fixture ser alterado sem querer: sem isto, varios testes
+    # abaixo passariam medindo um arquivo que nao e mais o que se pensa.
+    linhas = FIXTURE.read_bytes().splitlines()
+    dados = [r for r in linhas if len(r) == RECORD_LENGTH and r[:2] == b"01"]
+    assert len(dados) == 100
+    assert linhas[0][:2] == b"00"  # header
+    assert linhas[-1][:2] == b"99"  # trailer
 
 
 def test_filtros_descartam_os_outros_codbdi(barras: pd.DataFrame) -> None:
@@ -113,15 +143,10 @@ def test_validacao_no_modo_truncation_nao_falha_no_fixture() -> None:
 def test_parser_desalinhado_aborta_a_carga(tmp_path: Path) -> None:
     # Troca VOLTOT por um valor arbitrario em todas as linhas: e o que aconteceria
     # se as posicoes estivessem erradas. A carga tem de parar, nao seguir.
-    original = FIXTURE.read_bytes().split(b"\r\n")
-    corrompido = []
-    for r in original:
-        if len(r) == RECORD_LENGTH and r[:2] == b"01":
-            r = r[:170] + b"000000000000999999" + r[188:]
-        corrompido.append(r)
-
     alvo = tmp_path / "corrompido.txt"
-    alvo.write_bytes(b"\r\n".join(corrompido))
+    alterados = patch_records(alvo, 170, b"000000000000999999")
+    assert alterados == 100, "o patch nao pegou os registros; o teste nao testaria nada"
+
     with pytest.raises(PriceCheckError, match="desalinhado"):
         parse_file(alvo, CONFIG)
 
@@ -129,15 +154,10 @@ def test_parser_desalinhado_aborta_a_carga(tmp_path: Path) -> None:
 def test_totneg_censurado_e_marcado(tmp_path: Path) -> None:
     # TOTNEG e N(05) e satura em 99999. Nenhum papel do universo real chegou la
     # (maximo observado em 2024-2026: 98.874), entao o caso e sintetico.
-    original = FIXTURE.read_bytes().split(b"\r\n")
-    patched = []
-    for r in original:
-        if len(r) == RECORD_LENGTH and r[:2] == b"01":
-            r = r[:147] + str(TRADES_SENTINEL).encode() + r[152:]
-        patched.append(r)
-
     alvo = tmp_path / "censurado.txt"
-    alvo.write_bytes(b"\r\n".join(patched))
+    alterados = patch_records(alvo, 147, str(TRADES_SENTINEL).encode())
+    assert alterados == 100, "o patch nao pegou os registros; o teste nao testaria nada"
+
     frame, report = parse_file(alvo, CONFIG)
 
     assert report.censored_trades == len(frame)

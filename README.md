@@ -91,7 +91,7 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | F0 | Fundação: estrutura, lint, tipos, testes, Docker, Alembic, CLI | ✅ |
 | F1 | Calendário B3 + universo com filtro de liquidez | ✅ |
 | F2 | Parser e carga COTAHIST | ✅ |
-| F3 | Z-scores + features de contexto | ⬜ |
+| F3 | Z-scores + features de contexto | ✅ |
 | F4 | Alertas + Telegram | ⬜ |
 | F5 | Deploy: Neon, Actions, secrets | ⬜ |
 | F6 | Interface: scanner, ficha do papel, histórico | ⬜ |
@@ -116,6 +116,20 @@ scanner calendar holidays --year 2026
 scanner calendar sessions --start 2026-01-01 --end 2026-01-31
 scanner universe show --date today
 ```
+
+## A regra mecânica, verificada no dado real
+
+Com 671 pregões de 2024 a 2026 carregados, a janela de 30 dias produz z-scores
+**acima do teto que existiria sem o `shift(1)`**:
+
+| Janela | Teto `(N−1)/√N` | Máx. z_log obtido | Linhas acima do teto |
+|---|---|---|---|
+| 30 | 5,29 | **9,69** | 201 |
+| 45 | 6,56 | 9,75 | 31 |
+| 60 | 7,62 | 10,12 | 5 |
+
+Sem o baseline deslocado, a janela de 30 travaria em 5,29 e nenhum dos 96 eventos
+de 6σ que ela encontra existiria.
 
 ## Duas coisas que o layout da B3 esconde
 

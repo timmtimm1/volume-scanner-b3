@@ -1,33 +1,40 @@
 name: daily
 
-# 23:17 UTC = 20:17 em Brasilia, de segunda a sexta.
+# 10:40 UTC = 07:40 em Brasilia, de terca a sabado. Processa o pregao ANTERIOR.
 #
-# A secao 5 do plano pede 21:00 UTC, que e 18:00 em Brasilia -- o minuto do
-# fechamento. A B3 leva horas depois disso para publicar o arquivo do pregao, e
-# medindo em 08/09/2026 as 15:12 o arquivo do dia ainda dava 404. As 18:00 o
-# job falharia na carga, todo dia.
+# A tentativa de rodar na mesma noite nao sobreviveu ao contato com a B3. A
+# secao 5 do plano pede 21:00 UTC (18:00 BRT, o minuto do fechamento); as 15:12
+# o arquivo do dia dava 404, entao mudamos para 20:00 BRT; e as 20:26 BRT do
+# mesmo dia o arquivo AINDA dava 404. O teto e 23:59 UTC -- passar disso vira o
+# dia no container e o "today" pediria o pregao de amanha -- entao sobravam 30
+# minutos de margem, sem nenhuma evidencia de que bastariam.
 #
-# 23:xx UTC e o maximo possivel: o Brasil e UTC-3, entao passar de 23:59 UTC
-# viraria o dia seguinte no container, e o "--date today" pediria o pregao
-# errado -- o de amanha, que ainda nem aconteceu.
+# De manha o problema simplesmente nao existe: as 7h40 o arquivo do dia anterior
+# esta publicado com horas de folga, tenha a B3 soltado as 21h ou as 3 da manha.
+# E chega na hora util -- o pregao abre as 10h, entao sobram mais de duas horas
+# para ler os papeis antes de poder agir sobre eles.
 #
-# O minuto 17 nao e capricho. Agendamento no GitHub e melhor esforco, e o
-# proprio manual avisa que atrasa em periodo de carga alta -- sendo o inicio de
-# cada hora o exemplo que eles dao. Com "0 23" o job entrou numa fila com todo
-# mundo que agenda em ponto e nao tinha comecado 9 minutos depois. Em ":17" a
-# fila e muito menor. O atraso continua existindo; so fica bem menor.
+# "ultimo" e o pregao completo mais recente, pelo calendario: numa terca depois
+# de feriado na segunda, e a sexta. Nao e "ontem", que pode nao ter sido pregao.
 #
-# Feriado da B3 nao precisa de excecao aqui: `scanner daily` reconhece o
-# calendario e sai sem erro quando nao houve pregao.
+# Terca a sabado (2-6), e nao segunda a sexta: cada sessao e processada na manha
+# seguinte, e a manha seguinte a sexta e o sabado. Segunda nao roda porque
+# domingo nao tem pregao.
+#
+# O minuto 40 nao e capricho. Agendamento no GitHub e melhor esforco, e o manual
+# deles avisa que atrasa em carga alta -- sendo o inicio de cada hora o exemplo
+# que dao. Com "0 23" o job nao tinha comecado 9 minutos depois da hora. Fora da
+# hora cheia a fila e menor, e as 7h40 ainda sobra folga ate as 10h mesmo com
+# meia hora de atraso.
 on:
   schedule:
-    - cron: "17 23 * * 1-5"
+    - cron: "40 10 * * 2-6"
   workflow_dispatch:
     inputs:
       trade_date:
-        description: "Pregao a processar (AAAA-MM-DD ou 'today')"
+        description: "Pregao a processar (AAAA-MM-DD, 'ultimo' ou 'today')"
         required: false
-        default: "today"
+        default: "ultimo"
 
 concurrency:
   group: daily
@@ -43,7 +50,7 @@ jobs:
       SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
       SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
       SCANNER_WEB_BASE_URL: ${{ vars.SCANNER_WEB_BASE_URL }}
-      PREGAO: ${{ inputs.trade_date || 'today' }}
+      PREGAO: ${{ inputs.trade_date || 'ultimo' }}
       # No nivel do job porque `secrets` nao e visivel no `if` de um passo;
       # `env` do job e.
       VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}

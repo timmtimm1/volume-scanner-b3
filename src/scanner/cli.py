@@ -14,6 +14,7 @@ import pandas as pd
 import typer
 
 from scanner import __version__
+from scanner.calendar import previous_trading_day
 from scanner.config import load_config
 
 app = typer.Typer(
@@ -40,13 +41,27 @@ app.add_typer(db_app, name="db")
 
 
 def parse_trade_date(value: str) -> date:
-    """Aceita `today`/`hoje` ou uma data ISO (AAAA-MM-DD)."""
-    if value.lower() in {"today", "hoje"}:
+    """Aceita `today`/`hoje`, `ultimo`/`last`, ou uma data ISO (AAAA-MM-DD).
+
+    `ultimo` e o pregao completo mais recente -- ontem, ou sexta numa segunda.
+    E o que o job da manha pede: as 7h40 o arquivo do dia anterior ja saiu, e o
+    do proprio dia nem existe (a B3 ainda nao abriu).
+
+    Nao aceita "ontem" de proposito: ontem pode nao ter sido pregao, e a
+    diferenca entre "o dia anterior" e "o ultimo pregao" e justamente o que o
+    calendario resolve.
+    """
+    escolha = value.lower()
+    if escolha in {"today", "hoje"}:
         return date.today()
+    if escolha in {"ultimo", "último", "last"}:
+        return previous_trading_day(date.today())
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
-        raise typer.BadParameter(f"data invalida: {value!r} (use AAAA-MM-DD ou 'today')") from exc
+        raise typer.BadParameter(
+            f"data invalida: {value!r} (use AAAA-MM-DD, 'today' ou 'ultimo')"
+        ) from exc
 
 
 @app.command()

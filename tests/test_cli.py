@@ -212,3 +212,30 @@ def test_daily_em_ensaio_nao_grava_nem_carrega(monkeypatch: pytest.MonkeyPatch) 
     assert "metricas" not in etapas.chamadas
     assert "poda" not in etapas.chamadas
     assert etapas.chamadas == ["contexto", "scan", "resumo"]
+
+
+# --- "ultimo": o pregao completo mais recente --------------------------------
+
+
+def test_parse_trade_date_aceita_ultimo() -> None:
+    from scanner.calendar import is_trading_day
+
+    for token in ("ultimo", "ULTIMO", "last"):
+        dia = parse_trade_date(token)
+        assert dia < date.today(), "o ultimo pregao ja terminou; hoje pode nem ter aberto"
+        assert is_trading_day(dia), "o que volta tem de ser pregao"
+
+
+def test_ultimo_pregao_pula_feriado_e_nao_e_simplesmente_ontem() -> None:
+    # E a diferenca que faz o job da manha funcionar: numa terca depois de
+    # feriado na segunda, "ontem" nao teve pregao e o arquivo nao existe.
+    from scanner.calendar import previous_trading_day
+
+    # 07/09/2026 e Independencia, numa segunda.
+    assert previous_trading_day(date(2026, 9, 8)) == date(2026, 9, 4)
+
+
+def test_ontem_continua_invalido() -> None:
+    # Recusado de proposito: ontem pode nao ter sido pregao, e a ambiguidade
+    # entre "o dia anterior" e "o ultimo pregao" e a origem do bug.
+    assert runner.invoke(app, ["scan", "--date", "ontem"]).exit_code == 2

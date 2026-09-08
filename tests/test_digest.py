@@ -14,7 +14,7 @@ from scanner.config import AlertConfig, DigestConfig, ScannerConfig
 from scanner.digest import Resumo, montar_resumo, payload_do_resumo
 from scanner.features import compute_features
 from scanner.metrics import compute_zscores
-from scanner.notify.telegram import ConsoleNotifier, format_resumo
+from scanner.notify.telegram import LARGURA_DO_CELULAR, ConsoleNotifier, format_resumo
 
 FIM = date(2026, 6, 30)
 SESSOES = 90
@@ -120,9 +120,30 @@ def test_mensagem_traz_tabela_alinhada() -> None:
     payload = payload_do_resumo(resumir(barras(["AAAA3", "BBBB4", "CCCC3"])))
     texto = format_resumo(payload)
 
-    assert "Resumo de 30/06/2026" in texto
+    assert "Resumo do preg" in texto and "30/06/2026" in texto
     assert "<pre>" in texto and "</pre>" in texto
-    assert "Papel" in texto and "Desvios" in texto and "Volume" in texto
+    assert "Papel" in texto and "Desvio" in texto and "Volume" in texto
+
+
+def test_nenhuma_linha_estoura_a_largura_do_celular() -> None:
+    # O defeito que motivou o formato: com 49 colunas o Telegram quebrava cada
+    # papel em duas linhas no celular e o volume caia sozinho embaixo.
+    payload = payload_do_resumo(resumir(barras(["AAAA3", "BBBB4", "CCCC3"])))
+    # Ticker de 6 letras e volume na casa do bilhao sao os campos mais largos.
+    payload["linhas"][0]["ticker"] = "BPAC11"
+    payload["linhas"][0]["volume"] = 1_895_862_313.0
+    payload["linhas"][0]["variacao"] = -0.123
+
+    texto = format_resumo(payload)
+    tabela = texto[texto.index("<pre>") + len("<pre>") : texto.index("</pre>")]
+    for linha in tabela.splitlines():
+        assert len(linha) <= LARGURA_DO_CELULAR, f"{len(linha)} colunas: {linha}"
+
+
+def test_link_do_site_so_aparece_quando_ha_endereco() -> None:
+    payload = payload_do_resumo(resumir(barras(["AAAA3", "BBBB4"])))
+    assert "<a href=" not in format_resumo(payload)
+    assert 'href="https://exemplo.app"' in format_resumo(payload, "https://exemplo.app/")
 
 
 def test_mensagem_nao_usa_jargao_nem_explica() -> None:
@@ -142,7 +163,7 @@ def test_notificador_recebe_o_resumo(capsys: pytest.CaptureFixture[str]) -> None
     payload = payload_do_resumo(resumir(barras(["AAAA3", "BBBB4"])))
     assert ConsoleNotifier(sent=enviadas).send_resumo(payload) is True
     assert len(enviadas) == 1
-    assert "Resumo de" in capsys.readouterr().out
+    assert "Resumo do preg" in capsys.readouterr().out
 
 
 def test_payload_usa_nomes_do_dia_a_dia() -> None:

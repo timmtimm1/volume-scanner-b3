@@ -1,0 +1,18 @@
+{
+  "artboards": [
+    { "file": "Main.dc.html",         "x": 0,    "y": 0,    "w": 1440, "h": 900, "title": "Scanner do dia" },
+    { "file": "Ficha.dc.html",        "x": 1560, "y": 0,    "w": 1440, "h": 900, "title": "Ficha do papel" },
+    { "file": "Historico.dc.html",    "x": 3120, "y": 0,    "w": 1440, "h": 900, "title": "Historico" },
+    { "file": "ScannerMobile.dc.html","x": 0,    "y": 1060, "w": 390,  "h": 844, "title": "Scanner - 390px" },
+    { "file": "FichaMobile.dc.html",  "x": 510,  "y": 1060, "w": 390,  "h": 844, "title": "Ficha - 390px" }
+  ],
+  "annotations": [
+    { "id": "nota-direcao", "x": 1080, "y": 1060, "w": 300,
+      "text": "Direcao assumida: escuro por padrao e densidade de terminal, como a secao 6 do plano manda. A referencia que voce mandou e clara e arejada - peguei dela a estrutura (sidebar, cards de metrica, painel de detalhe) e nao a paleta.\n\nVerde e vermelho aparecem SO para direcao de preco. O ambar e a cor de interface: selecao, z-score, marcador de evento." },
+    { "id": "nota-slider", "x": 1080, "y": 1420, "w": 300,
+      "text": "O slider do Scanner funciona de verdade - arraste e a lista filtra. Ele muda so o que a tela mostra; o alerta do Telegram continua saindo em 6 sigma, definido no config.yaml.\n\nEm 6,0 sobra so LWSA3. Em 4,0 aparecem os quatro." },
+    { "id": "nota-dados", "x": 1080, "y": 1780, "w": 300,
+      "text": "Todos os numeros sao reais, lidos do Neon: pregao de 14/08/2026, LWSA3 com z 6,90 e volume 9,7x o normal. O grafico de candles e o historico de verdade do papel, com o dia do evento destacado." }
+  ],
+  "launch": { "view": "canvas" }
+}

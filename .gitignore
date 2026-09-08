@@ -31,3 +31,10 @@ Thumbs.db
 
 # Permissoes locais do Claude Code, por desenvolvedor.
 .claude/settings.local.json
+
+# HTML montado do canvas de design: 2 MB de runtime, nao versionar.
+design/*.html
+!design/*.dc.html
+
+# Prints gerados para revisao, nao versionar.
+prints/

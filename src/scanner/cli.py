@@ -132,6 +132,74 @@ def universe_show(
     typer.echo(f"total: {len(universo)} tickers em {as_of.isoformat()}")
 
 
+@db_app.command("status")
+def db_status() -> None:
+    """Quanto o banco tem: barras, pregoes, metricas e eventos."""
+    from sqlalchemy import func, select
+
+    from scanner.storage.engine import build_engine
+    from scanner.storage.models import Event
+    from scanner.storage.repository import (
+        count_bars,
+        count_metrics,
+        retention_cutoff,
+        sessions_stored,
+        stored_range,
+    )
+
+    engine = build_engine()
+    primeiro, ultimo = stored_range(engine)
+    with engine.connect() as conn:
+        eventos = int(conn.execute(select(func.count()).select_from(Event)).scalar_one())
+
+    keep = load_config().retention.keep_sessions
+    corte = retention_cutoff(engine, keep)
+
+    typer.echo(f"barras:    {count_bars(engine):>10,}")
+    typer.echo(f"pregoes:   {sessions_stored(engine):>10,}")
+    typer.echo(f"metricas:  {count_metrics(engine):>10,}")
+    typer.echo(f"eventos:   {eventos:>10,}")
+    typer.echo(f"periodo:   {primeiro} a {ultimo}")
+    typer.echo(
+        f"retencao:  {keep} pregoes" + (f", corte em {corte}" if corte else ", nada a podar")
+    )
+
+
+@db_app.command("prune")
+def db_prune(
+    keep: Annotated[
+        int | None, typer.Option("--keep", help="Pregoes a manter. Padrao: config.yaml.")
+    ] = None,
+    dry_run: Annotated[bool, typer.Option("--dry-run", help="So mostra o corte.")] = False,
+) -> None:
+    """Descarta barras e metricas antigas, mantendo os ultimos N pregoes.
+
+    Eventos nunca sao apagados: a ficha do papel marca eventos antigos mesmo
+    quando as barras daquele periodo ja sairam.
+    """
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import prune_bars, retention_cutoff
+
+    engine = build_engine()
+    manter = keep if keep is not None else load_config().retention.keep_sessions
+    if manter < 1:
+        raise typer.BadParameter("--keep minimo e 1")
+
+    corte = retention_cutoff(engine, manter)
+    if corte is None:
+        typer.echo(f"nada a podar: ha menos de {manter} pregoes no banco")
+        return
+
+    if dry_run:
+        typer.echo(f"[dry-run] apagaria tudo anterior a {corte.isoformat()}")
+        return
+
+    barras, metricas = prune_bars(engine, manter)
+    typer.echo(
+        f"podado ate {corte.isoformat()}: {barras:,} barras e {metricas:,} metricas removidas"
+    )
+
+
 @ingest_app.command("backfill")
 def ingest_backfill(
     start: Annotated[str, typer.Option("--start", help="Data inicial (AAAA-MM-DD).")],

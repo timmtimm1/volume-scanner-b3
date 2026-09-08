@@ -201,7 +201,7 @@ def test_pregoes_do_ano_excluem_todos_os_feriados() -> None:
 
 
 @pytest.mark.db
-def test_calendario_bate_com_os_pregoes_reais_do_cotahist(engine: Engine) -> None:
+def test_calendario_bate_com_os_pregoes_reais_do_cotahist(working_engine: Engine) -> None:
     """O gabarito definitivo: os pregoes que a B3 de fato publicou.
 
     Pula se o banco nao tiver carga. Com os dados de 2024-2026 carregados, a
@@ -209,7 +209,7 @@ def test_calendario_bate_com_os_pregoes_reais_do_cotahist(engine: Engine) -> Non
     """
     from sqlalchemy import text as sql
 
-    with engine.connect() as conn:
+    with working_engine.connect() as conn:
         reais = {
             row[0]
             for row in conn.execute(

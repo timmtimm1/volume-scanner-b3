@@ -48,6 +48,39 @@ Por janela, com baseline deslocado:
   contaminando o baseline.
 - `rvol` — volume dividido pela mediana da janela: "negociou 14× o normal".
 
+## O alerta
+
+Cruzou o limiar, avisa. **Não há** filtro de qualidade, score de confiança, ranking
+de "melhores", classificação de padrão, cooldown nem teto diário. O único filtro é o
+piso absoluto de volume do `config.yaml`.
+
+Em dia de estresse de mercado isso produz dezenas de alertas de uma vez, porque a
+correlação entre papéis dispara junto. É o comportamento pedido: o `z_excess` na
+mensagem é o que permite descartar a enxurrada em segundos — se todo mundo está com
+`mkt_vol_z` alto, foi o mercado, não os papéis.
+
+```
+⚡ GGPS3 — volume 28,9× o normal
+
+R$ 943,6 mi negociados
+z_log: 30d 9,69 | 45d 9,08 | 60d 7,96
+z liquido do mercado: 8,00
+
+R$ 14,80 (-5,7%) | gap -3,7%
+Fechou a 25% do range do dia
+Faixa de 252d: 31%
+20 pregoes anteriores: +10,4%
+Ticket medio: R$ 63.553 (z 42,8)
+
+→ abrir grafico
+```
+
+Dedupe é por `(ticker, trade_date)`: rodar o scan de novo não gera evento repetido
+nem segunda notificação.
+
+**Sem Telegram configurado, o alerta sai no terminal** — perder o evento em silêncio
+seria pior do que não mandar pelo canal certo.
+
 ## Stack
 
 | Componente | Onde | Custo |
@@ -92,7 +125,7 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | F1 | Calendário B3 + universo com filtro de liquidez | ✅ |
 | F2 | Parser e carga COTAHIST | ✅ |
 | F3 | Z-scores + features de contexto | ✅ |
-| F4 | Alertas + Telegram | ⬜ |
+| F4 | Alertas + Telegram | ✅ |
 | F5 | Deploy: Neon, Actions, secrets | ⬜ |
 | F6 | Interface: scanner, ficha do papel, histórico | ⬜ |
 | F7 | PWA | ⬜ |

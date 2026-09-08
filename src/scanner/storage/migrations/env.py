@@ -15,7 +15,10 @@ config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-config.set_main_option("sqlalchemy.url", database_url())
+# Respeita uma URL ja definida pelo chamador (os testes apontam para o banco
+# isolado); so cai no ambiente quando ninguem definiu nada.
+if not config.get_main_option("sqlalchemy.url", None):
+    config.set_main_option("sqlalchemy.url", database_url())
 
 target_metadata = Base.metadata
 

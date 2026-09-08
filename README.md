@@ -126,7 +126,7 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | F2 | Parser e carga COTAHIST | ✅ |
 | F3 | Z-scores + features de contexto | ✅ |
 | F4 | Alertas + Telegram | ✅ |
-| F5 | Deploy: Neon, Actions, secrets | ⬜ |
+| F5 | Deploy: Neon, Actions, secrets | 🚧 código pronto; falta rodar |
 | F6 | Interface: scanner, ficha do papel, histórico | ⬜ |
 | F7 | PWA | ⬜ |
 
@@ -187,6 +187,72 @@ Por isso o `price_check_mode` do `config.yaml` tem dois modos:
 `truncation` é o padrão. Não é uma tolerância afrouxada: é a aritmética exata de um
 campo truncado, e continua estreita o bastante para pegar desalinhamento real — em
 papel de R$ 20 a folga é de 0,05%.
+
+## Deploy
+
+O pipeline não pode depender do seu PC estar ligado. Tudo roda em serviço gratuito.
+
+### 1. Banco no Neon
+
+1. Crie conta em [neon.tech](https://neon.tech) e um projeto (região mais próxima).
+2. Copie a connection string. Ela precisa de `?sslmode=require`.
+3. Troque o driver para `psycopg`, que é o que este projeto usa:
+
+```
+postgresql+psycopg://USUARIO:SENHA@HOST.neon.tech/NOME?sslmode=require
+```
+
+4. Aplique o schema apontando para lá:
+
+```bash
+SCANNER_DATABASE_URL="postgresql+psycopg://..." uv run alembic upgrade head
+```
+
+5. Carregue o histórico (leva alguns minutos, ~250 MB de download):
+
+```bash
+SCANNER_DATABASE_URL="postgresql+psycopg://..." uv run scanner ingest backfill --start 2024-01-01
+SCANNER_DATABASE_URL="postgresql+psycopg://..." uv run scanner metrics compute --mode full
+SCANNER_DATABASE_URL="postgresql+psycopg://..." uv run scanner db prune
+```
+
+O `db prune` deixa os últimos 400 pregões, que é o que cabe folgado nos 0,5 GB
+do plano gratuito.
+
+### 2. Bot do Telegram
+
+1. Fale com **@BotFather**, mande `/newbot` e siga. Guarde o token.
+2. Mande qualquer mensagem para o seu bot.
+3. Pegue o `chat_id` em `https://api.telegram.org/bot<TOKEN>/getUpdates` —
+   é o campo `message.chat.id`.
+
+### 3. Secrets no GitHub
+
+Em **Settings → Secrets and variables → Actions**:
+
+| Onde | Nome | Conteúdo |
+|---|---|---|
+| Secret | `SCANNER_DATABASE_URL` | a connection string do Neon |
+| Secret | `SCANNER_TELEGRAM_BOT_TOKEN` | o token do BotFather |
+| Secret | `SCANNER_TELEGRAM_CHAT_ID` | o `chat_id` |
+| Secret | `VERCEL_DEPLOY_HOOK` | opcional, só a partir da F6 |
+| Variable | `SCANNER_WEB_BASE_URL` | URL do site; não é segredo |
+
+### 4. O job diário
+
+`.github/workflows/daily.yml` roda às **21:00 UTC (18:00 em Brasília), de segunda
+a sexta**, e faz: migrations → carga do pregão → métricas → scan → retenção →
+rebuild na Vercel.
+
+Feriado da B3 não precisa de exceção: `scanner ingest daily` conhece o calendário
+e sai sem erro quando não houve pregão.
+
+Dá para disparar à mão em **Actions → daily → Run workflow**, inclusive apontando
+um pregão específico — é assim que se testa antes de esperar o cron.
+
+> **Verifique o horário no primeiro dia.** O plano fixa 21:00 UTC, mas se a B3
+> ainda não tiver publicado o arquivo diário nesse horário, o job falha na carga.
+> A falha é explícita, não silenciosa: é só atrasar o cron.
 
 ## Segredos
 

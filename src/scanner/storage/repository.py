@@ -13,7 +13,7 @@ from datetime import date
 from typing import Any
 
 import pandas as pd
-from sqlalchemy import Engine, func, select, update
+from sqlalchemy import Engine, delete, func, select, update
 from sqlalchemy.dialects.postgresql import insert
 
 from scanner.ingest.cotahist import BAR_COLUMNS
@@ -242,3 +242,47 @@ def events_for_date(engine: Engine, trade_date: date) -> pd.DataFrame:
     stmt = select(Event).where(Event.trade_date == trade_date).order_by(Event.max_z_log.desc())
     with engine.connect() as conn:
         return pd.read_sql(stmt, conn)
+
+
+def prune_bars(engine: Engine, keep_sessions: int) -> tuple[int, int]:
+    """Descarta barras e metricas anteriores aos ultimos N pregoes.
+
+    A secao 5 do plano diz que o banco hospedado guarda os ultimos 400 pregoes
+    de barras e a tabela de eventos. Eventos NAO sao apagados: a ficha do papel
+    marca eventos antigos mesmo quando as barras daquele periodo ja sairam.
+
+    Devolve (barras removidas, metricas removidas).
+    """
+    if keep_sessions < 1:
+        raise ValueError("keep_sessions precisa ser ao menos 1")
+
+    with engine.connect() as conn:
+        corte = conn.execute(
+            select(DailyBar.trade_date)
+            .distinct()
+            .order_by(DailyBar.trade_date.desc())
+            .limit(1)
+            .offset(keep_sessions - 1)
+        ).scalar_one_or_none()
+
+    if corte is None:
+        return 0, 0  # ainda ha menos pregoes do que a retencao pede
+
+    with engine.begin() as conn:
+        metricas = conn.execute(
+            delete(VolumeMetric).where(VolumeMetric.trade_date < corte)
+        ).rowcount
+        barras = conn.execute(delete(DailyBar).where(DailyBar.trade_date < corte)).rowcount
+    return int(barras), int(metricas)
+
+
+def retention_cutoff(engine: Engine, keep_sessions: int) -> date | None:
+    """Primeiro pregao que a retencao mantem, ou None se ainda nao ha o bastante."""
+    with engine.connect() as conn:
+        return conn.execute(
+            select(DailyBar.trade_date)
+            .distinct()
+            .order_by(DailyBar.trade_date.desc())
+            .limit(1)
+            .offset(keep_sessions - 1)
+        ).scalar_one_or_none()

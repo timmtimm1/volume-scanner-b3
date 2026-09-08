@@ -175,3 +175,15 @@ def test_workflow_le_os_segredos_pelos_nomes_certos(workflow: dict[Any, Any]) ->
     # Nenhum valor de segredo pode estar escrito no arquivo.
     assert "postgresql://" not in texto
     assert "api.telegram.org" not in texto
+
+
+def test_guarda_impede_teste_de_abrir_o_banco_de_trabalho() -> None:
+    """A guarda que fecha o buraco que ja apagou metricas de producao duas vezes.
+
+    Se este teste parar de levantar erro, um teste distraido volta a poder
+    truncar a tabela de metricas do banco real.
+    """
+    from scanner.storage.engine import build_engine
+
+    with pytest.raises(RuntimeError, match="banco de trabalho"):
+        build_engine()

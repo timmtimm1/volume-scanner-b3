@@ -59,3 +59,32 @@ jobs:
 
       - name: Testes
         run: uv run pytest
+
+  web:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: web
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: web/package-lock.json
+
+      - name: Instalar dependencias
+        run: npm ci
+
+      - name: Tipos
+        run: npm run typecheck
+
+      - name: Lint
+        run: npm run lint
+
+      # `next build` NAO roda aqui de proposito: ele le o banco em tempo de
+      # build, e o Postgres deste job esta vazio. O build de verdade acontece
+      # na Vercel, contra o Neon com dado real -- e la que ele tem o que
+      # renderizar. Aqui garante-se que o codigo compila e passa no lint.

@@ -81,3 +81,30 @@ def working_engine() -> Iterator[Engine]:
         pytest.skip(f"Postgres indisponivel ({exc.__class__.__name__})")
     yield eng
     eng.dispose()
+
+
+@pytest.fixture(autouse=True)
+def _sem_banco_de_producao(request: pytest.FixtureRequest, monkeypatch: pytest.MonkeyPatch) -> None:
+    """Impede que qualquer teste alcance o banco de trabalho por engano.
+
+    O fixture `engine` isola quem o usa, mas nao protege um teste que chame
+    `build_engine()` direto -- nem um comando do CLI, que o chama por dentro.
+    Como `metrics compute --mode full` faz TRUNCATE em `volume_metrics`, esse
+    acidente e destrutivo: ja apagou as metricas de uma carga real duas vezes.
+
+    Aqui ele vira erro, nao dano. Quem precisa do banco real de proposito pede
+    o fixture `working_engine`, que e somente leitura.
+    """
+    if "working_engine" in request.fixturenames:
+        return
+
+    import scanner.storage.engine as engine_mod
+
+    def recusa(*args: object, **kwargs: object) -> None:
+        raise RuntimeError(
+            "teste tentou abrir o banco de trabalho. Use o fixture `engine` "
+            "(banco isolado) ou, se a leitura do banco real for mesmo o "
+            "objetivo, `working_engine`."
+        )
+
+    monkeypatch.setattr(engine_mod, "build_engine", recusa)

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+import re
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
@@ -135,6 +136,13 @@ def test_keep_invalido_falha_alto(engine: Engine) -> None:
 # --- Workflow diario ---------------------------------------------------------
 
 
+def _passos_do_job(workflow: dict[Any, Any]) -> list[dict[str, Any]]:
+    """Os passos do unico job do workflow, na ordem em que rodam."""
+    jobs = workflow["jobs"]
+    (job,) = jobs.values()
+    return list(job["steps"])
+
+
 @pytest.fixture(scope="module")
 def workflow() -> dict[Any, Any]:
     if not WORKFLOW.is_file():
@@ -176,9 +184,25 @@ def test_workflow_le_os_segredos_pelos_nomes_certos(workflow: dict[Any, Any]) ->
         "SCANNER_TELEGRAM_CHAT_ID",
     ):
         assert f"secrets.{nome}" in texto, f"{nome} nao vem de secrets"
-    # Nenhum valor de segredo pode estar escrito no arquivo.
+    # Nenhum valor de segredo pode estar escrito no arquivo. O aviso de falha
+    # chama a api.telegram.org, mas monta a URL com a variavel de ambiente: um
+    # token de verdade e "bot" seguido de digitos, e isso nao pode aparecer.
     assert "postgresql://" not in texto
-    assert "api.telegram.org" not in texto
+    assert re.search(r"bot\d", texto) is None, "token do Telegram escrito no arquivo"
+
+
+def test_workflow_avisa_no_telegram_quando_falha(workflow: dict[Any, Any]) -> None:
+    """Dia quebrado nao pode chegar no celular igual a dia calmo: como silencio.
+
+    O passo tem de ser o ultimo (para alcancar falha em qualquer anterior) e
+    nao pode depender do Python, que e justamente o que pode ter quebrado.
+    """
+    passos = _passos_do_job(workflow)
+    ultimo = passos[-1]
+
+    assert "failure()" in str(ultimo.get("if", "")), "o aviso nao dispara em falha"
+    assert "api.telegram.org" in str(ultimo.get("run", ""))
+    assert "uv run" not in str(ultimo.get("run", "")), "o aviso nao pode depender do Python"
 
 
 def test_guarda_impede_teste_de_abrir_o_banco_de_trabalho() -> None:

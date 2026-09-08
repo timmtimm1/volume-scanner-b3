@@ -149,6 +149,9 @@ def workflow() -> dict[Any, Any]:
         "scanner ingest daily",
         "scanner metrics compute --mode incremental",
         "scanner scan",
+        # O resumo e o passo que faz o dia calmo nao virar silencio; se sumir
+        # do workflow, ninguem percebe -- nenhuma mensagem deixa de chegar.
+        "scanner resumo",
         "scanner db prune",
     ],
 )
@@ -156,11 +159,16 @@ def test_workflow_roda_o_pipeline_completo(workflow: dict[Any, Any], comando: st
     assert comando in WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_workflow_roda_em_dia_util_as_21h_utc(workflow: dict[Any, Any]) -> None:
+def test_workflow_roda_em_dia_util_as_23h_utc(workflow: dict[Any, Any]) -> None:
+    # 23:00 UTC = 20:00 em Brasilia. As 21:00 UTC (18:00 BRT, o minuto do
+    # fechamento) a B3 ainda nao publicou o arquivo do pregao e a carga daria
+    # 404 todo dia. Passar de 23:59 UTC viraria o dia no container e o
+    # "--date today" pediria o pregao de amanha.
+    #
     # A chave `on` do YAML e lida como booleano True por ser "on".
     gatilhos = workflow.get("on") or workflow.get(True)
     assert isinstance(gatilhos, dict)
-    assert gatilhos["schedule"] == [{"cron": "0 21 * * 1-5"}]
+    assert gatilhos["schedule"] == [{"cron": "0 23 * * 1-5"}]
     assert "workflow_dispatch" in gatilhos
 
 

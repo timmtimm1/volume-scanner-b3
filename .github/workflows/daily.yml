@@ -82,3 +82,27 @@ jobs:
         # e o que faz o celular carregar instantaneo, sem API sempre no ar.
         if: ${{ env.VERCEL_DEPLOY_HOOK != '' }}
         run: curl -sS -f -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null
+
+      - name: Avisar no Telegram se algo falhou
+        # Sem este passo, um dia em que o job morre chega no celular como
+        # silencio -- indistinguivel de um pregao calmo. O resumo diario existe
+        # para dia calmo nao virar silencio; isto fecha o outro lado.
+        #
+        # Em curl, e nao em `uv run scanner`, de proposito: se o que quebrou foi
+        # o `uv sync` ou o proprio pacote, um aviso em Python quebraria junto e
+        # nunca sairia. O aviso nao pode depender do que ele avisa -- por isso
+        # tambem e o ultimo passo, para alcancar falha em qualquer um dos
+        # anteriores, o rebuild da Vercel inclusive.
+        #
+        # O token sai do ambiente na hora da chamada; o log do Actions mostra
+        # o nome da variavel, nunca o valor. O repositorio e publico.
+        if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' }}
+        run: |
+          texto=$(printf '⚠️ <b>O scanner falhou</b>\nPregão de %s\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$PREGAO" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          curl -sS -o /dev/null -X POST \
+            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$texto"

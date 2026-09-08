@@ -1,0 +1,77 @@
+name: daily
+
+# 21:00 UTC = 18:00 em Brasilia, de segunda a sexta (secao 5 do plano).
+# Feriado da B3 nao precisa de excecao aqui: `scanner ingest daily` reconhece
+# o calendario e sai sem erro quando nao houve pregao.
+on:
+  schedule:
+    - cron: "0 21 * * 1-5"
+  workflow_dispatch:
+    inputs:
+      trade_date:
+        description: "Pregao a processar (AAAA-MM-DD ou 'today')"
+        required: false
+        default: "today"
+
+concurrency:
+  group: daily
+  cancel-in-progress: false
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    env:
+      SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
+      SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
+      SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
+      SCANNER_WEB_BASE_URL: ${{ vars.SCANNER_WEB_BASE_URL }}
+      PREGAO: ${{ inputs.trade_date || 'today' }}
+      # No nivel do job porque `secrets` nao e visivel no `if` de um passo;
+      # `env` do job e.
+      VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Instalar dependencias
+        run: uv sync --locked --no-dev
+
+      - name: Conferir os segredos
+        # Falha aqui e explicita; sem isto o erro apareceria como falha de
+        # conexao tres passos adiante.
+        run: |
+          test -n "$SCANNER_DATABASE_URL" || { echo "::error::SCANNER_DATABASE_URL ausente"; exit 1; }
+          test -n "$SCANNER_TELEGRAM_BOT_TOKEN" || echo "::warning::sem token do Telegram; os alertas nao serao enviados"
+
+      - name: Migrations
+        run: uv run alembic upgrade head
+
+      - name: Carga do pregao
+        run: uv run scanner ingest daily --date "$PREGAO"
+
+      - name: Calcular metricas
+        run: uv run scanner metrics compute --mode incremental
+
+      - name: Estado do banco
+        run: uv run scanner db status
+
+      - name: Avaliar e notificar
+        run: uv run scanner scan --date "$PREGAO"
+
+      - name: Aplicar retencao
+        # A secao 5 do plano guarda os ultimos 400 pregoes de barras. Eventos
+        # nunca sao apagados.
+        run: uv run scanner db prune
+
+      - name: Disparar rebuild na Vercel
+        # O site e estatico e os dados mudam uma vez por pregao: o rebuild aqui
+        # e o que faz o celular carregar instantaneo, sem API sempre no ar.
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' }}
+        run: curl -sS -f -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null

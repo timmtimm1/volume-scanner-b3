@@ -15,7 +15,7 @@
  */
 
 import { Pool } from "pg";
-import type { Barra, Evento, Papel, Pregao } from "./types";
+import type { Barra, Evento, Papel, Pregao, Universo } from "./types";
 
 /** Piso do que o site carrega. Abaixo disso nao ha o que ler no grafico. */
 export const Z_MINIMO_DO_SITE = 3.0;
@@ -235,4 +235,65 @@ export async function fecharConexao(): Promise<void> {
     await pool.end();
     pool = null;
   }
+}
+
+/**
+ * Espelha `universe` do config.yaml.
+ *
+ * Estes numeros existem em dois lugares: aqui e no `config.yaml` que o Python
+ * le. A regra e simples o bastante (mediana e cobertura) para o risco de
+ * divergencia ser pequeno, e `scanner universe show` continua sendo a fonte de
+ * verdade -- se um dia os dois discordarem, o Python esta certo.
+ */
+export const UNIVERSO = {
+  janela: 60,
+  pisoMediana: 500_000,
+  coberturaMinima: 0.8,
+} as const;
+
+/** Papeis que o scanner acompanha, e por que cada um entrou. */
+export async function universo(): Promise<Universo> {
+  const { rows } = await conexao().query<{
+    ticker: string;
+    mediana: string;
+    pregoes: string;
+    ultimo: string | null;
+  }>(
+    `WITH janela AS (
+       SELECT trade_date FROM (
+         SELECT DISTINCT trade_date FROM volume_scanner.daily_bars
+          ORDER BY trade_date DESC LIMIT $1
+       ) t
+     )
+     SELECT b.ticker,
+            percentile_cont(0.5) WITHIN GROUP (ORDER BY b.volume_financial) AS mediana,
+            COUNT(*) AS pregoes,
+            (ARRAY_AGG(b.close ORDER BY b.trade_date DESC))[1] AS ultimo
+       FROM volume_scanner.daily_bars b
+       JOIN janela j ON j.trade_date = b.trade_date
+      WHERE b.volume_financial > 0
+      GROUP BY b.ticker
+      ORDER BY mediana DESC`,
+    [UNIVERSO.janela],
+  );
+
+  const todos = rows.map((r) => ({
+    ticker: r.ticker,
+    medianaVolume: num(r.mediana) ?? 0,
+    pregoesNegociados: Number(r.pregoes),
+    cobertura: Number(r.pregoes) / UNIVERSO.janela,
+    ultimoFechamento: num(r.ultimo),
+  }));
+
+  return {
+    papeis: todos.filter(
+      (p) =>
+        p.medianaVolume >= UNIVERSO.pisoMediana &&
+        p.cobertura >= UNIVERSO.coberturaMinima,
+    ),
+    janela: UNIVERSO.janela,
+    pisoMediana: UNIVERSO.pisoMediana,
+    coberturaMinima: UNIVERSO.coberturaMinima,
+    avaliados: todos.length,
+  };
 }

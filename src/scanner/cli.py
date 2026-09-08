@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import Annotated
+from typing import Annotated, Any
 
 import pandas as pd
 import typer
@@ -244,6 +244,30 @@ def metrics_compute(
     typer.echo(refresh_metrics(build_engine(), load_config(), mode=mode).summary())
 
 
+def _notificador(settings: Any, *, dry_run: bool) -> Any:
+    """Para onde as mensagens vao: Telegram, ou o terminal se faltar segredo.
+
+    Perder o evento em silencio seria pior do que nao manda-lo pelo canal
+    certo, entao a falta de configuracao vira aviso, nao erro.
+    """
+    from scanner.notify.telegram import ConsoleNotifier, TelegramNotifier
+
+    if dry_run:
+        return ConsoleNotifier(base_url=settings.web_base_url)
+    if not (settings.telegram_bot_token and settings.telegram_chat_id):
+        typer.secho(
+            "[aviso] SCANNER_TELEGRAM_BOT_TOKEN/CHAT_ID ausentes; as mensagens saem no terminal.",
+            fg=typer.colors.YELLOW,
+            err=True,
+        )
+        return ConsoleNotifier(base_url=settings.web_base_url)
+    return TelegramNotifier(
+        token=settings.telegram_bot_token.get_secret_value(),
+        chat_id=settings.telegram_chat_id,
+        base_url=settings.web_base_url,
+    )
+
+
 @app.command("scan")
 def scan(
     trade_date: Annotated[str, typer.Option("--date", help="Pregao a avaliar.")] = "today",
@@ -255,7 +279,6 @@ def scan(
     from scanner.alerts import run_scan
     from scanner.calendar import is_trading_day
     from scanner.config import get_settings
-    from scanner.notify.telegram import ConsoleNotifier, TelegramNotifier
     from scanner.storage.engine import build_engine
 
     dia = parse_trade_date(trade_date)
@@ -263,26 +286,7 @@ def scan(
         typer.secho(f"[pulado] {dia.isoformat()} nao e pregao.", fg=typer.colors.YELLOW)
         return
 
-    settings = get_settings()
-    notifier: object
-    if dry_run:
-        notifier = ConsoleNotifier(base_url=settings.web_base_url)
-    elif settings.telegram_bot_token and settings.telegram_chat_id:
-        notifier = TelegramNotifier(
-            token=settings.telegram_bot_token.get_secret_value(),
-            chat_id=settings.telegram_chat_id,
-            base_url=settings.web_base_url,
-        )
-    else:
-        # Sem Telegram configurado, o alerta vai para o terminal: perder o evento
-        # em silencio seria pior do que nao mandar pelo canal certo.
-        typer.secho(
-            "[aviso] SCANNER_TELEGRAM_BOT_TOKEN/CHAT_ID ausentes; os alertas saem no terminal.",
-            fg=typer.colors.YELLOW,
-            err=True,
-        )
-        notifier = ConsoleNotifier(base_url=settings.web_base_url)
-
+    notifier = _notificador(get_settings(), dry_run=dry_run)
     relatorio, _ = run_scan(build_engine(), load_config(), dia, dry_run=dry_run, notifier=notifier)
     typer.echo(relatorio.summary())
 
@@ -298,7 +302,6 @@ def resumo(
     from scanner.calendar import is_trading_day
     from scanner.config import get_settings
     from scanner.digest import run_resumo
-    from scanner.notify.telegram import ConsoleNotifier, TelegramNotifier
     from scanner.storage.engine import build_engine
 
     dia = parse_trade_date(trade_date)
@@ -311,22 +314,101 @@ def resumo(
         typer.secho("[pulado] digest.enabled esta false no config.", fg=typer.colors.YELLOW)
         return
 
-    settings = get_settings()
-    notifier: object
-    if dry_run or not (settings.telegram_bot_token and settings.telegram_chat_id):
-        notifier = ConsoleNotifier(base_url=settings.web_base_url)
-    else:
-        notifier = TelegramNotifier(
-            token=settings.telegram_bot_token.get_secret_value(),
-            chat_id=settings.telegram_chat_id,
-            base_url=settings.web_base_url,
-        )
-
+    notifier = _notificador(get_settings(), dry_run=dry_run)
     saida = run_resumo(build_engine(), config, dia, notifier=notifier)
     typer.echo(
         f"{dia.isoformat()}: {len(saida.linhas)} papeis no resumo, "
         f"{saida.avaliados} avaliados, {saida.cruzaram} acima do limiar"
     )
+
+
+@app.command("daily")
+def daily(
+    trade_date: Annotated[str, typer.Option("--date", help="Pregao a processar.")] = "today",
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Calcula e mostra, sem gravar nem notificar.")
+    ] = False,
+) -> None:
+    """O pregao inteiro num comando: carga, metricas, alerta, resumo e poda.
+
+    Os comandos separados continuam existindo e fazem exatamente o mesmo. A
+    diferenca esta em quantas vezes o trabalho e feito: rodando um a um, cada
+    um abre seu proprio Python, le as barras do banco e recalcula os z-scores
+    do historico inteiro -- tres vezes o mesmo calculo por pregao. Aqui isso
+    acontece uma vez e o resultado desce por todas as etapas.
+
+    Alem do tempo, isso garante que o alerta e o resumo do mesmo pregao falam
+    dos mesmos numeros, em vez de dois calculos independentes que se espera que
+    coincidam.
+    """
+    from scanner.alerts import run_scan
+    from scanner.calendar import is_trading_day
+    from scanner.config import get_settings
+    from scanner.digest import run_resumo
+    from scanner.ingest.pipeline import ingest_day
+    from scanner.recompute import carregar_contexto, refresh_metrics
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import prune_bars, retention_cutoff
+
+    dia = parse_trade_date(trade_date)
+    if not is_trading_day(dia):
+        typer.secho(f"[pulado] {dia.isoformat()} nao e pregao.", fg=typer.colors.YELLOW)
+        return
+
+    config = load_config()
+    settings = get_settings()
+    engine = build_engine()
+
+    def etapa(numero: int, texto: str) -> None:
+        """Uma linha por etapa: sem isto, um comando so vira uma caixa preta."""
+        typer.echo(f"[{numero}/6] {texto}")
+
+    if dry_run:
+        # A carga grava; num ensaio ela fica de fora e vale o que ja esta la.
+        etapa(1, "[dry-run] carga pulada; vale o que ja esta no banco")
+    else:
+        etapa(1, ingest_day(dia, config.ingest))
+
+    # A unica leitura das barras e o unico calculo do dia. Tudo abaixo reusa.
+    contexto = carregar_contexto(engine, config)
+    # O periodo sai do proprio DataFrame, sem custo: e o que o `db status`
+    # mostrava num passo separado que abria outro Python so para isso.
+    periodo = ""
+    if not contexto.vazio:
+        datas = pd.to_datetime(contexto.bars["trade_date"])
+        periodo = f", de {datas.min().date()} a {datas.max().date()}"
+    etapa(2, f"contexto: {len(contexto.bars):,} barras{periodo}, janelas {list(contexto.janelas)}")
+
+    if dry_run:
+        etapa(3, "[dry-run] metricas nao gravadas")
+    else:
+        etapa(3, refresh_metrics(engine, config, mode="incremental", contexto=contexto).summary())
+
+    notifier = _notificador(settings, dry_run=dry_run)
+    relatorio, _ = run_scan(
+        engine, config, dia, dry_run=dry_run, notifier=notifier, contexto=contexto
+    )
+    etapa(4, relatorio.summary())
+
+    if not config.digest.enabled:
+        etapa(5, "resumo desligado no config")
+    else:
+        saida = run_resumo(engine, config, dia, notifier=notifier, contexto=contexto)
+        etapa(
+            5,
+            f"resumo: {len(saida.linhas)} papeis, {saida.avaliados} avaliados, "
+            f"{saida.cruzaram} acima do limiar",
+        )
+
+    manter = config.retention.keep_sessions
+    corte = retention_cutoff(engine, manter)
+    if corte is None:
+        etapa(6, f"nada a podar: ha menos de {manter} pregoes no banco")
+    elif dry_run:
+        etapa(6, f"[dry-run] podaria tudo anterior a {corte.isoformat()}")
+    else:
+        barras, metricas = prune_bars(engine, manter)
+        etapa(6, f"podado ate {corte.isoformat()}: {barras:,} barras e {metricas:,} metricas")
 
 
 @report_app.command("ticker")

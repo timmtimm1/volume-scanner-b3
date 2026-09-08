@@ -10,8 +10,8 @@ name: daily
 # 23:00 UTC e o maximo possivel: o Brasil e UTC-3, entao passar de 23:59 UTC
 # viraria o dia seguinte no container, e o "--date today" pediria o pregao
 # errado -- o de amanha, que ainda nem aconteceu.
-# Feriado da B3 nao precisa de excecao aqui: `scanner ingest daily` reconhece
-# o calendario e sai sem erro quando nao houve pregao.
+# Feriado da B3 nao precisa de excecao aqui: `scanner daily` reconhece o
+# calendario e sai sem erro quando nao houve pregao.
 on:
   schedule:
     - cron: "0 23 * * 1-5"
@@ -62,27 +62,20 @@ jobs:
       - name: Migrations
         run: uv run alembic upgrade head
 
-      - name: Carga do pregao
-        run: uv run scanner ingest daily --date "$PREGAO"
-
-      - name: Calcular metricas
-        run: uv run scanner metrics compute --mode incremental
-
-      - name: Estado do banco
-        run: uv run scanner db status
-
-      - name: Avaliar e notificar
-        run: uv run scanner scan --date "$PREGAO"
-
-      - name: Resumo do pregao
-        # Vai mesmo quando nada cruzou o limiar: e o que faz o dia calmo nao
-        # virar silencio. Ordenado pelo mesmo z do alerta.
-        run: uv run scanner resumo --date "$PREGAO"
-
-      - name: Aplicar retencao
-        # A secao 5 do plano guarda os ultimos 400 pregoes de barras. Eventos
-        # nunca sao apagados.
-        run: uv run scanner db prune
+      - name: Pregao do dia
+        # Antes eram seis passos: ingest, metrics, db status, scan, resumo e
+        # prune. Cada um abria seu proprio Python, conectava no Neon e relia as
+        # 130 mil barras para refazer o mesmo calculo -- tres vezes os mesmos
+        # z-scores, so para chegar aos mesmos numeros.
+        #
+        # `scanner daily` faz o calculo uma vez e passa adiante. Alem do tempo,
+        # e o que garante que o alerta e o resumo do mesmo pregao falam dos
+        # mesmos valores, em vez de dois calculos independentes que se espera
+        # que coincidam. O comando imprime uma linha por etapa, entao o log
+        # continua dizendo onde parou se algo falhar.
+        #
+        # Os comandos separados continuam existindo para uso manual.
+        run: uv run scanner daily --date "$PREGAO"
 
       - name: Disparar rebuild na Vercel
         # O site e estatico e os dados mudam uma vez por pregao: o rebuild aqui

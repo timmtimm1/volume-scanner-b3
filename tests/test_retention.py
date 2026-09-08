@@ -146,13 +146,9 @@ def workflow() -> dict[Any, Any]:
     "comando",
     [
         "alembic upgrade head",
-        "scanner ingest daily",
-        "scanner metrics compute --mode incremental",
-        "scanner scan",
-        # O resumo e o passo que faz o dia calmo nao virar silencio; se sumir
-        # do workflow, ninguem percebe -- nenhuma mensagem deixa de chegar.
-        "scanner resumo",
-        "scanner db prune",
+        # As seis etapas do pregao vivem dentro do `daily`; que ele as execute
+        # todas e o que `test_daily_roda_as_seis_etapas_do_pregao` garante.
+        "scanner daily",
     ],
 )
 def test_workflow_roda_o_pipeline_completo(workflow: dict[Any, Any], comando: str) -> None:

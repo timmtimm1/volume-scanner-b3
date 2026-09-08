@@ -24,11 +24,10 @@ import pandas as pd
 from sqlalchemy import Engine
 
 from scanner.config import AlertConfig, ScannerConfig
-from scanner.features import FEATURE_COLUMNS, compute_features
-from scanner.metrics import compute_zscores
+from scanner.features import FEATURE_COLUMNS
+from scanner.recompute import Contexto, carregar_contexto
 from scanner.storage.repository import (
     insert_events,
-    load_bars,
     mark_notified,
     pending_events,
 )
@@ -219,22 +218,24 @@ def run_scan(
     dry_run: bool = False,
     notifier: Any = None,
     bars: pd.DataFrame | None = None,
+    contexto: Contexto | None = None,
 ) -> tuple[ScanReport, pd.DataFrame]:
     """Avalia um pregao, grava os eventos novos e notifica.
 
     O dedupe e a chave unica (ticker, trade_date): rodar de novo nao gera evento
     repetido nem segunda notificacao.
 
-    `bars` permite passar as barras prontas em vez de reler o banco; o pipeline
-    nao usa, os testes usam para nao recalcular sobre a base inteira.
+    `bars` permite passar as barras prontas em vez de reler o banco; os testes
+    usam para nao recalcular sobre a base inteira. `contexto` vai um passo
+    alem: o calculo ja veio pronto de fora, como no `scanner daily`.
     """
-    bars = load_bars(engine) if bars is None else bars
-    if bars.empty:
+    ctx = carregar_contexto(engine, config, bars=bars) if contexto is None else contexto
+    if ctx.vazio:
         return ScanReport(trade_date, 0, 0, 0, 0, 0, dry_run), pd.DataFrame()
 
+    bars, metrics, features = ctx.bars, ctx.metrics, ctx.features
+    # O contexto pode trazer a janela do resumo junto; o alerta so olha as suas.
     janelas = list(config.alert.windows)
-    metrics = compute_zscores(bars, janelas)
-    features = compute_features(bars, max(janelas), metrics)
     eventos = select_events(metrics, bars, features, config.alert, trade_date=trade_date)
 
     do_dia = metrics[metrics["trade_date"] == pd.Timestamp(trade_date)]

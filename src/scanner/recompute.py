@@ -24,6 +24,49 @@ from scanner.storage.repository import (
 
 
 @dataclass(frozen=True)
+class Contexto:
+    """Barras, metricas e contexto do historico inteiro, calculados uma vez.
+
+    O pregao diario precisa das tres coisas em tres lugares: gravar metricas,
+    avaliar alertas e montar o resumo. Cada um deles lia as barras do banco e
+    refazia o mesmo calculo -- tres viagens ate o Neon e tres passadas sobre as
+    mesmas 130 mil linhas, para chegar aos mesmos numeros.
+
+    Passar este objeto adiante nao e so economia de tempo: enquanto cada etapa
+    calculava por conta propria, nada garantia que o alerta e o resumo do mesmo
+    pregao estavam olhando para os mesmos valores.
+    """
+
+    bars: pd.DataFrame
+    metrics: pd.DataFrame
+    features: pd.DataFrame
+    janelas: tuple[int, ...]
+
+    @property
+    def vazio(self) -> bool:
+        return self.bars.empty
+
+
+def carregar_contexto(
+    engine: Engine, config: ScannerConfig, *, bars: pd.DataFrame | None = None
+) -> Contexto:
+    """Le as barras e calcula tudo que o pregao precisa, de uma vez so.
+
+    As janelas sao a uniao das do alerta com a do resumo: se o resumo for
+    configurado para uma janela que o alerta nao usa, ela precisa existir aqui
+    -- do contrario o resumo ficaria sem metrica e sairia vazio.
+
+    `bars` permite passar as barras prontas em vez de reler o banco; os testes
+    usam para nao depender do Postgres.
+    """
+    barras = load_bars(engine) if bars is None else bars
+    janelas = sorted({*config.alert.windows, config.digest.window})
+    metrics = compute_zscores(barras, janelas)
+    features = compute_features(barras, max(janelas), metrics)
+    return Contexto(barras, metrics, features, tuple(janelas))
+
+
+@dataclass(frozen=True)
 class RecomputeReport:
     """O que o recalculo fez."""
 
@@ -51,18 +94,24 @@ class RecomputeReport:
 
 
 def refresh_metrics(
-    engine: Engine, config: ScannerConfig, *, mode: str = "incremental"
+    engine: Engine,
+    config: ScannerConfig,
+    *,
+    mode: str = "incremental",
+    contexto: Contexto | None = None,
 ) -> RecomputeReport:
     """Recalcula os z-scores e grava.
 
     `full` regrava tudo. `incremental` grava apenas os pregoes posteriores ao
     ultimo ja calculado -- util quando so entrou o pregao do dia.
+
+    `contexto` evita reler e recalcular quando quem chama ja tem tudo em maos.
     """
     if mode not in {"incremental", "full"}:
         raise ValueError("mode aceita 'incremental' ou 'full'")
 
-    bars = load_bars(engine)
-    metrics = compute_zscores(bars, config.alert.windows)
+    ctx = carregar_contexto(engine, config) if contexto is None else contexto
+    bars, metrics = ctx.bars, ctx.metrics
 
     to_write = metrics
     if mode == "incremental" and not metrics.empty:
@@ -77,7 +126,7 @@ def refresh_metrics(
     # O contexto da secao 3.2 e persistido para tudo que se calculou, nao so
     # para o que virou alerta: a tela mostra uma faixa de z maior que a do
     # Telegram, e linha sem contexto nao serve para ler nada.
-    features = compute_features(bars, max(config.alert.windows), metrics)
+    features = ctx.features
     if not to_write.empty:
         janela = set(pd.to_datetime(to_write["trade_date"]).unique())
         features = features[pd.to_datetime(features["trade_date"]).isin(janela)]

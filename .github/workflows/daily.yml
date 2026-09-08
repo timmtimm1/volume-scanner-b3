@@ -1,20 +1,27 @@
 name: daily
 
-# 23:00 UTC = 20:00 em Brasilia, de segunda a sexta.
+# 23:17 UTC = 20:17 em Brasilia, de segunda a sexta.
 #
 # A secao 5 do plano pede 21:00 UTC, que e 18:00 em Brasilia -- o minuto do
 # fechamento. A B3 leva horas depois disso para publicar o arquivo do pregao, e
 # medindo em 08/09/2026 as 15:12 o arquivo do dia ainda dava 404. As 18:00 o
 # job falharia na carga, todo dia.
 #
-# 23:00 UTC e o maximo possivel: o Brasil e UTC-3, entao passar de 23:59 UTC
+# 23:xx UTC e o maximo possivel: o Brasil e UTC-3, entao passar de 23:59 UTC
 # viraria o dia seguinte no container, e o "--date today" pediria o pregao
 # errado -- o de amanha, que ainda nem aconteceu.
+#
+# O minuto 17 nao e capricho. Agendamento no GitHub e melhor esforco, e o
+# proprio manual avisa que atrasa em periodo de carga alta -- sendo o inicio de
+# cada hora o exemplo que eles dao. Com "0 23" o job entrou numa fila com todo
+# mundo que agenda em ponto e nao tinha comecado 9 minutos depois. Em ":17" a
+# fila e muito menor. O atraso continua existindo; so fica bem menor.
+#
 # Feriado da B3 nao precisa de excecao aqui: `scanner daily` reconhece o
 # calendario e sai sem erro quando nao houve pregao.
 on:
   schedule:
-    - cron: "0 23 * * 1-5"
+    - cron: "17 23 * * 1-5"
   workflow_dispatch:
     inputs:
       trade_date:
@@ -49,10 +56,15 @@ jobs:
           python-version: "3.12"
           enable-cache: true
 
+      # Os `id` abaixo existem para o aviso de falha dizer onde parou. Trocar um
+      # deles sem trocar no aviso degrada a mensagem em silencio -- por isso ha
+      # um teste conferindo que todo id citado no aviso existe aqui.
       - name: Instalar dependencias
+        id: deps
         run: uv sync --locked --no-dev
 
       - name: Conferir os segredos
+        id: segredos
         # Falha aqui e explicita; sem isto o erro apareceria como falha de
         # conexao tres passos adiante.
         run: |
@@ -60,9 +72,11 @@ jobs:
           test -n "$SCANNER_TELEGRAM_BOT_TOKEN" || echo "::warning::sem token do Telegram; os alertas nao serao enviados"
 
       - name: Migrations
+        id: migrations
         run: uv run alembic upgrade head
 
       - name: Pregao do dia
+        id: pregao
         # Antes eram seis passos: ingest, metrics, db status, scan, resumo e
         # prune. Cada um abria seu proprio Python, conectava no Neon e relia as
         # 130 mil barras para refazer o mesmo calculo -- tres vezes os mesmos
@@ -75,9 +89,18 @@ jobs:
         # continua dizendo onde parou se algo falhar.
         #
         # Os comandos separados continuam existindo para uso manual.
-        run: uv run scanner daily --date "$PREGAO"
+        #
+        # A saida vai para um arquivo alem do log: o aviso de falha le a ultima
+        # linha "[n/6]" dali para dizer ate onde o pregao chegou. `pipefail` e
+        # obrigatorio aqui -- sem ele o `tee` mascara o codigo de saida e uma
+        # falha do scanner passaria como sucesso.
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run scanner daily --date "$PREGAO" 2>&1 | tee /tmp/daily.log
 
       - name: Disparar rebuild na Vercel
+        id: vercel
         # O site e estatico e os dados mudam uma vez por pregao: o rebuild aqui
         # e o que faz o celular carregar instantaneo, sem API sempre no ar.
         if: ${{ env.VERCEL_DEPLOY_HOOK != '' }}
@@ -97,9 +120,43 @@ jobs:
         # O token sai do ambiente na hora da chamada; o log do Actions mostra
         # o nome da variavel, nunca o valor. O repositorio e publico.
         if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' }}
+        shell: bash
+        env:
+          # Run manual e quase sempre ensaio; agendado e o pregao de verdade.
+          # Sem esta marca um teste chega no celular identico a um incidente --
+          # que foi exatamente o que aconteceu na primeira vez.
+          PREFIXO: ${{ github.event_name == 'workflow_dispatch' && '[teste] ' || '' }}
+          RES_DEPS: ${{ steps.deps.outcome }}
+          RES_SEGREDOS: ${{ steps.segredos.outcome }}
+          RES_MIGRATIONS: ${{ steps.migrations.outcome }}
+          RES_PREGAO: ${{ steps.pregao.outcome }}
+          RES_VERCEL: ${{ steps.vercel.outcome }}
         run: |
-          texto=$(printf '⚠️ <b>O scanner falhou</b>\nPregão de %s\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
-            "$PREGAO" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          # Onde parou. Dito no celular, e o que decide se da para ignorar (a
+          # B3 atrasou) ou se e para abrir o notebook agora.
+          onde="passo desconhecido"
+          if [ "$RES_DEPS" = failure ]; then
+            onde="instalacao das dependencias"
+          elif [ "$RES_SEGREDOS" = failure ]; then
+            onde="conferencia dos segredos"
+          elif [ "$RES_MIGRATIONS" = failure ]; then
+            onde="migrations"
+          elif [ "$RES_PREGAO" = failure ]; then
+            ultima=$(grep -E '^\[[0-9]/6\]' /tmp/daily.log 2>/dev/null | tail -1 | cut -c1-52 || true)
+            if [ -n "$ultima" ]; then
+              onde="pregao, depois de $ultima"
+            else
+              onde="pregao, antes da primeira etapa"
+            fi
+          elif [ "$RES_VERCEL" = failure ]; then
+            onde="rebuild na Vercel"
+          fi
+          # HTML mal formado faria o Telegram recusar a mensagem inteira, e o
+          # aviso morreria calado -- justamente o que ele existe para evitar.
+          onde=$(printf '%s' "$onde" | tr -d '<>&')
+
+          texto=$(printf '⚠️ <b>%sO scanner falhou</b>\nPregão de %s\nOnde: %s\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$PREFIXO" "$PREGAO" "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
           curl -sS -o /dev/null -X POST \
             "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
             -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \

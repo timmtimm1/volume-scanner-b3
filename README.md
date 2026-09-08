@@ -126,9 +126,35 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | F2 | Parser e carga COTAHIST | ✅ |
 | F3 | Z-scores + features de contexto | ✅ |
 | F4 | Alertas + Telegram | ✅ |
-| F5 | Deploy: Neon, Actions, secrets | 🚧 código pronto; falta rodar |
-| F6 | Interface: scanner, ficha do papel, histórico | ⬜ |
-| F7 | PWA | ⬜ |
+| F5 | Deploy: Neon, Actions, secrets | ✅ código / ⏳ acumulando execuções agendadas |
+| F6 | Interface: scanner, ficha do papel, histórico | ✅ |
+| F7 | PWA | ✅ |
+
+O critério de aceite da F5 — *três execuções agendadas consecutivas bem-sucedidas* —
+não é algo que se faça de uma vez: o cron roda às 21:00 UTC em dias úteis, então
+acumula sozinho. Uma execução manual já passou de ponta a ponta, com carga,
+métricas, scan e retenção.
+
+## A interface
+
+```bash
+cd web
+npm install
+npm run dev        # http://localhost:3000
+```
+
+O site é **estático**. As consultas rodam no build, o Actions dispara o rebuild
+depois do scan, e não há API no ar — é o que faz abrir instantâneo no 4G.
+
+O build lê o mesmo `.env` da raiz, via `dotenv` no `next.config.ts`. Uma cópia
+dentro de `web/` seria uma segunda fonte de verdade para a mesma credencial.
+
+### Deploy na Vercel
+
+1. Novo projeto apontando para a pasta `web/`
+2. Variável de ambiente `SCANNER_DATABASE_URL` com a connection string do Neon
+3. Copie o **Deploy Hook** e cadastre como secret `VERCEL_DEPLOY_HOOK` no GitHub —
+   é o que faz o `daily.yml` reconstruir o site depois de cada pregão
 
 ## Calendário da B3
 

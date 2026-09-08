@@ -90,6 +90,9 @@ def format_alert(payload: Mapping[str, Any], base_url: str) -> str:
     trade_date = payload["trade_date"]
     linhas = [
         f"⚡ {ticker} — volume {br(payload.get('rvol'), 1)}× o normal",
+        # A data evita que o alerta seja lido contra o grafico do dia errado:
+        # a borda direita do grafico raramente e o pregao do evento.
+        f"Pregao de {trade_date.strftime('%d/%m/%Y')}",
         "",
         f"{money(payload.get('volume_financial'))} negociados",
         _z_por_janela(payload.get("z_by_window") or {}),

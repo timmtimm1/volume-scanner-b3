@@ -97,6 +97,7 @@ def test_mensagem_bate_com_o_formato_do_plano() -> None:
     linhas = texto.split("\n")
 
     assert linhas[0] == "⚡ XPTO3 — volume 18,3× o normal"
+    assert linhas[1] == "Pregao de 12/03/2026"
     assert "R$ 47,2 mi negociados" in texto
     assert "z_log: 30d 7,42 | 45d 7,88 | 60d 8,11" in texto
     assert "z liquido do mercado: 7,60" in texto
@@ -195,3 +196,15 @@ def test_console_notifier_guarda_o_que_enviou(capsys: pytest.CaptureFixture[str]
     assert ConsoleNotifier(base_url=BASE, sent=enviadas).send_event(EVENTO) is True
     assert len(enviadas) == 1
     assert "XPTO3" in capsys.readouterr().out
+
+
+def test_mensagem_traz_a_data_do_pregao() -> None:
+    # Sem a data, o alerta e lido contra a borda direita do grafico, que
+    # raramente e o pregao do evento.
+    texto = format_alert(EVENTO, BASE)
+    assert "Pregao de 12/03/2026" in texto
+
+
+def test_data_do_pregao_vem_de_trade_date_nao_de_hoje() -> None:
+    outro = {**EVENTO, "trade_date": date(2024, 11, 5)}
+    assert "Pregao de 05/11/2024" in format_alert(outro, BASE)

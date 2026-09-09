@@ -128,6 +128,9 @@ class Settings(BaseSettings):
     )
     telegram_bot_token: SecretStr | None = None
     telegram_chat_id: str | None = None
+    # Opcional: sem ele a brapi aceita lotes de ate 3 papeis e o Yahoo cobre o
+    # resto. Com ele, lotes de 10 e menos chamadas.
+    brapi_token: SecretStr | None = None
     web_base_url: str = "http://localhost:3000"
     config_path: Path = DEFAULT_CONFIG_PATH
 

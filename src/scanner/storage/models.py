@@ -13,6 +13,7 @@ from sqlalchemy import (
     ARRAY,
     BigInteger,
     Boolean,
+    CheckConstraint,
     Date,
     DateTime,
     Index,
@@ -111,3 +112,44 @@ class Event(Base):
     # Todo o contexto da secao 3.2 do plano.
     features: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class PriceAlert(Base):
+    """Alerta de rompimento de preco, criado a mao a partir de um evento.
+
+    Nasce de um papel que apareceu no scanner: o usuario olha o grafico, escolhe
+    um nivel e pede para ser avisado quando o preco chegar la. Nada aqui e
+    calculado pelo sistema -- e a leitura do usuario virando gatilho, e por isso
+    o alerta guarda `trade_date`: o pregao do evento que motivou ele.
+
+    `direcao` e 'acima' ou 'abaixo'. Um alerta so olha para um lado; para vigiar
+    os dois extremos de um papel, criam-se dois alertas.
+
+    Dispara uma vez e se desativa (`disparado_em` preenchido). `preco_disparo`
+    guarda a cotacao que causou o disparo, nao o nivel pedido: com checagem de
+    15 em 15 minutos, um pavio pode furar o nivel e voltar, e ver o preco real
+    e o que permite distinguir rompimento de ruido depois do fato.
+    """
+
+    __tablename__ = "price_alerts"
+    __table_args__ = (
+        Index("ix_price_alerts_ativo", "disparado_em"),
+        CheckConstraint("direcao IN ('acima', 'abaixo')", name="ck_price_alerts_direcao"),
+        CheckConstraint("preco > 0", name="ck_price_alerts_preco_positivo"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(Text, nullable=False)
+    # O pregao do evento que motivou o alerta. Serve para a ficha do papel
+    # mostrar a linha no contexto certo, e para saber o quanto ele envelheceu.
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    preco: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    direcao: Mapped[str] = mapped_column(Text, nullable=False)
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    disparado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    preco_disparo: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    # De qual fornecedor veio a cotacao que disparou. Quando um alerta parecer
+    # errado, a primeira pergunta e "que dado o sistema viu?".
+    fonte_disparo: Mapped[str | None] = mapped_column(Text)

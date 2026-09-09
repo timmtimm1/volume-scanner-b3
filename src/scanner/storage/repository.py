@@ -12,6 +12,7 @@ import io
 import json
 from collections.abc import Sequence
 from datetime import date
+from decimal import Decimal
 from typing import Any
 
 import pandas as pd
@@ -20,7 +21,15 @@ from sqlalchemy.dialects.postgresql import insert
 
 from scanner.features import FEATURE_COLUMNS
 from scanner.ingest.cotahist import BAR_COLUMNS
-from scanner.storage.models import SCHEMA, DailyBar, DailyFeature, Event, VolumeMetric
+from scanner.rompimentos import DIRECOES, Alerta, Direcao
+from scanner.storage.models import (
+    SCHEMA,
+    DailyBar,
+    DailyFeature,
+    Event,
+    PriceAlert,
+    VolumeMetric,
+)
 
 # Colunas reescritas quando a linha ja existe. `ingested_at` fica de fora.
 _UPDATABLE = tuple(c for c in BAR_COLUMNS if c not in ("ticker", "trade_date"))
@@ -350,3 +359,120 @@ def count_features(engine: Engine) -> int:
     """Total de linhas de contexto armazenadas."""
     with engine.connect() as conn:
         return int(conn.execute(select(func.count()).select_from(DailyFeature)).scalar_one())
+
+
+# --- Alertas de rompimento ---------------------------------------------------
+#
+# Os unicos dados do sistema que nao vem do COTAHIST: o usuario escolhe o nivel
+# e o sistema vigia. Por isso ficam fora do ciclo de retencao -- podar barras
+# antigas nunca pode apagar um alerta que o usuario ainda espera.
+
+
+# Colunas do alerta, na ordem em que `_para_alerta` as le. Selecionar colunas em
+# vez da entidade mantem estas funcoes no mesmo estilo Core do resto do arquivo
+# -- `select(PriceAlert)` numa Connection devolveria a primeira coluna, nao o
+# objeto, e a leitura passaria a exigir uma Session so aqui.
+_ALERTA_COLUNAS = (
+    PriceAlert.id,
+    PriceAlert.ticker,
+    PriceAlert.trade_date,
+    PriceAlert.preco,
+    PriceAlert.direcao,
+    PriceAlert.criado_em,
+    PriceAlert.disparado_em,
+    PriceAlert.preco_disparo,
+    PriceAlert.fonte_disparo,
+)
+
+
+def _para_alerta(linha: Any) -> Alerta:
+    """Linha do banco para o dataclass que o resto do sistema usa."""
+    direcao: Direcao = "acima" if linha.direcao == "acima" else "abaixo"
+    return Alerta(
+        id=int(linha.id),
+        ticker=str(linha.ticker),
+        trade_date=linha.trade_date,
+        preco=linha.preco,
+        direcao=direcao,
+        criado_em=linha.criado_em,
+        disparado_em=linha.disparado_em,
+        preco_disparo=linha.preco_disparo,
+        fonte_disparo=linha.fonte_disparo,
+    )
+
+
+def criar_alerta(
+    engine: Engine, ticker: str, trade_date: date, preco: Decimal, direcao: str
+) -> int:
+    """Grava um alerta novo e devolve o id.
+
+    Nao ha dedupe: dois alertas iguais no mesmo papel sao permitidos de
+    proposito. Impedir isso exigiria decidir o que conta como "igual" (mesmo
+    centavo? faixa de 1%?), e errar essa regra silenciaria um alerta legitimo.
+    """
+    if direcao not in DIRECOES:
+        raise ValueError(f"direcao invalida: {direcao!r}")
+    statement = (
+        insert(PriceAlert)
+        .values(
+            ticker=ticker.upper(),
+            trade_date=trade_date,
+            preco=preco,
+            direcao=direcao,
+        )
+        .returning(PriceAlert.id)
+    )
+    with engine.begin() as conn:
+        return int(conn.execute(statement).scalar_one())
+
+
+def alertas_ativos(engine: Engine) -> list[Alerta]:
+    """Os que ainda nao dispararam -- o que o job de 15 minutos consulta."""
+    stmt = select(*_ALERTA_COLUNAS).where(PriceAlert.disparado_em.is_(None))
+    with engine.connect() as conn:
+        return [_para_alerta(linha) for linha in conn.execute(stmt)]
+
+
+def listar_alertas(engine: Engine, ticker: str | None = None) -> list[Alerta]:
+    """Todos os alertas, ativos e disparados. Ativos primeiro, mais novos antes."""
+    stmt = select(*_ALERTA_COLUNAS)
+    if ticker is not None:
+        stmt = stmt.where(PriceAlert.ticker == ticker.upper())
+    stmt = stmt.order_by(
+        PriceAlert.disparado_em.is_(None).desc(),
+        PriceAlert.criado_em.desc(),
+    )
+    with engine.connect() as conn:
+        return [_para_alerta(linha) for linha in conn.execute(stmt)]
+
+
+def marcar_disparado(engine: Engine, alerta_id: int, *, preco: Decimal, fonte: str) -> bool:
+    """Desativa o alerta, guardando a cotacao que o disparou.
+
+    `disparado_em IS NULL` na clausula: se duas passadas se sobrepuserem, a
+    segunda nao remarca nem reenvia. Devolve se esta chamada foi a que disparou.
+    """
+    stmt = (
+        update(PriceAlert)
+        .where(PriceAlert.id == alerta_id, PriceAlert.disparado_em.is_(None))
+        .values(disparado_em=func.now(), preco_disparo=preco, fonte_disparo=fonte)
+    )
+    with engine.begin() as conn:
+        return conn.execute(stmt).rowcount > 0
+
+
+def reativar_alerta(engine: Engine, alerta_id: int) -> bool:
+    """Religa um alerta que ja disparou, limpando o registro do disparo."""
+    stmt = (
+        update(PriceAlert)
+        .where(PriceAlert.id == alerta_id)
+        .values(disparado_em=None, preco_disparo=None, fonte_disparo=None)
+    )
+    with engine.begin() as conn:
+        return conn.execute(stmt).rowcount > 0
+
+
+def apagar_alerta(engine: Engine, alerta_id: int) -> bool:
+    """Remove o alerta de vez."""
+    with engine.begin() as conn:
+        return conn.execute(delete(PriceAlert).where(PriceAlert.id == alerta_id)).rowcount > 0

@@ -155,6 +155,10 @@ class TelegramNotifier:
         """Formata e envia o resumo do pregao."""
         return self.send_text(format_resumo(payload, self.base_url))
 
+    def send_rompimento(self, payload: Mapping[str, Any]) -> bool:
+        """Formata e envia o aviso de um alerta de preco tocado."""
+        return self.send_text(format_rompimento(payload, self.base_url))
+
 
 @dataclass(frozen=True)
 class ConsoleNotifier:
@@ -179,6 +183,9 @@ class ConsoleNotifier:
 
     def send_resumo(self, payload: Mapping[str, Any]) -> bool:
         return self.send_text(format_resumo(payload, self.base_url))
+
+    def send_rompimento(self, payload: Mapping[str, Any]) -> bool:
+        return self.send_text(format_rompimento(payload, self.base_url))
 
 
 # Largura util de um bloco <pre> no Telegram, num celular em retrato. Passar
@@ -249,3 +256,45 @@ def format_resumo(resumo: Mapping[str, Any], base_url: str | None = None) -> str
     if base_url:
         partes.append(f'<a href="{base_url.rstrip("/")}">abrir o scanner</a>')
     return "\n".join(partes)
+
+
+def format_rompimento(payload: Mapping[str, Any], base_url: str | None = None) -> str:
+    """Aviso de que um alerta de preco foi tocado.
+
+    Traz o preco que disparou, e nao so o nivel pedido. Com checagem de 15 em
+    15 minutos um pavio pode furar o nivel e voltar; ver "pedi 11,50, tocou
+    11,51" e o que permite reconhecer ruido sem abrir o grafico. E a fonte vai
+    junto pelo mesmo motivo: cotacao estranha tem culpado.
+    """
+    ticker = str(payload["ticker"])
+    direcao = "subiu até" if payload.get("direcao") == "acima" else "caiu até"
+    nivel = money_simples(payload.get("nivel"))
+    preco = money_simples(payload.get("preco"))
+
+    linhas = [
+        f"🎯 <b>{ticker} {direcao} {nivel}</b>",
+        f"agora {preco} · {payload.get('fonte', '-')}",
+    ]
+
+    criado = payload.get("criado_em")
+    if criado is not None:
+        linhas.append(f"alerta criado em {criado.strftime('%d/%m')}")
+
+    if base_url:
+        trade_date = payload.get("trade_date")
+        alvo = (
+            chart_url(base_url, ticker, trade_date)
+            if trade_date is not None
+            else f"{base_url.rstrip('/')}/papel/{ticker}"
+        )
+        linhas += ["", f'<a href="{alvo}">→ abrir grafico</a>']
+    return "\n".join(linhas)
+
+
+def money_simples(valor: float | None) -> str:
+    """Preco de papel: sempre em reais com centavos, sem escala.
+
+    Diferente de `money`: aqui nunca vira "1,2 mi". Preco de acao vive na casa
+    das dezenas, e abreviar 11,50 nao ajuda ninguem.
+    """
+    return "-" if valor is None else f"R$ {br(valor)}"

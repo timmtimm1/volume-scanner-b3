@@ -18,14 +18,19 @@ def test_todas_as_tabelas_no_schema_do_projeto() -> None:
 
 
 def test_nomes_das_tabelas() -> None:
-    # `daily_features` nao esta na secao 8 do plano: foi acrescentada para a
-    # tela poder mostrar contexto abaixo do limiar de alerta, onde a tabela
-    # `events` nao tem linha. Ver a migration 0002.
+    # Duas tabelas nao estao na secao 8 do plano, e as duas tem motivo escrito:
+    #
+    # `daily_features` (migration 0002) existe para a tela mostrar contexto
+    # abaixo do limiar de alerta, onde `events` nao tem linha.
+    #
+    # `price_alerts` (migration 0003) e a unica que guarda decisao do usuario e
+    # nao dado derivado do COTAHIST: o nivel de preco que ele pediu para vigiar.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
         "events",
         "daily_features",
+        "price_alerts",
     }
 
 

@@ -426,6 +426,123 @@ def daily(
         etapa(6, f"podado ate {corte.isoformat()}: {barras:,} barras e {metricas:,} metricas")
 
 
+alerta_app = typer.Typer(help="Alertas de rompimento de preco.", no_args_is_help=True)
+app.add_typer(alerta_app, name="alerta")
+
+
+def _provedor_de_cotacoes() -> Any:
+    """brapi na frente, Yahoo cobrindo as lacunas."""
+    from scanner.cotacoes import BrapiClient, ProvedorEncadeado, YahooClient
+
+    settings = _settings()
+    token = settings.brapi_token.get_secret_value() if settings.brapi_token else None
+    return ProvedorEncadeado((BrapiClient(token=token), YahooClient()))
+
+
+def _settings() -> Any:
+    from scanner.config import get_settings
+
+    return get_settings()
+
+
+@alerta_app.command("add")
+def alerta_add(
+    ticker: Annotated[str, typer.Argument(help="Papel, ex.: PETR4.")],
+    preco: Annotated[float, typer.Option("--preco", help="Nivel a vigiar.")],
+    direcao: Annotated[
+        str, typer.Option("--direcao", help="acima | abaixo")
+    ] = "acima",
+    trade_date: Annotated[
+        str, typer.Option("--date", help="Pregao do evento que motivou.")
+    ] = "ultimo",
+) -> None:
+    """Cria um alerta de rompimento."""
+    from decimal import Decimal
+
+    from scanner.cotacoes.base import ticker_valido
+    from scanner.rompimentos import DIRECOES
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import criar_alerta
+
+    codigo = ticker.upper()
+    if not ticker_valido(codigo):
+        raise typer.BadParameter(f"ticker invalido: {ticker!r}")
+    if direcao not in DIRECOES:
+        raise typer.BadParameter("--direcao aceita 'acima' ou 'abaixo'")
+    if preco <= 0:
+        raise typer.BadParameter("--preco tem de ser positivo")
+
+    novo = criar_alerta(
+        build_engine(), codigo, parse_trade_date(trade_date), Decimal(str(preco)), direcao
+    )
+    typer.echo(f"alerta {novo}: {codigo} {direcao} de R$ {preco:.2f}")
+
+
+@alerta_app.command("list")
+def alerta_list(
+    ticker: Annotated[str | None, typer.Option("--ticker", help="Filtra por papel.")] = None,
+) -> None:
+    """Lista os alertas, ativos primeiro."""
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import listar_alertas
+
+    alertas = listar_alertas(build_engine(), ticker)
+    if not alertas:
+        typer.echo("nenhum alerta")
+        return
+    for a in alertas:
+        estado = (
+            "ativo"
+            if a.ativo
+            else f"disparou em {a.disparado_em:%d/%m %H:%M} a R$ {a.preco_disparo}"
+        )
+        typer.echo(f"{a.id:>4}  {a.ticker:<8} {a.direcao:<6} R$ {a.preco:>9}  {estado}")
+
+
+@alerta_app.command("rm")
+def alerta_rm(alerta_id: Annotated[int, typer.Argument(help="Id do alerta.")]) -> None:
+    """Apaga um alerta."""
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import apagar_alerta
+
+    typer.echo("apagado" if apagar_alerta(build_engine(), alerta_id) else "nao encontrado")
+
+
+@alerta_app.command("on")
+def alerta_on(alerta_id: Annotated[int, typer.Argument(help="Id do alerta.")]) -> None:
+    """Religa um alerta que ja disparou."""
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import reativar_alerta
+
+    typer.echo("reativado" if reativar_alerta(build_engine(), alerta_id) else "nao encontrado")
+
+
+@alerta_app.command("checar")
+def alerta_checar(
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Mostra sem gravar nem desativar.")
+    ] = False,
+) -> None:
+    """Consulta o preco atual e dispara os alertas que romperam."""
+    from scanner.calendar import is_trading_day
+    from scanner.config import get_settings
+    from scanner.rompimentos import checar_rompimentos
+    from scanner.storage.engine import build_engine
+
+    # O cron roda de segunda a sexta, mas feriado da B3 tambem cai em dia util.
+    # Sem esta guarda, um feriado gastaria 36 consultas aos fornecedores para
+    # reler um preco que nao se move.
+    if not is_trading_day(date.today()):
+        typer.secho("[pulado] hoje nao e pregao.", fg=typer.colors.YELLOW)
+        return
+
+    notifier = _notificador(get_settings(), dry_run=dry_run)
+    relatorio = checar_rompimentos(
+        build_engine(), _provedor_de_cotacoes(), notifier=notifier, dry_run=dry_run
+    )
+    typer.echo(relatorio.summary())
+
+
 @report_app.command("ticker")
 def report_ticker(
     ticker: Annotated[str, typer.Argument(help="Codigo do papel, ex.: PETR4.")],

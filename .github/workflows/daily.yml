@@ -8,7 +8,7 @@ name: daily
 # - Minuto 40 evita filas de alta carga no GitHub Actions comuns em horas cheias.
 on:
   schedule:
-    - cron: "30 13 * * 2-6"
+    - cron: "40 10 * * 2-6"
   workflow_dispatch:
     inputs:
       trade_date:
@@ -35,9 +35,9 @@ jobs:
       PREGAO: ${{ inputs.trade_date || 'ultimo' }}
       VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: astral-sh/setup-uv@v5
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: "3.12"
           enable-cache: true

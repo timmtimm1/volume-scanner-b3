@@ -5,14 +5,14 @@ const LIMIAR_DO_ALERTA = 6;
 
 export default async function Historico() {
   const eventos = await eventosDoHistorico();
-  const notificados = eventos.filter((e) => e.notificado).length;
+  const acimaDoLimiar = eventos.filter((e) => e.zLog >= LIMIAR_DO_ALERTA).length;
   const primeiro = eventos.at(-1)?.tradeDate;
   const ultimo = eventos[0]?.tradeDate;
 
   return (
     <TabelaDoHistorico
       eventos={eventos}
-      notificados={notificados}
+      acimaDoLimiar={acimaDoLimiar}
       de={primeiro}
       ate={ultimo}
       limiarDoAlerta={LIMIAR_DO_ALERTA}

@@ -7,7 +7,11 @@ import type { Evento } from "@/lib/types";
 
 type Props = {
   eventos: Evento[];
-  notificados: number;
+  /** Quantos cruzaram o limiar do alerta. O rotulo ao lado diz "acima de Nσ",
+   * entao aqui vai isso mesmo -- antes vinha a contagem de notificados, que e
+   * outra coisa: o historico e carga retroativa, e evento antigo nunca foi
+   * notificado. */
+  acimaDoLimiar: number;
   de?: string;
   ate?: string;
   limiarDoAlerta: number;
@@ -17,7 +21,7 @@ type Props = {
 /** Serve para revisitar eventos e ir construindo repertorio de padroes. */
 export function TabelaDoHistorico({
   eventos,
-  notificados,
+  acimaDoLimiar,
   de,
   ate,
   limiarDoAlerta,
@@ -25,7 +29,6 @@ export function TabelaDoHistorico({
 }: Props) {
   const [corte, setCorte] = useState(minimo);
   const [busca, setBusca] = useState("");
-  const [soNotificados, setSoNotificados] = useState(false);
   // null = ordem padrao (pregao mais recente primeiro, ja vinda do banco).
   // Um clique no cabecalho "Desvio (z)" liga a ordenacao por esse valor;
   // outro clique inverte; o terceiro volta a ordem padrao.
@@ -35,14 +38,12 @@ export function TabelaDoHistorico({
     const alvo = busca.trim().toUpperCase();
     const filtrados = eventos.filter(
       (e) =>
-        e.zLog >= corte &&
-        (!alvo || e.ticker.includes(alvo)) &&
-        (!soNotificados || e.notificado),
+        e.zLog >= corte && (!alvo || e.ticker.includes(alvo)),
     );
     if (!ordemZ) return filtrados;
     const sinal = ordemZ === "desc" ? -1 : 1;
     return [...filtrados].sort((a, b) => sinal * (a.zLog - b.zLog));
-  }, [eventos, corte, busca, soNotificados, ordemZ]);
+  }, [eventos, corte, busca, ordemZ]);
 
   function alternarOrdemZ() {
     setOrdemZ((atual) => (atual === "desc" ? "asc" : atual === "asc" ? null : "desc"));
@@ -59,7 +60,7 @@ export function TabelaDoHistorico({
         </div>
         <div className="flex-1" />
         <div className="flex items-baseline gap-2">
-          <span className="num text-[22px] font-semibold text-ambar">{notificados}</span>
+          <span className="num text-[22px] font-semibold text-ambar">{acimaDoLimiar}</span>
           <span className="text-[11px] leading-tight text-tinta-2">
             acima de
             <br />
@@ -98,19 +99,6 @@ export function TabelaDoHistorico({
             className="h-6 w-full cursor-pointer bg-transparent"
           />
         </div>
-
-        <button
-          type="button"
-          onClick={() => setSoNotificados((v) => !v)}
-          aria-pressed={soNotificados}
-          className={`toque self-end rounded border px-3 py-1.5 text-[11px] transition-colors ${
-            soNotificados
-              ? "border-ambar bg-selecao text-ambar"
-              : "border-linha-2 text-tinta-2 hover:text-tinta"
-          }`}
-        >
-          só notificados
-        </button>
 
         <span className="num self-end text-[11px] text-tinta-3">
           {visiveis.length} de {eventos.length}
@@ -162,15 +150,8 @@ export function TabelaDoHistorico({
                 </span>
                 <span className="order-1 text-[14px] font-semibold md:order-none md:text-[13px]">
                   {e.ticker}
-                  {e.notificado && (
-                    <span className="num ml-1.5 text-[9px] text-ambar md:hidden">●</span>
-                  )}
                 </span>
-                <span
-                  className={`num order-1 ml-auto text-right text-[15px] font-semibold md:order-none md:ml-0 md:text-[13px] ${
-                    e.notificado ? "text-ambar" : ""
-                  }`}
-                >
+                <span className="num order-1 ml-auto text-right text-[15px] font-semibold md:order-none md:ml-0 md:text-[13px]">
                   {numero(e.zLog)}
                 </span>
                 <span className="num order-3 text-right text-[11px] text-tinta-2 md:order-none md:text-[12px]">

@@ -1,9 +1,15 @@
 /**
  * Leitura do Postgres em tempo de build.
  *
- * O site e estatico: estas consultas rodam uma vez, quando o Actions dispara o
- * rebuild depois do scan do pregao. Nada disso vai para o navegador, e nao ha
- * API no ar -- e o que faz a pagina abrir instantanea no celular.
+ * As telas de dado -- scanner, historico, papeis, ficha -- continuam sendo
+ * geradas no build, uma vez por pregao, quando o Actions dispara o rebuild
+ * depois do scan. Nada disso vai para o navegador, e e o que faz a pagina abrir
+ * instantanea no celular.
+ *
+ * O que mudou com os alertas: existem agora rotas de API que rodam com o site
+ * no ar, e elas reusam o mesmo pool daqui (`conexaoDeAlertas`). A separacao que
+ * importa nao e mais "build ou runtime", e sim: dado do pregao e publico e
+ * pre-renderizado; alerta e pessoal, exige sessao e e sempre lido na hora.
  *
  * A tela mostra eventos ABAIXO do limiar de alerta, para o filtro de z ter
  * faixa onde passear. O Telegram continua avisando so acima de `alert.threshold`
@@ -24,6 +30,16 @@ export const Z_MINIMO_DO_SITE = 3.0;
 export const PISO_DE_VOLUME = 500_000;
 
 let pool: Pool | null = null;
+
+/**
+ * O mesmo pool, para as rotas de API dos alertas.
+ *
+ * Reusar em vez de abrir um segundo: o Neon cobra conexao, e duas piscinas no
+ * mesmo processo dobrariam o consumo sem ganho nenhum.
+ */
+export function conexaoDeAlertas(): Pool {
+  return conexao();
+}
 
 function conexao(): Pool {
   if (pool) return pool;

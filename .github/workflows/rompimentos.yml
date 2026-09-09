@@ -23,6 +23,11 @@ on:
     - cron: "7,22,37,52 13-21 * * 1-5"
   workflow_dispatch:
 
+# Mesmo padrao aplicado ao daily.yml: o token do job so precisa ler o
+# repositorio para o checkout. Sem escopo de escrita mesmo por padrao.
+permissions:
+  contents: read
+
 concurrency:
   # Duas passadas sobrepostas poderiam avisar duas vezes o mesmo alerta. O
   # `marcar_disparado` ja protege disso no banco (so marca se ainda estiver

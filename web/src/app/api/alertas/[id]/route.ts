@@ -23,8 +23,12 @@ export async function DELETE(_pedido: Request, ctx: RouteContext<"/api/alertas/[
   const id = identificador((await ctx.params).id);
   if (id === null) return NextResponse.json({ erro: "id invalido" }, { status: 400 });
 
+  // 200 com corpo, e nao 204. O 204 e o codigo semanticamente certo para
+  // "apagado, nada a devolver", mas resposta sem corpo aqui chega no navegador
+  // como net::ERR_ABORTED: o servidor apaga, o `fetch` rejeita, e a tela fica
+  // mostrando um alerta que nao existe mais. Custou um teste para achar.
   return (await apagarAlerta(id))
-    ? new NextResponse(null, { status: 204 })
+    ? NextResponse.json({ apagado: true })
     : NextResponse.json({ erro: "nao encontrado" }, { status: 404 });
 }
 

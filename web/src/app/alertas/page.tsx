@@ -1,4 +1,4 @@
-import { auth, signIn, signOut } from "@/auth";
+import { ehDono, signIn, signOut } from "@/auth";
 import { listarAlertas } from "@/lib/alertas";
 import { ListaDeAlertas } from "@/components/ListaDeAlertas";
 
@@ -12,9 +12,10 @@ import { ListaDeAlertas } from "@/components/ListaDeAlertas";
 export const dynamic = "force-dynamic";
 
 export default async function Alertas() {
-  const sessao = await auth();
-
-  if (!sessao?.user) {
+  // Mesma pergunta que as rotas de API fazem, pela mesma funcao. Tinha duas
+  // formas de perguntar "e o dono?" -- `auth()` aqui e `ehDono()` la -- e duas
+  // formas de perguntar a mesma coisa e uma delas ficando para tras.
+  if (!(await ehDono())) {
     return (
       <div className="p-6 md:p-10">
         <h1 className="text-[17px] font-bold">Alertas de rompimento</h1>
@@ -48,12 +49,10 @@ export default async function Alertas() {
   return (
     <>
       <header className="flex flex-wrap items-center gap-4 border-b border-linha bg-painel px-4 py-3.5 md:px-6">
-        <div>
-          <h1 className="text-[17px] font-bold">Alertas de rompimento</h1>
-          <p className="num mt-0.5 text-[11px] text-tinta-3">
-            {alertas.filter((a) => a.ativo).length} ativos de {alertas.length}
-          </p>
-        </div>
+        {/* Sem contador aqui: ele mudaria ao religar ou apagar, e este e um
+            componente de servidor -- ficaria mostrando o numero de antes. Ele
+            vive dentro da lista, junto do estado que o determina. */}
+        <h1 className="text-[17px] font-bold">Alertas de rompimento</h1>
         <div className="flex-1" />
         <form
           action={async () => {

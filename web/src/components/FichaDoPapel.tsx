@@ -2,7 +2,7 @@
 
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import { Grafico } from "@/components/Grafico";
+import { AlertasDoPapel } from "@/components/AlertasDoPapel";
 import { aberturaDaBanda, bollinger } from "@/lib/indicadores";
 import {
   data as fmtData,
@@ -181,7 +181,8 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
       )}
 
       <div className="p-4 md:p-6">
-        <Grafico
+        <AlertasDoPapel
+          ticker={ticker}
           barras={barras}
           eventos={eventos}
           destaque={evento?.tradeDate}

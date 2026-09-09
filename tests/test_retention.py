@@ -15,7 +15,7 @@ from sqlalchemy import Engine, delete, select
 
 from scanner.calendar import sessions_before
 from scanner.storage.engine import session_scope
-from scanner.storage.models import DailyBar, Event, VolumeMetric
+from scanner.storage.models import DailyBar, DailyFeature, Event, VolumeMetric
 from scanner.storage.repository import (
     count_bars,
     prune_bars,
@@ -69,6 +69,7 @@ def carga(engine: Engine) -> Iterator[list[date]]:
     yield dias
     with session_scope(engine) as s:
         s.execute(delete(Event).where(Event.ticker == TICKER))
+        s.execute(delete(DailyFeature).where(DailyFeature.ticker == TICKER))
         s.execute(delete(VolumeMetric).where(VolumeMetric.ticker == TICKER))
         s.execute(delete(DailyBar).where(DailyBar.ticker == TICKER))
 

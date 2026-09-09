@@ -62,8 +62,17 @@ export function ListaDeAlertas({ iniciais }: { iniciais: Alerta[] }) {
     );
   }
 
+  const ativos = alertas.filter((a) => a.ativo).length;
+  const disparados = alertas.length - ativos;
+
   return (
     <div className="p-4 md:p-6">
+      <p className="num mb-3 text-[11px] text-tinta-3">
+        {ativos === 1 ? "1 alerta vigiando" : `${ativos} alertas vigiando`}
+        {disparados > 0 &&
+          (disparados === 1 ? ", 1 já disparou" : `, ${disparados} já dispararam`)}
+      </p>
+
       {erro && (
         <p className="mb-3 rounded border border-baixa/40 bg-baixa/10 px-3 py-2 text-[12px] text-baixa">
           {erro}

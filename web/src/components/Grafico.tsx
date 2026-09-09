@@ -15,11 +15,14 @@ import {
   createChart,
   HistogramSeries,
   LineSeries,
+  LineStyle,
   type IChartApi,
+  type IPriceLine,
   type ISeriesApi,
   type Time,
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
+import type { Alerta } from "@/lib/alertas";
 import { aberturaDaBanda, bollinger } from "@/lib/indicadores";
 import type { Barra, Evento } from "@/lib/types";
 
@@ -47,13 +50,46 @@ type Props = {
   /** Pregao a centralizar e destacar. */
   destaque?: string;
   altura?: number;
+  /** Niveis a desenhar como linha horizontal. So do papel desta ficha. */
+  alertas?: Alerta[];
+  /**
+   * Ligado, um clique no grafico devolve o preco daquela altura. Fica desligado
+   * por padrao: sem isso, qualquer clique para dispensar o crosshair viraria um
+   * nivel escolhido sem querer.
+   */
+  escolhendoPreco?: boolean;
+  aoEscolherPreco?: (preco: number) => void;
 };
 
-export function Grafico({ barras, eventos, destaque, altura = 400 }: Props) {
+export function Grafico({
+  barras,
+  eventos,
+  destaque,
+  altura = 400,
+  alertas = [],
+  escolhendoPreco = false,
+  aoEscolherPreco,
+}: Props) {
   const alvo = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
   const [mostrarBandas, setMostrarBandas] = useState(true);
   const bandas = useRef<ISeriesApi<"Line">[]>([]);
+  // A serie de candles precisa sobreviver ao efeito que a cria: e nela que as
+  // linhas de alerta sao penduradas e que a altura do clique vira preco.
+  const serie = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const linhasDeAlerta = useRef<IPriceLine[]>([]);
+
+  // Guardados em ref para o efeito do clique nao precisar deles nas
+  // dependencias -- se precisasse, cada render do pai reassinaria o evento e
+  // remontaria o grafico. A atualizacao vai num efeito sem lista de
+  // dependencias (roda apos toda renderizacao): mexer em ref durante o render
+  // e o que o React proibe, nao mexer nela depois.
+  const aoEscolher = useRef(aoEscolherPreco);
+  const escolhendo = useRef(escolhendoPreco);
+  useEffect(() => {
+    aoEscolher.current = aoEscolherPreco;
+    escolhendo.current = escolhendoPreco;
+  });
 
   // Quanto a banda abriu contra a media recente: o "abrindo" em numero.
   const abertura = useMemo(() => {
@@ -97,6 +133,7 @@ export function Grafico({ barras, eventos, destaque, altura = 400 }: Props) {
       wickDownColor: COR.baixa,
       priceFormat: { type: "price", precision: 2, minMove: 0.01 },
     });
+    serie.current = candles;
     /**
      * O candle do evento fica inteiro ambar -- corpo, borda e pavio -- pareando
      * com a barra de volume daquele dia. E o par de barras douradas que marca o
@@ -182,10 +219,23 @@ export function Grafico({ barras, eventos, destaque, altura = 400 }: Props) {
       c.timeScale().fitContent();
     }
 
+    // Um clique com o modo ligado devolve o preco daquela altura. Assinado uma
+    // vez, junto do grafico: `subscribeClick` nao dispara em arrasto, entao
+    // deslocar o grafico nao escolhe nivel nenhum.
+    c.subscribeClick((param) => {
+      if (!escolhendo.current || !param.point || !serie.current) return;
+      const preco = serie.current.coordinateToPrice(param.point.y);
+      if (preco !== null) aoEscolher.current?.(Number(preco));
+    });
+
     return () => {
       c.remove();
       chart.current = null;
       bandas.current = [];
+      serie.current = null;
+      // As linhas morrem junto com a serie; zerar a lista evita que o efeito
+      // dos alertas tente remover linha de um grafico que nao existe mais.
+      linhasDeAlerta.current = [];
     };
   }, [barras, eventos, destaque, altura]);
 
@@ -194,6 +244,32 @@ export function Grafico({ barras, eventos, destaque, altura = 400 }: Props) {
       s.applyOptions({ visible: mostrarBandas });
     }
   }, [mostrarBandas]);
+
+  /**
+   * As linhas dos alertas, redesenhadas quando a lista muda.
+   *
+   * Efeito separado do que monta o grafico de proposito: criar um alerta nao
+   * pode reconstruir candles, volume e bandas -- alem de piscar, jogaria fora
+   * o zoom e o deslocamento que o usuario tinha ajustado.
+   */
+  useEffect(() => {
+    const s = serie.current;
+    if (!s) return;
+
+    for (const linha of linhasDeAlerta.current) s.removePriceLine(linha);
+    linhasDeAlerta.current = alertas.map((a) =>
+      s.createPriceLine({
+        price: a.preco,
+        // Disparado fica apagado e pontilhado: continua no grafico como
+        // registro do que ja aconteceu, sem competir com o que ainda vigia.
+        color: a.ativo ? COR.ambar : COR.tinta3,
+        lineWidth: 1,
+        lineStyle: a.ativo ? LineStyle.Dashed : LineStyle.Dotted,
+        axisLabelVisible: true,
+        title: a.ativo ? (a.direcao === "acima" ? "▲" : "▼") : "•",
+      }),
+    );
+  }, [alertas]);
 
   if (barras.length === 0) {
     return (
@@ -233,7 +309,16 @@ export function Grafico({ barras, eventos, destaque, altura = 400 }: Props) {
           </span>
         )}
       </div>
-      <div ref={alvo} style={{ height: altura }} />
+      {escolhendoPreco && (
+        <p className="border-b border-linha bg-selecao px-3 py-1.5 text-[11px] text-ambar">
+          Clique na altura do nível que quer vigiar. Dá para ajustar o valor
+          exato depois.
+        </p>
+      )}
+      <div
+        ref={alvo}
+        style={{ height: altura, cursor: escolhendoPreco ? "crosshair" : undefined }}
+      />
     </div>
   );
 }

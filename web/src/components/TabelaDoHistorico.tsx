@@ -26,16 +26,27 @@ export function TabelaDoHistorico({
   const [corte, setCorte] = useState(minimo);
   const [busca, setBusca] = useState("");
   const [soNotificados, setSoNotificados] = useState(false);
+  // null = ordem padrao (pregao mais recente primeiro, ja vinda do banco).
+  // Um clique no cabecalho "Desvio (z)" liga a ordenacao por esse valor;
+  // outro clique inverte; o terceiro volta a ordem padrao.
+  const [ordemZ, setOrdemZ] = useState<"desc" | "asc" | null>(null);
 
   const visiveis = useMemo(() => {
     const alvo = busca.trim().toUpperCase();
-    return eventos.filter(
+    const filtrados = eventos.filter(
       (e) =>
         e.zLog >= corte &&
         (!alvo || e.ticker.includes(alvo)) &&
         (!soNotificados || e.notificado),
     );
-  }, [eventos, corte, busca, soNotificados]);
+    if (!ordemZ) return filtrados;
+    const sinal = ordemZ === "desc" ? -1 : 1;
+    return [...filtrados].sort((a, b) => sinal * (a.zLog - b.zLog));
+  }, [eventos, corte, busca, soNotificados, ordemZ]);
+
+  function alternarOrdemZ() {
+    setOrdemZ((atual) => (atual === "desc" ? "asc" : atual === "asc" ? null : "desc"));
+  }
 
   return (
     <>
@@ -116,10 +127,26 @@ export function TabelaDoHistorico({
             <div className="hidden grid-cols-[96px_88px_68px_74px_82px_92px_110px_1fr] border-b border-linha bg-painel-2 px-3.5 py-2 md:grid">
               <span className="rotulo">Pregão</span>
               <span className="rotulo">Papel</span>
-              <span className="rotulo text-right">z</span>
+              <button
+                type="button"
+                onClick={alternarOrdemZ}
+                aria-label={
+                  ordemZ === "desc"
+                    ? "Ordenado por desvio, do maior para o menor. Clique para inverter."
+                    : ordemZ === "asc"
+                      ? "Ordenado por desvio, do menor para o maior. Clique para voltar ao padrão."
+                      : "Ordenar por desvio"
+                }
+                className="rotulo toque flex items-center justify-end gap-0.5 text-right transition-colors hover:text-tinta"
+              >
+                Desvio (z)
+                <span className="num text-[9px]">
+                  {ordemZ === "desc" ? "↓" : ordemZ === "asc" ? "↑" : "↕"}
+                </span>
+              </button>
               <span className="rotulo text-right">rvol</span>
               <span className="rotulo text-right">Var.</span>
-              <span className="rotulo text-right">z líquido</span>
+              <span className="rotulo text-right">Desvio líquido (z)</span>
               <span className="rotulo text-right">Ticket</span>
               <span className="rotulo text-right">Volume</span>
             </div>

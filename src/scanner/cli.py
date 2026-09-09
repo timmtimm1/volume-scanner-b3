@@ -449,9 +449,7 @@ def _settings() -> Any:
 def alerta_add(
     ticker: Annotated[str, typer.Argument(help="Papel, ex.: PETR4.")],
     preco: Annotated[float, typer.Option("--preco", help="Nivel a vigiar.")],
-    direcao: Annotated[
-        str, typer.Option("--direcao", help="acima | abaixo")
-    ] = "acima",
+    direcao: Annotated[str, typer.Option("--direcao", help="acima | abaixo")] = "acima",
     trade_date: Annotated[
         str, typer.Option("--date", help="Pregao do evento que motivou.")
     ] = "ultimo",

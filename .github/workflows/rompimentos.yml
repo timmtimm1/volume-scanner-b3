@@ -1,6 +1,11 @@
 name: rompimentos
 
-# De 15 em 15 minutos durante o pregao: 13:00 a 21:59 UTC = 10:00 as 18:59 BRT.
+# Disparado por um cron externo (cron-job.org) via workflow_dispatch, nao pelo
+# agendador nativo do GitHub -- que em repo publico gratuito atrasa e falha
+# demais para ser confiavel.
+#
+# Agenda no cron externo: de 15 em 15 minutos durante o pregao, 10:00 as 18:59
+# BRT, de segunda a sexta (cron "7,22,37,52 10-18 * * 1-5", fuso America/Sao_Paulo).
 #
 # Vai ate as 18:xx e nao ate as 17:xx de proposito: o pregao fecha as 18:00 e o
 # leilao de fechamento se estende alguns minutos. Parar as 17:52 perderia
@@ -8,19 +13,11 @@ name: rompimentos
 # leilao so reconfirmam um preco que nao muda mais -- gastam requisicao, nao
 # geram alarme falso.
 #
-# Diferente do `daily`, aqui o atraso do agendador do GitHub custa pouco. Se uma
-# execucao for pulada, a proxima vem 15 minutos depois e o alerta continua
-# ativo esperando -- nada se perde, so chega mais tarde. Foi por isso que a
-# frequencia alta pode ficar no agendador gratuito, enquanto o job diario
-# precisou de horario com folga.
-#
 # Fora do pregao nao roda: alerta de rompimento so faz sentido com o mercado
 # aberto, e checar de madrugada gastaria requisicao dos fornecedores a toa.
 #
-# O minuto 7 evita a fila dos que agendam em ponto (ver o cabecalho do daily).
+# O minuto 7 evita a fila dos que agendam em ponto.
 on:
-  schedule:
-    - cron: "7,22,37,52 13-21 * * 1-5"
   workflow_dispatch:
 
 # Mesmo padrao aplicado ao daily.yml: o token do job so precisa ler o

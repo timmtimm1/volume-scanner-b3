@@ -27,6 +27,7 @@ from scanner.storage.repository import (
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "daily.yml"
 WORKFLOWS = sorted((PROJECT_ROOT / ".github" / "workflows").glob("*.yml"))
+CRON_EXTERNO = PROJECT_ROOT / ".github" / "cron-externo.yml"
 
 FIM = date(2026, 6, 30)
 SESSOES = 50
@@ -151,6 +152,13 @@ def workflow() -> dict[Any, Any]:
     return dict(yaml.safe_load(WORKFLOW.read_text(encoding="utf-8")))
 
 
+def _agenda_externa() -> dict[str, Any]:
+    """A agenda que vive no cron-job.org, declarada em `.github/cron-externo.yml`."""
+    if not CRON_EXTERNO.is_file():
+        pytest.skip("cron-externo.yml ainda nao esta no repositorio")
+    return dict(yaml.safe_load(CRON_EXTERNO.read_text(encoding="utf-8")))
+
+
 @pytest.mark.parametrize(
     "comando",
     [
@@ -164,30 +172,74 @@ def test_workflow_roda_o_pipeline_completo(workflow: dict[Any, Any], comando: st
     assert comando in WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_workflow_roda_de_manha_e_processa_o_pregao_anterior(
+def test_workflow_e_disparado_de_fora_e_nao_pelo_agendador_do_github(
     workflow: dict[Any, Any],
 ) -> None:
-    """10:40 UTC = 07:40 em Brasilia, de terca a sabado.
+    """Sem `on: schedule`: quem agenda e o cron externo de `cron-externo.yml`.
 
-    Rodar na mesma noite nao sobreviveu a B3: as 20:26 BRT o arquivo do dia
-    ainda dava 404, e o teto de 23:59 UTC deixava so 30 minutos de margem. De
-    manha o arquivo do dia anterior esta publicado ha horas.
-
-    Tem de terminar antes das 10h, que e quando o pregao abre -- e ai a leitura
-    deixa de ser preparacao e vira reacao.
+    O agendador nativo do GitHub nao entrega de forma confiavel em repositorio
+    publico gratuito. Deixar os dois ligados faria o `daily` rodar duas vezes
+    nos dias em que o nativo funciona, reprocessando o mesmo pregao.
     """
     gatilhos = workflow.get("on") or workflow.get(True)
     assert isinstance(gatilhos, dict)
-    (agendamento,) = gatilhos["schedule"]
-    minuto, hora, *resto = str(agendamento["cron"]).split()
+    assert "workflow_dispatch" in gatilhos
+    assert "schedule" not in gatilhos, (
+        "o agendador nativo voltou; ou ele sai, ou o job roda duas vezes por dia"
+    )
 
-    brasilia = int(hora) - 3
-    assert 6 <= brasilia < 10, "fora da janela util: depois das 10h o pregao ja abriu"
-    assert minuto != "0", "minuto 0 cai na fila da hora cheia do GitHub"
+
+def test_agenda_externa_roda_de_manha_e_processa_o_pregao_anterior() -> None:
+    """07:40 em Brasilia, de terca a sabado.
+
+    Rodar na mesma noite nao sobreviveu a B3: as 20:26 BRT o arquivo do dia
+    ainda dava 404. De manha o arquivo do dia anterior esta publicado ha horas.
+
+    Tem de terminar antes das 10h, que e quando o pregao abre -- e ai a leitura
+    deixa de ser preparacao e vira reacao.
+
+    O horario mudou de arquivo, nao de natureza: continua sendo decisao do
+    projeto, so que agora aplicada por um painel de fora. Se este teste sumisse
+    junto com o `schedule`, a janela util deixaria de ser verificada por
+    qualquer coisa.
+    """
+    agenda = _agenda_externa()
+    # O fuso do job e Brasilia, entao a hora do cron ja e a hora de Brasilia.
+    assert agenda["timezone"] == "America/Sao_Paulo"
+
+    minuto, hora, *resto = str(agenda["jobs"]["daily"]["cron"]).split()
+    assert 6 <= int(hora) < 10, "fora da janela util: depois das 10h o pregao ja abriu"
+    assert minuto != "0", "minuto 0 cai na fila da hora cheia"
     # Terca a sabado: cada sessao e processada na manha seguinte, e a manha
     # seguinte a sexta e o sabado.
     assert resto == ["*", "*", "2-6"]
-    assert "workflow_dispatch" in gatilhos
+
+
+def test_agenda_externa_cobre_todo_workflow_sem_agendador_proprio() -> None:
+    """Nenhum workflow agendado pode ficar sem quem o dispare.
+
+    O modo de falhar aqui e silencioso: um workflow que perde o `schedule` e
+    nao entra no painel simplesmente para de rodar, e o sintoma e ausencia de
+    mensagem -- indistinguivel de "nao havia nada para avisar".
+    """
+    agenda = _agenda_externa()
+    declarados = {str(j["workflow"]) for j in agenda["jobs"].values()}
+
+    for arquivo in WORKFLOWS:
+        conteudo = dict(yaml.safe_load(arquivo.read_text(encoding="utf-8")))
+        gatilhos = conteudo.get("on") or conteudo.get(True)
+        assert isinstance(gatilhos, dict)
+        # `ci.yml` roda por push/PR: nao precisa de agenda nenhuma.
+        if {"push", "pull_request"} & set(gatilhos):
+            continue
+        assert arquivo.name in declarados, (
+            f"{arquivo.name} nao tem agendador proprio nem esta em cron-externo.yml"
+        )
+
+    for nome in declarados:
+        assert (PROJECT_ROOT / ".github" / "workflows" / nome).is_file(), (
+            f"cron-externo.yml agenda {nome}, que nao existe"
+        )
 
 
 def test_workflow_pede_o_ultimo_pregao_e_nao_o_dia_de_hoje(

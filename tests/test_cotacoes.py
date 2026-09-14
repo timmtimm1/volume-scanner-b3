@@ -25,9 +25,20 @@ HORA = datetime(2026, 9, 14, 16, 14, 30, tzinfo=UTC)
 
 
 def _item_brapi(
-    simbolo: str, preco: object = 49.13, hora: object = "2026-09-14T16:14:30.000Z"
+    simbolo: str,
+    preco: object = 49.13,
+    hora: object = "2026-09-14T16:14:30.000Z",
+    *,
+    pedido: str | None = None,
+    trocado: bool = False,
 ) -> dict[str, object]:
-    return {"symbol": simbolo, "regularMarketPrice": preco, "regularMarketTime": hora}
+    """Um item de `results` no formato do v2: `symbol` + `data` aninhado."""
+    return {
+        "requestedSymbol": pedido or simbolo,
+        "symbol": simbolo,
+        "changed": trocado,
+        "data": {"regularMarketPrice": preco, "regularMarketTime": hora},
+    }
 
 
 def _meta_yahoo(**meta: object) -> dict[str, object]:
@@ -89,15 +100,13 @@ def test_brapi_manda_um_papel_por_requisicao_e_token_no_cabecalho(
     pedidos: list[Pedido] = []
 
     def responder(url: str) -> httpx.Response:
-        simbolos = url.rsplit("/", 1)[1].split(",")
-        return httpx.Response(200, json={"results": [_item_brapi(s) for s in simbolos]})
+        return httpx.Response(200, json={"results": []})
 
     monkeypatch.setattr(brapi.httpx, "get", _falso_get(pedidos, responder))
 
-    cotacoes = BrapiClient(token=TOKEN).cotacoes(["PETR4", "vale3", "../x", "ITUB4"])
+    BrapiClient(token=TOKEN).cotacoes(["PETR4", "vale3", "../x", "ITUB4"])
 
-    assert set(cotacoes) == {"PETR4", "VALE3", "ITUB4"}
-    assert [p.url.rsplit("/", 1)[1] for p in pedidos] == ["PETR4", "VALE3", "ITUB4"]
+    assert [p.params["symbols"] for p in pedidos] == ["PETR4", "VALE3", "ITUB4"]
     for pedido in pedidos:
         assert pedido.headers["Authorization"] == f"Bearer {TOKEN}"
         assert TOKEN not in pedido.url
@@ -112,7 +121,7 @@ def test_brapi_respeita_o_lote_do_plano(monkeypatch: pytest.MonkeyPatch) -> None
         _falso_get(pedidos, lambda url: httpx.Response(200, json={"results": []})),
     )
     BrapiClient(token=TOKEN, lote=10).cotacoes([f"ABCD{i}" for i in range(1, 13)])
-    assert [len(p.url.rsplit("/", 1)[1].split(",")) for p in pedidos] == [10, 2]
+    assert [len(p.params["symbols"].split(",")) for p in pedidos] == [10, 2]
 
 
 def test_brapi_recusa_vira_log_com_status_e_sem_token(
@@ -131,6 +140,19 @@ def test_brapi_recusa_vira_log_com_status_e_sem_token(
         assert BrapiClient(token=TOKEN).cotacoes(["PETR4"]) == {}
     assert "HTTP 401" in caplog.text
     assert TOKEN not in caplog.text
+
+
+def test_brapi_ticker_renomeado_entra_pelo_codigo_novo(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    """`changed: true` significa que o papel foi renomeado -- o dicionario usa
+    o codigo NOVO (`symbol`), que e o que um alerta precisa achar."""
+    item = _item_brapi("RAIL3", pedido="ALLL3", trocado=True)
+    monkeypatch.setattr(brapi.logger, "disabled", False)
+    with caplog.at_level(logging.INFO):
+        cotacoes = brapi.extrair({"results": [item]})
+    assert set(cotacoes) == {"RAIL3"}
+    assert "ALLL3" in caplog.text and "RAIL3" in caplog.text
 
 
 # --- Yahoo ----------------------------------------------------------------------

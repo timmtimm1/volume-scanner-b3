@@ -1,4 +1,11 @@
-"""Cliente da brapi.dev -- fornecedor de cotacoes da B3 com contrato e token."""
+"""Cliente da brapi.dev -- fornecedor de cotacoes da B3 com contrato e token.
+
+Usa a API v2 (`/api/v2/stocks/quote`), que a propria brapi recomenda para
+integracoes novas: o endpoint v1 (`/api/quote/{tickers}`) continua funcionando,
+mas e chamado de "legado" na documentacao. A v2 tambem avisa quando um ticker
+foi renomeado (`changed`), o que o v1 nao fazia -- um alerta cadastrado no
+codigo antigo de um papel renomeado ficaria sem cotacao, em silencio.
+"""
 
 from __future__ import annotations
 
@@ -14,17 +21,18 @@ from scanner.cotacoes.base import Cotacao, ticker_valido
 
 logger = logging.getLogger(__name__)
 
-BASE_URL = "https://brapi.dev/api/quote"
+BASE_URL = "https://brapi.dev/api/v2/stocks/quote"
 TIMEOUT_SECONDS = 15.0
 
 # Papeis por requisicao. Lote acima do que o plano permite e recusado INTEIRO,
 # entao o padrao e o unico valor que funciona em qualquer plano.
 #
-# Medido em 14/09/2026: sem token a brapi responde 401 (MISSING_TOKEN) para
-# qualquer papel fora dos quatro de teste (PETR4, VALE3, MGLU3, ITUB4). Pela
-# FAQ, o plano gratuito aceita 1 papel por requisicao, o Startup 10 e o Pro 20.
-# O codigo antigo mandava lotes de 10 com token e a brapi recusou todas as
-# checagens de 10/09 a 14/09 -- o Yahoo cobriu, e ninguem viu.
+# Medido em 14/09/2026 contra o v1 (mesma conta, mesmo gateway de autenticacao
+# do v2): sem token a brapi responde 401 (MISSING_TOKEN) para qualquer papel
+# fora dos quatro de teste (PETR4, VALE3, MGLU3, ITUB4). Pela FAQ, o plano
+# gratuito aceita 1 papel por requisicao, o Startup 10 e o Pro 20. O codigo
+# antigo mandava lotes de 10 com token e a brapi recusou todas as checagens de
+# 10/09 a 14/09 -- o Yahoo cobriu, e ninguem viu.
 LOTE_PADRAO = 1
 
 
@@ -37,7 +45,7 @@ class BrapiClient:
     nome: str = "brapi"
 
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
-        # Ticker invalido nem sai daqui: ele iria no caminho da URL.
+        # Ticker invalido nem sai daqui: ele iria no parametro da URL.
         limpos = [t.upper() for t in tickers if ticker_valido(t.upper())]
         passo = max(1, self.lote)
         resultado: dict[str, Cotacao] = {}
@@ -46,12 +54,14 @@ class BrapiClient:
         return resultado
 
     def _buscar_lote(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
-        url = f"{BASE_URL}/{','.join(tickers)}"
         # Token no cabecalho, como a brapi recomenda: na query string ele iria
         # parar em qualquer log que imprimisse a URL.
         cabecalhos = {"Authorization": f"Bearer {self.token}"}
+        params = {"symbols": ",".join(tickers)}
         try:
-            resposta = httpx.get(url, headers=cabecalhos, timeout=TIMEOUT_SECONDS)
+            resposta = httpx.get(
+                BASE_URL, params=params, headers=cabecalhos, timeout=TIMEOUT_SECONDS
+            )
             resposta.raise_for_status()
             dados = resposta.json()
         except httpx.HTTPStatusError as exc:
@@ -66,7 +76,7 @@ class BrapiClient:
 
 
 def _hora(bruto: object) -> datetime | None:
-    """`regularMarketTime` da brapi: texto ISO com fuso, como 2026-09-14T16:14:30.000Z."""
+    """`regularMarketTime`: texto ISO com fuso, como 2026-09-14T16:14:30.000Z."""
     if not isinstance(bruto, str):
         return None
     try:
@@ -82,6 +92,10 @@ def extrair(dados: object) -> dict[str, Cotacao]:
     Um campo que suma numa atualizacao do fornecedor viraria KeyError e
     derrubaria a checagem inteira, silenciando TODOS os alertas -- nao so o do
     papel com problema. O que nao vier no formato esperado e ignorado.
+
+    A chave do resultado e `symbol`, nao `requestedSymbol`: se a brapi disser
+    que o ticker mudou (`changed: true`), e o codigo NOVO que deve aparecer no
+    dicionario -- e o que um alerta cadastrado no codigo antigo precisa achar.
     """
     if not isinstance(dados, dict):
         return {}
@@ -94,9 +108,14 @@ def extrair(dados: object) -> dict[str, Cotacao]:
         if not isinstance(item, dict):
             continue
         simbolo = item.get("symbol")
-        preco = item.get("regularMarketPrice")
-        hora = _hora(item.get("regularMarketTime"))
-        if not isinstance(simbolo, str) or preco is None or hora is None:
+        info = item.get("data")
+        if not isinstance(simbolo, str) or not isinstance(info, dict):
+            continue
+        if item.get("changed"):
+            logger.info("[brapi] %s foi renomeado para %s", item.get("requestedSymbol"), simbolo)
+        preco = info.get("regularMarketPrice")
+        hora = _hora(info.get("regularMarketTime"))
+        if preco is None or hora is None:
             continue
         try:
             valor = Decimal(str(preco))

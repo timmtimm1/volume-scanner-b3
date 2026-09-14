@@ -12,6 +12,7 @@ import pytest
 
 from scanner.ingest.download import (
     AindaNaoPublicadoError,
+    B3IndisponivelError,
     DownloadError,
     annual_filename,
     daily_filename,
@@ -84,8 +85,8 @@ def test_desiste_depois_do_limite(monkeypatch: pytest.MonkeyPatch, tmp_path: Pat
         download_daily(DIA, tmp_path, tentativas=3, espera=0)
 
 
-def test_erro_que_nao_e_404_sobe_na_hora(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
-    # Esperar nao conserta rede caida nem 500: so 404 tem retry.
+def test_erro_de_rede_sobe_na_hora(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    # Rede caida do lado do runner nao se resolve esperando 5 minutos.
     chamadas: list[int] = []
 
     def stream(*_a: Any, **_k: Any) -> RespostaFalsa:
@@ -123,3 +124,31 @@ def test_arquivo_incompleto_nao_fica_no_cache(
     with pytest.raises(DownloadError):
         download_daily(DIA, tmp_path, tentativas=1, espera=0)
     assert list(tmp_path.iterdir()) == []
+
+
+@pytest.mark.parametrize("status", [403, 429, 500, 503])
+def test_b3_fora_do_ar_tambem_espera(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path, status: int
+) -> None:
+    # 12/09/2026, 02:42: a B3 respondeu 403 para um arquivo que as 08:57 baixou.
+    chamadas: list[int] = []
+
+    def stream(*_a: Any, **_k: Any) -> RespostaFalsa:
+        chamadas.append(1)
+        return RespostaFalsa(status if len(chamadas) < 2 else 200)
+
+    monkeypatch.setattr(httpx, "stream", stream)
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+
+    assert download_daily(DIA, tmp_path, tentativas=3, espera=0).is_file()
+    assert len(chamadas) == 2
+
+
+def test_b3_fora_do_ar_ate_o_fim_vira_erro_proprio(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    monkeypatch.setattr(httpx, "stream", lambda *a, **k: RespostaFalsa(403))
+    monkeypatch.setattr(time, "sleep", lambda _s: None)
+
+    with pytest.raises(B3IndisponivelError):
+        download_daily(DIA, tmp_path, tentativas=2, espera=0)

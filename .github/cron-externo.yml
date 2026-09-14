@@ -25,15 +25,22 @@
 timezone: America/Sao_Paulo
 
 jobs:
-  daily:
+  daily-noite:
+    workflow: daily.yml
+    cron: "30 21 * * 1-5"
+    porque: >-
+      21:30, segunda a sexta. Processa o pregao do proprio dia, para o resumo
+      chegar na mesma noite. A B3 publicou as 21:08 em 08/09, mas em 11/09
+      (sexta) as 21:59 o arquivo ainda dava 404: por isso esta passada pode
+      terminar como adiada, sem falha, e a da manha existe.
+
+  daily-manha:
     workflow: daily.yml
     cron: "40 7 * * 2-6"
     porque: >-
-      07:40, terca a sabado. Processa o pregao anterior, cujo arquivo a B3
-      publica de madrugada -- rodar na mesma noite nao sobreviveu ao teste: as
-      20:26 o arquivo do dia ainda dava 404. Termina antes das 10h, quando o
-      pregao abre e a leitura deixaria de ser preparacao para virar reacao. O
-      minuto 40 evita a fila da hora cheia.
+      07:40, terca a sabado. Reserva da noite: processa o pregao da vespera se
+      a noite nao conseguiu, e nao repete nada se conseguiu. Termina antes das
+      10h, quando o pregao abre. O minuto 40 evita a fila da hora cheia.
 
   rompimentos:
     workflow: rompimentos.yml

@@ -20,7 +20,7 @@ e devolver um calendario errado em silencio seria pior do que falhar.
 
 from __future__ import annotations
 
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, time, timedelta
 from functools import lru_cache
 from zoneinfo import ZoneInfo
 
@@ -123,10 +123,35 @@ def holidays(year: int) -> frozenset[date]:
     return frozenset(days)
 
 
+# Depois deste horario o pregao do dia esta encerrado: o regular fecha as 17h ou
+# as 18h conforme o horario de verao americano, e o leilao de fechamento vai
+# alguns minutos alem. O arquivo ainda nao saiu, mas o dado do dia ja nao muda.
+FIM_DO_PREGAO = time(18, 30)
+
+
 def hoje_na_b3(agora: datetime | None = None) -> date:
     """O dia corrente em Sao Paulo, independente do fuso da maquina."""
     momento = agora if agora is not None else datetime.now(FUSO_B3)
     return momento.astimezone(FUSO_B3).date()
+
+
+def ultimo_pregao_encerrado(agora: datetime | None = None) -> date:
+    """O pregao mais recente que ja terminou, no relogio de Sao Paulo.
+
+    Hoje, se hoje foi pregao e ja passou do `FIM_DO_PREGAO`; senao, o pregao
+    anterior. E o que os dois disparos do `daily` pedem com o mesmo `ultimo`:
+    as 21:30 e o pregao do proprio dia, as 07:40 e o da vespera.
+
+    Antes, `ultimo` era sempre "o pregao anterior a hoje" pelo relogio da
+    maquina. Funcionava a noite so porque o runner roda em UTC -- as 21:30 de
+    Brasilia ele ja esta no dia seguinte. Numa maquina em Brasilia, o mesmo
+    comando pedia o pregao de ontem.
+    """
+    momento = (agora if agora is not None else datetime.now(FUSO_B3)).astimezone(FUSO_B3)
+    hoje = momento.date()
+    if is_trading_day(hoje) and momento.time() >= FIM_DO_PREGAO:
+        return hoje
+    return previous_trading_day(hoje)
 
 
 def is_holiday(day: date) -> bool:

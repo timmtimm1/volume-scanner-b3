@@ -181,7 +181,16 @@ class _EtapasFalsas:
 
         monkeypatch.setattr(digest, "run_resumo", resumo)
         monkeypatch.setattr(repository, "retention_cutoff", lambda *a: date(2025, 1, 30))
-        monkeypatch.setattr(repository, "prune_bars", lambda *a: (anota("poda", None), (0, 0))[1])
+        monkeypatch.setattr(
+            repository,
+            "prune_bars",
+            lambda *a: (anota("poda", None), repository.Poda(0, 0, 0))[1],
+        )
+        monkeypatch.setattr(
+            repository,
+            "tamanho_do_banco",
+            lambda *a: (150 * 1_048_576, {"daily_features": 60 * 1_048_576}),
+        )
 
 
 def test_daily_roda_as_seis_etapas_do_pregao(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -292,3 +301,12 @@ def test_daily_de_pregao_passado_sem_arquivo_e_falha_de_verdade(
 
     assert result.exit_code not in (0, cli.SAIDA_ADIADO)
     assert isinstance(result.exception, AindaNaoPublicadoError)
+
+
+def test_daily_diz_quanto_o_banco_ocupa(monkeypatch: pytest.MonkeyPatch) -> None:
+    # O limite do plano gratuito do Neon e 0,5 GB: o log de cada pregao mostra
+    # quanto ja foi, sem precisar abrir o painel.
+    _EtapasFalsas(monkeypatch)
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
+    assert result.exit_code == 0, result.output
+    assert "banco com 150 MB (daily_features 60 MB)" in result.output

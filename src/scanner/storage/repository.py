@@ -13,10 +13,10 @@ import json
 from collections.abc import Sequence
 from datetime import date
 from decimal import Decimal
-from typing import Any
+from typing import Any, NamedTuple
 
 import pandas as pd
-from sqlalchemy import Engine, delete, func, select, update
+from sqlalchemy import Engine, delete, func, select, text, update
 from sqlalchemy.dialects.postgresql import insert
 
 from scanner.features import FEATURE_COLUMNS
@@ -286,40 +286,49 @@ def events_for_date(engine: Engine, trade_date: date) -> pd.DataFrame:
         return pd.read_sql(stmt, conn)
 
 
-def prune_bars(engine: Engine, keep_sessions: int) -> tuple[int, int]:
-    """Descarta barras e metricas anteriores aos ultimos N pregoes.
+class Poda(NamedTuple):
+    """Linhas removidas por tabela numa poda."""
+
+    barras: int
+    metricas: int
+    contexto: int
+
+
+def prune_bars(engine: Engine, keep_sessions: int) -> Poda:
+    """Descarta barras, metricas e contexto anteriores aos ultimos N pregoes.
 
     A secao 5 do plano diz que o banco hospedado guarda os ultimos 400 pregoes
     de barras e a tabela de eventos. Eventos NAO sao apagados: a ficha do papel
-    marca eventos antigos mesmo quando as barras daquele periodo ja sairam.
+    marca eventos antigos mesmo quando as barras daquele periodo ja sairam, e o
+    evento guarda o proprio contexto em `events.features`.
 
-    Devolve (barras removidas, metricas removidas).
+    `daily_features` entrou depois desta funcao existir e ficou de fora da poda:
+    crescia sem limite e virou a maior tabela do banco. Agora sai junto, com o
+    mesmo corte -- contexto de um pregao cujas barras e metricas ja sairam nao
+    aparece em tela nenhuma.
     """
     if keep_sessions < 1:
         raise ValueError("keep_sessions precisa ser ao menos 1")
 
-    with engine.connect() as conn:
-        corte = conn.execute(
-            select(DailyBar.trade_date)
-            .distinct()
-            .order_by(DailyBar.trade_date.desc())
-            .limit(1)
-            .offset(keep_sessions - 1)
-        ).scalar_one_or_none()
-
+    corte = retention_cutoff(engine, keep_sessions)
     if corte is None:
-        return 0, 0  # ainda ha menos pregoes do que a retencao pede
+        return Poda(0, 0, 0)  # ainda ha menos pregoes do que a retencao pede
 
     with engine.begin() as conn:
         metricas = conn.execute(
             delete(VolumeMetric).where(VolumeMetric.trade_date < corte)
         ).rowcount
+        contexto = conn.execute(
+            delete(DailyFeature).where(DailyFeature.trade_date < corte)
+        ).rowcount
         barras = conn.execute(delete(DailyBar).where(DailyBar.trade_date < corte)).rowcount
-    return int(barras), int(metricas)
+    return Poda(int(barras), int(metricas), int(contexto))
 
 
 def retention_cutoff(engine: Engine, keep_sessions: int) -> date | None:
     """Primeiro pregao que a retencao mantem, ou None se ainda nao ha o bastante."""
+    if keep_sessions < 1:
+        raise ValueError("keep_sessions precisa ser ao menos 1")
     with engine.connect() as conn:
         return conn.execute(
             select(DailyBar.trade_date)
@@ -328,6 +337,32 @@ def retention_cutoff(engine: Engine, keep_sessions: int) -> date | None:
             .limit(1)
             .offset(keep_sessions - 1)
         ).scalar_one_or_none()
+
+
+def tamanho_do_banco(engine: Engine) -> tuple[int, dict[str, int]]:
+    """Bytes do banco inteiro e de cada tabela do projeto, maior primeiro.
+
+    O plano gratuito do Neon tem 0,5 GB. Sem este numero no log de cada pregao,
+    a unica forma de saber quanto sobra e abrir o painel -- e ninguem abre ate
+    a carga falhar por falta de espaco.
+    """
+    with engine.connect() as conn:
+        total = int(conn.execute(text("SELECT pg_database_size(current_database())")).scalar_one())
+        linhas = conn.execute(
+            text(
+                "SELECT c.relname, pg_total_relation_size(c.oid) "
+                "FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace "
+                "WHERE n.nspname = :schema AND c.relkind = 'r' "
+                "ORDER BY 2 DESC"
+            ),
+            {"schema": SCHEMA},
+        ).all()
+    return total, {str(nome): int(tamanho) for nome, tamanho in linhas}
+
+
+def mb(bytes_: int) -> str:
+    """Bytes em MB inteiros, para log."""
+    return f"{bytes_ / 1_048_576:,.0f} MB"
 
 
 def upsert_features(engine: Engine, features: pd.DataFrame) -> int:

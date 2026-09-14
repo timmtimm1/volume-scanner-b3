@@ -12,6 +12,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { Grafico } from "@/components/Grafico";
 import type { Alerta, Direcao } from "@/lib/alertas";
+import type { CandleDeHoje } from "@/lib/candle-de-hoje";
 import { reais } from "@/lib/formato";
 import type { Barra, Evento } from "@/lib/types";
 
@@ -21,6 +22,7 @@ type Props = {
   eventos: Evento[];
   destaque?: string;
   altura?: number;
+  hoje?: CandleDeHoje | null;
 };
 
 /** Duas casas, que e a precisao de preco na B3. */
@@ -28,7 +30,14 @@ function duasCasas(v: number): string {
   return v.toFixed(2);
 }
 
-export function AlertasDoPapel({ ticker, barras, eventos, destaque, altura }: Props) {
+export function AlertasDoPapel({
+  ticker,
+  barras,
+  eventos,
+  destaque,
+  altura,
+  hoje = null,
+}: Props) {
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [autenticado, setAutenticado] = useState<boolean | null>(null);
   const [abrindo, setAbrindo] = useState(false);
@@ -37,9 +46,15 @@ export function AlertasDoPapel({ ticker, barras, eventos, destaque, altura }: Pr
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
 
-  // O ultimo fechamento serve de referencia para adivinhar a direcao a partir
-  // de onde o usuario clicou.
-  const ultimoFechamento = barras.at(-1)?.close ?? null;
+  // O preco de referencia para adivinhar a direcao a partir de onde o usuario
+  // clicou: o de agora, quando existe. Com o fechamento de ontem, um papel que
+  // subiu desde entao faria um clique abaixo do preco atual virar "subir ate"
+  // -- e o alerta dispararia na primeira checagem.
+  const ultimaBarra = barras.at(-1);
+  const precoDeReferencia =
+    hoje && (!ultimaBarra || hoje.dia >= ultimaBarra.tradeDate)
+      ? hoje.close
+      : (ultimaBarra?.close ?? null);
   const pregaoDoAlerta = destaque ?? barras.at(-1)?.tradeDate ?? null;
 
   /**
@@ -80,13 +95,13 @@ export function AlertasDoPapel({ ticker, barras, eventos, destaque, altura }: Pr
   const escolherNoGrafico = useCallback(
     (valor: number) => {
       setPreco(duasCasas(valor));
-      // Acima ou abaixo sai de onde o clique caiu em relacao ao ultimo
-      // fechamento -- quase sempre o que se quer, e continua trocavel no botao.
-      if (ultimoFechamento !== null) {
-        setDirecao(valor >= ultimoFechamento ? "acima" : "abaixo");
+      // Acima ou abaixo sai de onde o clique caiu em relacao ao preco de
+      // referencia -- quase sempre o que se quer, e continua trocavel no botao.
+      if (precoDeReferencia !== null) {
+        setDirecao(valor >= precoDeReferencia ? "acima" : "abaixo");
       }
     },
-    [ultimoFechamento],
+    [precoDeReferencia],
   );
 
   async function salvar() {
@@ -144,6 +159,7 @@ export function AlertasDoPapel({ ticker, barras, eventos, destaque, altura }: Pr
         alertas={alertas}
         escolhendoPreco={abrindo}
         aoEscolherPreco={escolherNoGrafico}
+        hoje={hoje}
       />
 
       {/* Enquanto a sessao nao foi resolvida nao ha nada aqui: piscar um botao

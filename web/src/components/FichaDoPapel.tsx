@@ -3,9 +3,11 @@
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { AlertasDoPapel } from "@/components/AlertasDoPapel";
+import { candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
 import { aberturaDaBanda, bollinger } from "@/lib/indicadores";
 import {
   data as fmtData,
+  diaCurto,
   dinheiro,
   leituraDaFaixa,
   leituraDoTicket,
@@ -16,6 +18,7 @@ import {
   reais,
 } from "@/lib/formato";
 import type { Barra, Evento } from "@/lib/types";
+import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
 
 type Props = { ticker: string; barras: Barra[]; eventos: Evento[] };
 
@@ -75,6 +78,9 @@ function Linha({
 export function FichaDoPapel({ ticker, barras, eventos }: Props) {
   const params = useSearchParams();
   const pedido = params.get("data");
+  const hoje = useCandleDeHoje(ticker);
+  const parcial = useMemo(() => candleParcial(barras, hoje), [barras, hoje]);
+  const ultimoOficial = barras.at(-1)?.close ?? null;
 
   const evento = useMemo(() => {
     if (pedido) {
@@ -144,6 +150,26 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
               )}
             </div>
           )}
+          {parcial && (
+            <div className="basis-full text-right md:basis-auto">
+              <div className="flex items-baseline justify-end gap-2">
+                <span className="rotulo">{diaCurto(parcial.dia)} parcial</span>
+                <span className="num text-[15px] font-semibold">{reais(parcial.close)}</span>
+                {ultimoOficial !== null && (
+                  <span
+                    className={`num text-[12px] font-semibold ${
+                      parcial.close >= ultimoOficial ? "text-alta" : "text-baixa"
+                    }`}
+                  >
+                    {percentual(parcial.close / ultimoOficial - 1)}
+                  </span>
+                )}
+              </div>
+              <span className="num text-[10px] text-tinta-2">
+                cotação das {horaNaB3(parcial.hora)} · {parcial.fonte}
+              </span>
+            </div>
+          )}
         </div>
       </header>
 
@@ -187,6 +213,7 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
           eventos={eventos}
           destaque={evento?.tradeDate}
           altura={380}
+          hoje={hoje}
         />
       </div>
 

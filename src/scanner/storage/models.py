@@ -114,6 +114,29 @@ class Event(Base):
     notified_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
+class DigestSend(Base):
+    """Carimbo de que o resumo de um pregao ja saiu.
+
+    O alerta se protege de reenvio com `events.notified_at`; o resumo nao tinha
+    equivalente e ia de novo a cada execucao. Isso acontece sozinho, sem ninguem
+    reprocessar nada a mao: o `daily` roda de terca a sabado pedindo `ultimo`, e
+    numa segunda de feriado a terca resolve para a mesma sexta que o sabado ja
+    tinha processado. Na semana de carnaval, tres vezes.
+
+    Tabela propria, e nao uma coluna em outra: o resumo existe por pregao e nao
+    por papel, e num pregao em que nada cruzou o limiar `events` fica vazia --
+    nao haveria linha onde carimbar justamente no dia em que o resumo e a unica
+    coisa que sai.
+    """
+
+    __tablename__ = "digest_sends"
+
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    sent_at: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class PriceAlert(Base):
     """Alerta de rompimento de preco, criado a mao a partir de um evento.
 

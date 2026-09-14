@@ -3,18 +3,21 @@
 from __future__ import annotations
 
 import math
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from datetime import date
 
 import pandas as pd
 import pytest
+from sqlalchemy import Engine, delete
 
 from scanner.calendar import sessions_before
 from scanner.config import AlertConfig, DigestConfig, ScannerConfig
-from scanner.digest import Resumo, montar_resumo, payload_do_resumo
+from scanner.digest import Resumo, montar_resumo, payload_do_resumo, run_resumo
 from scanner.features import compute_features
 from scanner.metrics import compute_zscores
 from scanner.notify.telegram import LARGURA_DO_CELULAR, ConsoleNotifier, format_resumo
+from scanner.storage.models import DigestSend
+from scanner.storage.repository import digest_enviado, marcar_digest_enviado
 
 FIM = date(2026, 6, 30)
 SESSOES = 90
@@ -184,3 +187,78 @@ def test_top_n_invalido_falha_alto() -> None:
         DigestConfig(top_n=0)
     with pytest.raises(ValidationError):
         DigestConfig(top_n=100)
+
+
+# --- Dedupe do envio, contra o Postgres real ---------------------------------
+#
+# O resumo ia de novo a cada execucao do `daily`. Nao por re-run manual: na
+# terca depois de um feriado na segunda, `ultimo` resolve para a sexta que o
+# sabado ja processou, e a mensagem chegava repetida sozinha.
+
+
+@pytest.fixture
+def limpa_digest(engine: Engine) -> Iterator[None]:
+    yield
+    with engine.begin() as conn:
+        conn.execute(delete(DigestSend).where(DigestSend.trade_date == FIM))
+
+
+@pytest.mark.db
+@pytest.mark.usefixtures("limpa_digest")
+def test_resumo_nao_e_reenviado_no_mesmo_pregao(engine: Engine) -> None:
+    b = barras(["AAAA3", "BBBB4"])
+    enviadas: list[str] = []
+    notifier = ConsoleNotifier(sent=enviadas)
+
+    primeiro = run_resumo(engine, CONFIG, FIM, notifier=notifier, bars=b)
+    assert primeiro.repetido is False
+    assert len(enviadas) == 1
+
+    segundo = run_resumo(engine, CONFIG, FIM, notifier=notifier, bars=b)
+    assert segundo.repetido is True, "a segunda passada deveria reconhecer o carimbo"
+    assert len(enviadas) == 1, "o resumo do mesmo pregao saiu duas vezes"
+
+
+@pytest.mark.db
+@pytest.mark.usefixtures("limpa_digest")
+def test_dry_run_mostra_sem_carimbar(engine: Engine) -> None:
+    b = barras(["AAAA3", "BBBB4"])
+    enviadas: list[str] = []
+
+    ensaio = run_resumo(
+        engine, CONFIG, FIM, notifier=ConsoleNotifier(sent=enviadas), bars=b, dry_run=True
+    )
+    assert ensaio.repetido is False
+    assert len(enviadas) == 1
+    assert not digest_enviado(engine, FIM), "o ensaio nao pode carimbar"
+
+    # E o envio de verdade continua acontecendo depois do ensaio.
+    real = run_resumo(engine, CONFIG, FIM, notifier=ConsoleNotifier(sent=enviadas), bars=b)
+    assert real.repetido is False
+    assert len(enviadas) == 2
+
+
+@pytest.mark.db
+@pytest.mark.usefixtures("limpa_digest")
+def test_telegram_recusando_nao_carimba(engine: Engine) -> None:
+    """Se a mensagem nao sai, a proxima passada tem de tentar de novo.
+
+    Carimbar antes do envio perderia o resumo em silencio numa falha de rede --
+    exatamente o que este sistema existe para nao fazer.
+    """
+
+    class Recusa:
+        def send_resumo(self, payload: dict[str, object]) -> bool:
+            return False
+
+    negado = run_resumo(engine, CONFIG, FIM, notifier=Recusa(), bars=barras(["AAAA3"]))
+    assert negado.repetido is False
+    assert not digest_enviado(engine, FIM)
+
+
+@pytest.mark.db
+@pytest.mark.usefixtures("limpa_digest")
+def test_carimbo_e_idempotente(engine: Engine) -> None:
+    assert marcar_digest_enviado(engine, FIM) is True
+    assert marcar_digest_enviado(engine, FIM) is False, "a segunda chamada nao pode duplicar"
+    assert digest_enviado(engine, FIM) is True

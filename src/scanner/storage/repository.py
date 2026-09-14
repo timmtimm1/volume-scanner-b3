@@ -26,6 +26,7 @@ from scanner.storage.models import (
     SCHEMA,
     DailyBar,
     DailyFeature,
+    DigestSend,
     Event,
     PriceAlert,
     VolumeMetric,
@@ -247,6 +248,35 @@ def mark_notified(engine: Engine, event_ids: Sequence[int]) -> int:
             update(Event).where(Event.id.in_(list(event_ids))).values(notified_at=func.now())
         )
         return int(resultado.rowcount)
+
+
+def digest_enviado(engine: Engine, trade_date: date) -> bool:
+    """Se o resumo deste pregao ja saiu alguma vez."""
+    stmt = select(DigestSend.trade_date).where(DigestSend.trade_date == trade_date)
+    with engine.connect() as conn:
+        return conn.execute(stmt).first() is not None
+
+
+def marcar_digest_enviado(engine: Engine, trade_date: date) -> bool:
+    """Carimba o resumo do pregao como enviado. Devolve se esta chamada carimbou.
+
+    `ON CONFLICT DO NOTHING` em vez de deixar estourar: se duas passadas se
+    sobrepuserem, a segunda descobre que perdeu a corrida em vez de derrubar o
+    pipeline inteiro por causa do resumo, que e a ultima etapa.
+
+    O `RETURNING` nao e enfeite: num INSERT com ON CONFLICT DO NOTHING o driver
+    devolve `rowcount == -1` mesmo quando a linha entrou, e "carimbou?" viraria
+    sempre False. Com RETURNING, linha de volta significa insercao e nenhuma
+    linha significa conflito -- que e exatamente a pergunta.
+    """
+    stmt = (
+        insert(DigestSend)
+        .values(trade_date=trade_date)
+        .on_conflict_do_nothing()
+        .returning(DigestSend.trade_date)
+    )
+    with engine.begin() as conn:
+        return conn.execute(stmt).first() is not None
 
 
 def events_for_date(engine: Engine, trade_date: date) -> pd.DataFrame:

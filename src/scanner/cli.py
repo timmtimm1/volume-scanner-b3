@@ -330,7 +330,12 @@ def resumo(
         return
 
     notifier = _notificador(get_settings(), dry_run=dry_run)
-    saida = run_resumo(build_engine(), config, dia, notifier=notifier)
+    saida = run_resumo(build_engine(), config, dia, notifier=notifier, dry_run=dry_run)
+    if saida.repetido:
+        typer.secho(
+            f"[pulado] o resumo de {dia.isoformat()} ja foi enviado.", fg=typer.colors.YELLOW
+        )
+        return
     typer.echo(
         f"{dia.isoformat()}: {len(saida.linhas)} papeis no resumo, "
         f"{saida.avaliados} avaliados, {saida.cruzaram} acima do limiar"
@@ -408,12 +413,17 @@ def daily(
     if not config.digest.enabled:
         etapa(5, "resumo desligado no config")
     else:
-        saida = run_resumo(engine, config, dia, notifier=notifier, contexto=contexto)
-        etapa(
-            5,
-            f"resumo: {len(saida.linhas)} papeis, {saida.avaliados} avaliados, "
-            f"{saida.cruzaram} acima do limiar",
+        saida = run_resumo(
+            engine, config, dia, notifier=notifier, contexto=contexto, dry_run=dry_run
         )
+        if saida.repetido:
+            etapa(5, f"resumo de {dia.isoformat()} ja enviado antes; nao reenviado")
+        else:
+            etapa(
+                5,
+                f"resumo: {len(saida.linhas)} papeis, {saida.avaliados} avaliados, "
+                f"{saida.cruzaram} acima do limiar",
+            )
 
     manter = config.retention.keep_sessions
     corte = retention_cutoff(engine, manter)

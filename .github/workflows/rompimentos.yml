@@ -55,9 +55,51 @@ jobs:
           enable-cache: true
 
       - name: Instalar dependencias
+        id: deps
         run: uv sync --locked --no-dev
 
+      - name: Migrations
+        id: migrations
+        # O `daily` tambem migra, mas so roda de terca a sabado: uma migration
+        # mergeada numa segunda ficaria sem aplicar ate a terca de manha, e
+        # todas as passadas de segunda bateriam num schema velho. Aqui e barato
+        # -- sem migration pendente o alembic sai sem tocar em nada.
+        run: uv run alembic upgrade head
+
       - name: Checar rompimentos
+        id: checagem
         # Sem alerta ativo o comando sai em um segundo, sem tocar a rede: a
         # consulta aos fornecedores so acontece se houver o que vigiar.
         run: uv run scanner alerta checar
+
+      # Sem isto, uma falha aqui e indistinguivel de "nada rompeu": o job fica
+      # vermelho numa aba que ninguem abre e o alerta simplesmente nao chega.
+      # Mesma lacuna de silencio ambiguo que o daily.yml ja fechou -- so que
+      # este roda 36 vezes por dia e e o unico que vigia preco ao vivo.
+      - name: Avisar no Telegram se algo falhou
+        if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
+        shell: bash
+        env:
+          RES_DEPS: ${{ steps.deps.outcome }}
+          RES_MIGRATIONS: ${{ steps.migrations.outcome }}
+          RES_CHECAGEM: ${{ steps.checagem.outcome }}
+        run: |
+          onde="passo desconhecido"
+          if [ "$RES_DEPS" = failure ]; then
+            onde="instalacao das dependencias"
+          elif [ "$RES_MIGRATIONS" = failure ]; then
+            onde="migrations"
+          elif [ "$RES_CHECAGEM" = failure ]; then
+            onde="checagem dos alertas de preco"
+          fi
+
+          onde=$(printf '%s' "$onde" | tr -d '<>&')
+          texto=$(printf '⚠️ <b>A checagem de rompimentos falhou</b>\nOnde: %s\n\nOs alertas de preco continuam ativos e a proxima passada tenta de novo.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+
+          curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
+            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$texto"

@@ -15,7 +15,7 @@ no resumo pela mesma razao que nao interessa no alerta.
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
 
@@ -45,6 +45,9 @@ class Resumo:
     cruzaram: int
     limiar: float
     mkt_vol_z: float | None
+    # True quando o resumo deste pregao ja tinha saido antes e nao foi reenviado.
+    # Distingue "nao mandei porque nao ha nada" de "nao mandei porque ja mandei".
+    repetido: bool = False
 
     @property
     def vazio(self) -> bool:
@@ -159,13 +162,27 @@ def run_resumo(
     notifier: Any = None,
     bars: pd.DataFrame | None = None,
     contexto: Contexto | None = None,
+    dry_run: bool = False,
 ) -> Resumo:
-    """Monta o resumo do pregao e envia.
+    """Monta o resumo do pregao e envia, uma vez por pregao.
+
+    O carimbo em `digest_sends` e o mesmo dedupe que `events.notified_at` da ao
+    alerta: reprocessar um pregao nao reenvia o resumo dele. Isso acontece sem
+    ninguem pedir -- na terca depois de um feriado na segunda, `ultimo` resolve
+    para a sexta que o sabado ja processou.
+
+    A ordem importa e e a mesma do resto do sistema: o carimbo so entra DEPOIS
+    de a mensagem sair. Se o Telegram recusar, nada e gravado e a proxima
+    execucao tenta de novo -- perder o resumo em silencio seria pior do que
+    manda-lo atrasado.
 
     `bars` permite passar as barras prontas em vez de reler o banco; os testes
     usam. `contexto` vai um passo alem: o calculo ja veio pronto de fora, como
-    no `scanner daily`.
+    no `scanner daily`. `dry_run` mostra o que sairia sem carimbar nada, e por
+    isso ignora o carimbo anterior.
     """
+    from scanner.storage.repository import digest_enviado, marcar_digest_enviado
+
     ctx = carregar_contexto(engine, config, bars=bars) if contexto is None else contexto
     if ctx.vazio:
         return Resumo(
@@ -178,7 +195,16 @@ def run_resumo(
         )
 
     resumo = montar_resumo(ctx.metrics, ctx.bars, ctx.features, config, trade_date)
+    if resumo.vazio or notifier is None:
+        return resumo
 
-    if notifier is not None and not resumo.vazio:
+    if dry_run:
         notifier.send_resumo(payload_do_resumo(resumo))
+        return resumo
+
+    if digest_enviado(engine, trade_date):
+        return replace(resumo, repetido=True)
+
+    if notifier.send_resumo(payload_do_resumo(resumo)):
+        marcar_digest_enviado(engine, trade_date)
     return resumo

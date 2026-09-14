@@ -84,6 +84,9 @@ jobs:
       - name: Lint
         run: npm run lint
 
+      - name: Testes
+        run: npm test
+
       # `next build` NAO roda aqui de proposito: ele le o banco em tempo de
       # build, e o Postgres deste job esta vazio. O build de verdade acontece
       # na Vercel, contra o Neon com dado real -- e la que ele tem o que

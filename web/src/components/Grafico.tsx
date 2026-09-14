@@ -23,6 +23,8 @@ import {
 } from "lightweight-charts";
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { Alerta } from "@/lib/alertas";
+import { type CandleDeHoje, candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
+import { diaCurto } from "@/lib/formato";
 import { aberturaDaBanda, bollinger } from "@/lib/indicadores";
 import type { Barra, Evento } from "@/lib/types";
 
@@ -59,6 +61,11 @@ type Props = {
    */
   escolhendoPreco?: boolean;
   aoEscolherPreco?: (preco: number) => void;
+  /**
+   * A cotacao de agora. Vira um candle vazado depois do ultimo pregao oficial,
+   * se for de um pregao que o COTAHIST ainda nao trouxe.
+   */
+  hoje?: CandleDeHoje | null;
 };
 
 export function Grafico({
@@ -69,6 +76,7 @@ export function Grafico({
   alertas = [],
   escolhendoPreco = false,
   aoEscolherPreco,
+  hoje = null,
 }: Props) {
   const alvo = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -77,6 +85,7 @@ export function Grafico({
   // A serie de candles precisa sobreviver ao efeito que a cria: e nela que as
   // linhas de alerta sao penduradas e que a altura do clique vira preco.
   const serie = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const serieDeVolume = useRef<ISeriesApi<"Histogram"> | null>(null);
   const linhasDeAlerta = useRef<IPriceLine[]>([]);
 
   // Guardados em ref para o efeito do clique nao precisar deles nas
@@ -165,6 +174,7 @@ export function Grafico({
       priceFormat: { type: "volume" },
       priceScaleId: "volume",
     });
+    serieDeVolume.current = volume;
     c.priceScale("volume").applyOptions({
       scaleMargins: { top: 0.78, bottom: 0 },
     });
@@ -233,11 +243,52 @@ export function Grafico({
       chart.current = null;
       bandas.current = [];
       serie.current = null;
+      serieDeVolume.current = null;
       // As linhas morrem junto com a serie; zerar a lista evita que o efeito
       // dos alertas tente remover linha de um grafico que nao existe mais.
       linhasDeAlerta.current = [];
     };
   }, [barras, eventos, destaque, altura]);
+
+  const parcial = useMemo(() => candleParcial(barras, hoje), [barras, hoje]);
+
+  /**
+   * O candle do pregao em andamento, por cima do grafico oficial.
+   *
+   * `update` e nao `setData`: acrescenta ou substitui so a ultima barra, sem
+   * reconstruir o grafico nem perder o zoom. As dependencias de montagem estao
+   * na lista para ele ser redesenhado quando o grafico e remontado.
+   *
+   * Vazado, so com o contorno na cor da direcao: e o que separa, no olho, o
+   * candle provisorio dos oficiais. Fica de fora das bandas de Bollinger, que
+   * sao calculadas so com as barras do COTAHIST.
+   *
+   * O volume e aproximado: os fornecedores dao a quantidade de acoes, e o
+   * financeiro sai de acoes vezes o preco de agora, nao do preco medio.
+   */
+  useEffect(() => {
+    const candles = serie.current;
+    if (!candles || !parcial) return;
+
+    const cor = parcial.close >= parcial.open ? COR.alta : COR.baixa;
+    candles.update({
+      time: parcial.dia as Time,
+      open: parcial.open,
+      high: parcial.high,
+      low: parcial.low,
+      close: parcial.close,
+      color: "rgba(0, 0, 0, 0)",
+      borderColor: cor,
+      wickColor: cor,
+    });
+    if (serieDeVolume.current && parcial.volumeAcoes !== null) {
+      serieDeVolume.current.update({
+        time: parcial.dia as Time,
+        value: parcial.volumeAcoes * parcial.close,
+        color: cor + "40",
+      });
+    }
+  }, [parcial, barras, eventos, destaque, altura]);
 
   useEffect(() => {
     for (const s of bandas.current) {
@@ -302,6 +353,12 @@ export function Grafico({
           <span className="h-0.5 w-3" style={{ background: COR.banda }} />
           banda
         </span>
+        {parcial && (
+          <span className="num flex items-center gap-1.5 text-[10px] text-tinta-2">
+            <span className="h-2.5 w-1.5 border border-tinta-2" />
+            {diaCurto(parcial.dia)} parcial · {horaNaB3(parcial.hora)} · {parcial.fonte}
+          </span>
+        )}
         {abertura !== null && (
           <span className="num text-[10px] text-tinta-2">
             largura {abertura >= 1 ? "+" : "−"}

@@ -11,6 +11,7 @@
  */
 
 import { conexaoDeAlertas } from "./db";
+import { TICKER } from "./ticker";
 
 export type Direcao = "acima" | "abaixo";
 
@@ -26,14 +27,6 @@ export type Alerta = {
   fonteDisparo: string | null;
   ativo: boolean;
 };
-
-/**
- * Mesmo formato que o Python valida antes de mandar o ticker para a URL dos
- * fornecedores de cotacao. Repetido aqui de proposito: este e o ponto de
- * entrada do dado, e barrar na porta e mais barato do que confiar que a outra
- * ponta barra.
- */
-const TICKER = /^[A-Z]{4}\d{1,2}[A-Z]?$/;
 
 type Linha = {
   id: string | number;
@@ -93,6 +86,8 @@ export async function criarAlerta(entrada: {
   tradeDate: unknown;
 }): Promise<Alerta> {
   const ticker = String(entrada.ticker ?? "").toUpperCase();
+  // Validado aqui, e nao so na rota: este e o ponto de entrada do dado, e o
+  // ticker salvo vai depois para a URL dos fornecedores de cotacao.
   if (!TICKER.test(ticker)) throw new DadoInvalido("ticker fora do formato da B3");
 
   const preco = Number(entrada.preco);

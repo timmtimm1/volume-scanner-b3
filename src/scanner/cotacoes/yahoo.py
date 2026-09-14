@@ -1,11 +1,13 @@
-"""Cliente do Yahoo Finance -- reserva, sem cadastro nem token."""
+"""Cliente do Yahoo Finance -- sem cadastro nem token, sem contrato."""
 
 from __future__ import annotations
 
 import logging
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import UTC, datetime
 from decimal import Decimal, InvalidOperation
+from typing import Any
 
 import httpx
 
@@ -24,11 +26,7 @@ CABECALHOS = {"User-Agent": "Mozilla/5.0 (compatible; volume-scanner-b3)"}
 
 @dataclass(frozen=True)
 class YahooClient:
-    """Reserva. Uma requisicao por papel, sem token, com algum atraso.
-
-    Serve para cobrir o que a brapi nao respondeu -- e nao para substitui-la:
-    com muitos alertas, uma requisicao por papel fica lento.
-    """
+    """Uma requisicao por papel, sem token. Medido em 14/09: ~15 min de atraso."""
 
     nome: str = "yahoo"
 
@@ -55,15 +53,26 @@ class YahooClient:
             )
             resposta.raise_for_status()
             dados = resposta.json()
+        except httpx.HTTPStatusError as exc:
+            logger.warning("[yahoo] %s recusado com HTTP %s", ticker, exc.response.status_code)
+            return None
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("[yahoo] falha ao buscar %s: %s", ticker, type(exc).__name__)
             return None
+        return extrair(ticker, dados)
 
-        try:
-            meta = dados["chart"]["result"][0]["meta"]
-            bruto = meta.get("regularMarketPrice") or meta.get("chartPreviousClose")
-            valor = Decimal(str(bruto))
-        except (KeyError, IndexError, TypeError, InvalidOperation):
-            return None
 
-        return Cotacao(ticker, valor, "yahoo") if valor > 0 else None
+def extrair(ticker: str, dados: Any) -> Cotacao | None:
+    """Preco e hora do `meta` da resposta, ou None se faltar qualquer um.
+
+    Nao ha reserva para `chartPreviousClose`: ele e o fechamento de ONTEM, e
+    usa-lo quando falta o preco de agora faria um alerta disparar com um preco
+    que nao existe mais.
+    """
+    try:
+        meta = dados["chart"]["result"][0]["meta"]
+        valor = Decimal(str(meta["regularMarketPrice"]))
+        hora = datetime.fromtimestamp(int(meta["regularMarketTime"]), tz=UTC)
+    except (KeyError, IndexError, TypeError, ValueError, InvalidOperation, OverflowError):
+        return None
+    return Cotacao(ticker, valor, "yahoo", hora) if valor > 0 else None

@@ -11,6 +11,7 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 from dataclasses import dataclass
+from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 
@@ -30,15 +31,21 @@ def ticker_valido(valor: str) -> bool:
 
 @dataclass(frozen=True)
 class Cotacao:
-    """Preco de um papel agora, e de onde ele veio.
+    """Preco de um papel, de quando e de onde ele veio.
 
     `fonte` nao e enfeite: quando um alerta disparar em preco que parece
     estranho, a primeira pergunta e "qual fornecedor disse isso?".
+
+    `hora` e o momento da cotacao segundo o fornecedor, com fuso. Nenhum dos
+    dois e tempo real -- a brapi gratuita atrasa cerca de 30 minutos, o Yahoo
+    cerca de 15 -- e sem a hora nao da para saber se o preco e de agora ou do
+    fechamento de ontem. Cotacao sem hora nao entra no sistema.
     """
 
     ticker: str
     preco: Decimal
     fonte: str
+    hora: datetime
 
 
 class ProvedorDeCotacoes(Protocol):
@@ -56,7 +63,7 @@ class ProvedorDeCotacoes(Protocol):
         ...
 
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
-        """Preco atual dos tickers pedidos.
+        """Ultima cotacao conhecida dos tickers pedidos.
 
         Devolve so o que conseguiu. Ticker ausente do resultado significa "nao
         sei", nunca "nao existe" -- e quem chama decide o que fazer com isso.

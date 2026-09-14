@@ -20,8 +20,14 @@ e devolver um calendario errado em silencio seria pior do que falhar.
 
 from __future__ import annotations
 
-from datetime import date, timedelta
+from datetime import date, datetime, timedelta
 from functools import lru_cache
+from zoneinfo import ZoneInfo
+
+# Fuso da B3. "Hoje" para o pregao e o dia em Sao Paulo, nao o do servidor: o
+# runner do Actions roda em UTC, e das 21h a meia-noite de Brasilia ele ja esta
+# no dia seguinte.
+FUSO_B3 = ZoneInfo("America/Sao_Paulo")
 
 # Antes de 2022 a B3 ainda observava feriados municipais de Sao Paulo.
 FIRST_SUPPORTED_YEAR = 2022
@@ -115,6 +121,12 @@ def holidays(year: int) -> frozenset[date]:
     if year >= BLACK_AWARENESS_FIRST_YEAR:
         days.add(date(year, 11, 20))
     return frozenset(days)
+
+
+def hoje_na_b3(agora: datetime | None = None) -> date:
+    """O dia corrente em Sao Paulo, independente do fuso da maquina."""
+    momento = agora if agora is not None else datetime.now(FUSO_B3)
+    return momento.astimezone(FUSO_B3).date()
 
 
 def is_holiday(day: date) -> bool:

@@ -431,12 +431,22 @@ app.add_typer(alerta_app, name="alerta")
 
 
 def _provedor_de_cotacoes() -> Any:
-    """brapi na frente, Yahoo cobrindo as lacunas."""
-    from scanner.cotacoes import BrapiClient, ProvedorEncadeado, YahooClient
+    """brapi e Yahoo, ficando com a cotacao mais recente de cada papel.
+
+    Sem token a brapi fica de fora: ela responde 401 para qualquer papel alem
+    dos quatro de teste, e cada passada gastaria uma requisicao por papel so
+    para encher o log de recusa.
+    """
+    from scanner.cotacoes import BrapiClient, ProvedorMaisRecente, YahooClient
 
     settings = _settings()
-    token = settings.brapi_token.get_secret_value() if settings.brapi_token else None
-    return ProvedorEncadeado((BrapiClient(token=token), YahooClient()))
+    provedores: list[Any] = []
+    if settings.brapi_token:
+        provedores.append(
+            BrapiClient(token=settings.brapi_token.get_secret_value(), lote=settings.brapi_lote)
+        )
+    provedores.append(YahooClient())
+    return ProvedorMaisRecente(tuple(provedores))
 
 
 def _settings() -> Any:
@@ -522,15 +532,15 @@ def alerta_checar(
     ] = False,
 ) -> None:
     """Consulta o preco atual e dispara os alertas que romperam."""
-    from scanner.calendar import is_trading_day
+    from scanner.calendar import hoje_na_b3, is_trading_day
     from scanner.config import get_settings
     from scanner.rompimentos import checar_rompimentos
     from scanner.storage.engine import build_engine
 
     # O cron roda de segunda a sexta, mas feriado da B3 tambem cai em dia util.
     # Sem esta guarda, um feriado gastaria 36 consultas aos fornecedores para
-    # reler um preco que nao se move.
-    if not is_trading_day(date.today()):
+    # reler um preco que nao se move. O dia e o de Sao Paulo, nao o do runner.
+    if not is_trading_day(hoje_na_b3()):
         typer.secho("[pulado] hoje nao e pregao.", fg=typer.colors.YELLOW)
         return
 

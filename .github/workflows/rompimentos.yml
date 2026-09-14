@@ -45,9 +45,12 @@ jobs:
       SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
       SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
       SCANNER_WEB_BASE_URL: ${{ vars.SCANNER_WEB_BASE_URL }}
-      # Opcional: sem ele a brapi aceita lotes de ate 3 papeis e o Yahoo cobre
-      # o resto. O encadeamento funciona nos dois casos.
+      # Opcional: sem token a brapi fica de fora e so o Yahoo responde. Com
+      # ele, os dois sao consultados e vale a cotacao de hora mais nova.
       SCANNER_BRAPI_TOKEN: ${{ secrets.SCANNER_BRAPI_TOKEN }}
+      # Papeis por requisicao na brapi. Padrao 1, o do plano gratuito; 10 no
+      # Startup, 20 no Pro. Nao e segredo.
+      SCANNER_BRAPI_LOTE: ${{ vars.SCANNER_BRAPI_LOTE || '1' }}
 
     steps:
       - uses: actions/checkout@v5

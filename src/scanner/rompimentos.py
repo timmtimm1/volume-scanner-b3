@@ -11,6 +11,7 @@ coisas diferentes: aquele nasce da estatistica, este nasce de um clique.
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
@@ -18,6 +19,7 @@ from typing import Any, Literal
 
 from sqlalchemy import Engine
 
+from scanner.calendar import hoje_na_b3
 from scanner.cotacoes.base import Cotacao, ProvedorDeCotacoes
 
 Direcao = Literal["acima", "abaixo"]
@@ -59,13 +61,23 @@ class RelatorioDeChecagem:
     consultados: int
     sem_cotacao: int
     disparados: int
+    # Cotacoes que chegaram mas nao sao do pregao de hoje, e por isso nao valem.
+    velhas: int = 0
+    # De qual fornecedor veio cada cotacao usada, ex.: {"yahoo": 3, "brapi": 1}.
+    # E o que deixa visivel um fornecedor que parou de responder: sem isto, a
+    # brapi recusou todas as checagens por dias e o log so dizia "0 dispararam".
+    fontes: tuple[tuple[str, int], ...] = ()
 
     def summary(self) -> str:
         """Uma linha para log e CLI."""
         faltou = f", {self.sem_cotacao} sem cotacao" if self.sem_cotacao else ""
+        velhas = f", {self.velhas} de outro dia ignoradas" if self.velhas else ""
+        fontes = (
+            " (" + ", ".join(f"{nome} {n}" for nome, n in self.fontes) + ")" if self.fontes else ""
+        )
         return (
-            f"{self.ativos} alertas ativos, {self.consultados} papeis consultados"
-            f"{faltou}, {self.disparados} dispararam"
+            f"{self.ativos} alertas ativos, {self.consultados} papeis consultados{fontes}"
+            f"{faltou}{velhas}, {self.disparados} dispararam"
         )
 
 
@@ -80,6 +92,22 @@ def rompeu(alerta: Alerta, cotacao: Cotacao) -> bool:
     if alerta.direcao == "acima":
         return cotacao.preco >= alerta.preco
     return cotacao.preco <= alerta.preco
+
+
+def cotacoes_de_hoje(cotacoes: dict[str, Cotacao], hoje: date) -> dict[str, Cotacao]:
+    """So as cotacoes do pregao de hoje, no fuso da B3.
+
+    Antes da abertura, num feriado ou quando o fornecedor trava, a "ultima
+    cotacao" e o fechamento de um dia anterior. Esse preco pode estar alem do
+    nivel sem que o papel tenha ido la hoje -- e o alerta dispararia por um
+    movimento que ja aconteceu. Cotacao de outro dia nao dispara nem cancela: o
+    alerta segue ativo para a proxima passada.
+
+    Nao ha corte por idade dentro do dia. Um preco de 30 minutos atras que tocou
+    o nivel e um toque que de fato aconteceu hoje; a hora vai na mensagem para
+    quem le saber de quando e.
+    """
+    return {t: c for t, c in cotacoes.items() if hoje_na_b3(c.hora) == hoje}
 
 
 def selecionar_disparos(alertas: list[Alerta], cotacoes: dict[str, Cotacao]) -> list[Disparo]:
@@ -103,6 +131,7 @@ def payload_do_disparo(disparo: Disparo) -> dict[str, Any]:
         "nivel": float(disparo.alerta.preco),
         "preco": float(disparo.cotacao.preco),
         "fonte": disparo.cotacao.fonte,
+        "hora": disparo.cotacao.hora,
         "criado_em": disparo.alerta.criado_em,
         "trade_date": disparo.alerta.trade_date,
     }
@@ -114,6 +143,7 @@ def checar_rompimentos(
     *,
     notifier: Any = None,
     dry_run: bool = False,
+    hoje: date | None = None,
 ) -> RelatorioDeChecagem:
     """Uma passada: le os ativos, consulta o preco, avisa e desativa.
 
@@ -121,6 +151,8 @@ def checar_rompimentos(
     sair -- se o Telegram recusar, ele continua ativo e tenta de novo daqui a
     15 minutos. O contrario perderia o aviso em silencio, que e exatamente o
     que este sistema existe para nao fazer.
+
+    `hoje` existe para os testes fixarem o dia; em producao e o dia em Sao Paulo.
     """
     from scanner.storage.repository import alertas_ativos, marcar_disparado
 
@@ -129,7 +161,8 @@ def checar_rompimentos(
         return RelatorioDeChecagem(0, 0, 0, 0)
 
     tickers = sorted({a.ticker for a in alertas})
-    cotacoes = provedor.cotacoes(tickers)
+    recebidas = provedor.cotacoes(tickers)
+    cotacoes = cotacoes_de_hoje(recebidas, hoje if hoje is not None else hoje_na_b3())
     disparos = selecionar_disparos(alertas, cotacoes)
 
     enviados = 0
@@ -148,6 +181,8 @@ def checar_rompimentos(
     return RelatorioDeChecagem(
         ativos=len(alertas),
         consultados=len(tickers),
-        sem_cotacao=len([t for t in tickers if t not in cotacoes]),
+        sem_cotacao=len([t for t in tickers if t not in recebidas]),
         disparados=enviados,
+        velhas=len(recebidas) - len(cotacoes),
+        fontes=tuple(sorted(Counter(c.fonte for c in cotacoes.values()).items())),
     )

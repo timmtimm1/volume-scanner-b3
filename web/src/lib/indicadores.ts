@@ -71,3 +71,54 @@ export function aberturaDaBanda(
   const media = janela.reduce((a, b) => a + b.largura, 0) / janela.length;
   return media > 0 ? atual / media : null;
 }
+
+export type TipoDeMedia = "MMA" | "MME";
+
+export type PontoDaMedia = { tradeDate: string; valor: number };
+
+/**
+ * Media movel aritmetica (MMA) do fechamento: a media simples dos ultimos
+ * `periodo` pregoes, incluindo o dia.
+ *
+ * O primeiro ponto so existe quando ha `periodo` fechamentos. Antes disso nao
+ * ha media -- desenhar uma media de menos dias seria outra linha com o mesmo
+ * nome.
+ */
+export function mediaMovelAritmetica(barras: Barra[], periodo: number): PontoDaMedia[] {
+  if (!Number.isInteger(periodo) || periodo < 2) throw new Error("periodo minimo e 2");
+  const saida: PontoDaMedia[] = [];
+  let soma = 0;
+  for (let i = 0; i < barras.length; i++) {
+    soma += barras[i].close;
+    if (i >= periodo) soma -= barras[i - periodo].close;
+    if (i >= periodo - 1) saida.push({ tradeDate: barras[i].tradeDate, valor: soma / periodo });
+  }
+  return saida;
+}
+
+/**
+ * Media movel exponencial (MME) do fechamento, com fator 2/(periodo+1).
+ *
+ * A semente e a MMA dos `periodo` primeiros fechamentos -- a convencao das
+ * plataformas de grafico. Comecar do primeiro fechamento puro faria a linha
+ * depender de quantos pregoes vieram antes, e duas telas com janelas diferentes
+ * mostrariam MMEs diferentes para o mesmo dia.
+ */
+export function mediaMovelExponencial(barras: Barra[], periodo: number): PontoDaMedia[] {
+  if (!Number.isInteger(periodo) || periodo < 2) throw new Error("periodo minimo e 2");
+  if (barras.length < periodo) return [];
+  const k = 2 / (periodo + 1);
+  let valor = barras.slice(0, periodo).reduce((a, b) => a + b.close, 0) / periodo;
+  const saida: PontoDaMedia[] = [{ tradeDate: barras[periodo - 1].tradeDate, valor }];
+  for (let i = periodo; i < barras.length; i++) {
+    valor = barras[i].close * k + valor * (1 - k);
+    saida.push({ tradeDate: barras[i].tradeDate, valor });
+  }
+  return saida;
+}
+
+export function mediaMovel(barras: Barra[], tipo: TipoDeMedia, periodo: number): PontoDaMedia[] {
+  return tipo === "MMA"
+    ? mediaMovelAritmetica(barras, periodo)
+    : mediaMovelExponencial(barras, periodo);
+}

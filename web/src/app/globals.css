@@ -1,60 +1,154 @@
 @import "tailwindcss";
 
 /*
- * Escuro por padrao, densidade de terminal (secao 6 do plano).
+ * Dois temas, claro e escuro, com as mesmas funcoes de cor.
  *
- * Regra de cor que nao se quebra: verde e vermelho existem SO para direcao de
- * preco. O ambar e a cor de interface -- selecao, z-score, marcador de evento.
- * Se algo alem de direcao precisar de destaque, usa ambar ou cinza, nunca as
- * duas cores de direcao.
+ * O claro segue a referencia escolhida em 14/09/2026: fundo cinza-lavanda,
+ * cartoes brancos, azul-marinho no que e principal e indigo nos destaques. O
+ * escuro inverte o papel de cada tom -- o principal vira lavanda claro com
+ * texto marinho -- em vez de escurecer a mesma paleta.
+ *
+ * Regras que nao mudam entre temas:
+ * - verde e vermelho existem SO para direcao de preco;
+ * - dourado existe SO para o evento (candle, barra de volume, anel acima de 6σ);
+ * - o indigo e a cor de interface: selecao, foco, links, controles.
+ *
+ * O tema e escolhido pelo atributo `data-tema` no <html>. Sem ele, vale o do
+ * sistema. O script em layout.tsx grava o atributo antes da primeira pintura.
  */
-@theme {
-  --color-fundo: #0a0e14;
-  --color-painel: #10161f;
-  --color-painel-2: #151d28;
-  --color-selecao: #1a2432;
-  --color-linha: #1f2937;
-  --color-linha-2: #2a3543;
 
-  --color-tinta: #e8eef6;
-  --color-tinta-2: #94a6ba;
-  --color-tinta-3: #5d7186;
-
-  --color-ambar: #ffb020;
-  --color-ambar-forte: #ffc659;
-  --color-alta: #26c281;
-  --color-baixa: #ff5c5c;
-
-  --font-sans: "IBM Plex Sans", system-ui, sans-serif;
-  --font-mono: "IBM Plex Mono", ui-monospace, monospace;
+:root {
+  --fundo: #eef0f6;
+  --painel: #ffffff;
+  --painel-2: #f6f7fb;
+  --selecao: #eceafe;
+  --linha: #e6e7f0;
+  --linha-2: #d7d8e6;
+  --tinta: #17163b;
+  --tinta-2: #4a4d6a;
+  --tinta-3: #666985;
+  --acento: #4f46e5;
+  --lavanda: #cfcbfa;
+  --primario: #26235f;
+  --primario-tinta: #ffffff;
+  --alta: #077a52;
+  --alta-fundo: #e3f6ee;
+  --baixa: #c5353b;
+  --baixa-fundo: #fdecec;
+  --evento: #f0a020;
+  --evento-fundo: #fff3d6;
+  --evento-tinta: #8a5a00;
+  --sombra: 0 10px 30px rgb(38 35 95 / 0.12);
+  color-scheme: light;
 }
 
-html {
+@media (prefers-color-scheme: dark) {
+  :root:not([data-tema="claro"]) {
+    --fundo: #0e0f1a;
+    --painel: #171829;
+    --painel-2: #1f2036;
+    --selecao: #2a2758;
+    --linha: #26283f;
+    --linha-2: #34365a;
+    --tinta: #ededf7;
+    --tinta-2: #b3b4cf;
+    --tinta-3: #9092b0;
+    --acento: #8e87ff;
+    --lavanda: #4a4690;
+    --primario: #e4e1ff;
+    --primario-tinta: #1b1847;
+    --alta: #34d399;
+    --alta-fundo: #11332a;
+    --baixa: #ff7a7f;
+    --baixa-fundo: #3a1a1e;
+    --evento: #f0a020;
+    --evento-fundo: #3a2e12;
+    --evento-tinta: #f5c15c;
+    --sombra: 0 10px 30px rgb(0 0 0 / 0.45);
+    color-scheme: dark;
+  }
+}
+
+:root[data-tema="escuro"] {
+  --fundo: #0e0f1a;
+  --painel: #171829;
+  --painel-2: #1f2036;
+  --selecao: #2a2758;
+  --linha: #26283f;
+  --linha-2: #34365a;
+  --tinta: #ededf7;
+  --tinta-2: #b3b4cf;
+  --tinta-3: #9092b0;
+  --acento: #8e87ff;
+  --lavanda: #4a4690;
+  --primario: #e4e1ff;
+  --primario-tinta: #1b1847;
+  --alta: #34d399;
+  --alta-fundo: #11332a;
+  --baixa: #ff7a7f;
+  --baixa-fundo: #3a1a1e;
+  --evento: #f0a020;
+  --evento-fundo: #3a2e12;
+  --evento-tinta: #f5c15c;
+  --sombra: 0 10px 30px rgb(0 0 0 / 0.45);
   color-scheme: dark;
 }
 
+@theme inline {
+  --color-fundo: var(--fundo);
+  --color-painel: var(--painel);
+  --color-painel-2: var(--painel-2);
+  --color-selecao: var(--selecao);
+  --color-linha: var(--linha);
+  --color-linha-2: var(--linha-2);
+  --color-tinta: var(--tinta);
+  --color-tinta-2: var(--tinta-2);
+  --color-tinta-3: var(--tinta-3);
+  --color-acento: var(--acento);
+  --color-lavanda: var(--lavanda);
+  --color-primario: var(--primario);
+  --color-primario-tinta: var(--primario-tinta);
+  --color-alta: var(--alta);
+  --color-alta-fundo: var(--alta-fundo);
+  --color-baixa: var(--baixa);
+  --color-baixa-fundo: var(--baixa-fundo);
+  --color-evento: var(--evento);
+  --color-evento-fundo: var(--evento-fundo);
+  --color-evento-tinta: var(--evento-tinta);
+
+  --font-sans: var(--fonte-sans), "Segoe UI", system-ui, sans-serif;
+}
+
 body {
-  background: var(--color-fundo);
-  color: var(--color-tinta);
+  background: var(--fundo);
+  color: var(--tinta);
   font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
 }
 
 /*
  * Numerais tabulares em toda coluna numerica. Sem isto as casas decimais
- * dancam entre as linhas e a tabela parece amadora -- o plano e explicito.
+ * dancam entre as linhas -- o plano e explicito. A Manrope tem os algarismos
+ * tabulares, entao nao e preciso trocar de fonte para numero.
  */
 .num {
-  font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum";
 }
 
 .rotulo {
-  font-size: 10px;
-  letter-spacing: 0.08em;
+  font-size: 11px;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  color: var(--color-tinta-3);
-  font-weight: 600;
+  color: var(--tinta-3);
+  font-weight: 700;
+}
+
+/* O cartao: a unidade de superficie das telas. */
+.cartao {
+  background: var(--painel);
+  border: 1px solid var(--linha);
+  border-radius: 18px;
 }
 
 /* O alvo de toque no celular nunca fica abaixo de 44px. */
@@ -65,10 +159,54 @@ body {
 }
 
 input[type="range"] {
-  accent-color: var(--color-ambar);
+  accent-color: var(--acento);
+}
+
+:focus-visible {
+  outline: 2px solid var(--acento);
+  outline-offset: 2px;
 }
 
 ::selection {
-  background: var(--color-ambar);
-  color: var(--color-fundo);
+  background: var(--acento);
+  color: var(--painel);
+}
+
+/* Barras que sobem ao abrir e o ponto que pulsa no preco de agora. */
+.sobe {
+  transform-box: fill-box;
+  transform-origin: bottom;
+  animation: sobe 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) both;
+}
+
+.pulso {
+  animation: pulso 2.2s ease-in-out infinite;
+}
+
+@keyframes sobe {
+  from {
+    transform: scaleY(0.35);
+  }
+  to {
+    transform: scaleY(1);
+  }
+}
+
+@keyframes pulso {
+  0%,
+  100% {
+    transform: scale(0.7);
+    opacity: 0.15;
+  }
+  50% {
+    transform: scale(1.3);
+    opacity: 0.35;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sobe,
+  .pulso {
+    animation: none;
+  }
 }

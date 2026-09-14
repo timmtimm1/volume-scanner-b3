@@ -1,18 +1,17 @@
 import type { Metadata, Viewport } from "next";
-import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
+import { Manrope } from "next/font/google";
 import { Navegacao } from "@/components/Navegacao";
+import { SCRIPT_DO_TEMA } from "@/lib/tema";
 import "./globals.css";
 
-const sans = IBM_Plex_Sans({
+/**
+ * Manrope para tudo, texto e numero: tem algarismos tabulares, entao as colunas
+ * nao dancam sem precisar de uma segunda fonte monoespacada.
+ */
+const sans = Manrope({
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   variable: "--fonte-sans",
-});
-
-const mono = IBM_Plex_Mono({
-  subsets: ["latin"],
-  weight: ["400", "500", "600"],
-  variable: "--fonte-mono",
 });
 
 export const metadata: Metadata = {
@@ -23,7 +22,7 @@ export const metadata: Metadata = {
   appleWebApp: {
     capable: true,
     title: "vol-scanner",
-    statusBarStyle: "black-translucent",
+    statusBarStyle: "default",
   },
   icons: {
     icon: [{ url: "/icone-192.png", sizes: "192x192", type: "image/png" }],
@@ -32,11 +31,14 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#0a0e14",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#eef0f6" },
+    { media: "(prefers-color-scheme: dark)", color: "#0e0f1a" },
+  ],
   width: "device-width",
   initialScale: 1,
-  // Instalado na tela inicial, a barra inferior de navegacao encosta na area
-  // do gesto do sistema; `viewport-fit` deixa o padding seguro funcionar.
+  // Instalado na tela inicial, a barra de navegacao encosta na area do gesto
+  // do sistema; `viewport-fit` deixa o padding seguro funcionar.
   viewportFit: "cover",
 };
 
@@ -44,10 +46,17 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    <html lang="pt-BR" className={`${sans.variable} ${mono.variable}`}>
-      <body className="min-h-dvh md:flex">
+    // O script do tema grava `data-tema` antes de o React hidratar: a diferenca
+    // de atributo entre servidor e cliente e esperada.
+    <html lang="pt-BR" className={sans.variable} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_DO_TEMA }} />
+      </head>
+      <body className="min-h-dvh">
         <Navegacao />
-        <main className="min-w-0 flex-1 pb-16 md:pb-0">{children}</main>
+        <main className="mx-auto w-full max-w-[1440px] px-4 pb-28 pt-3 md:px-6 md:pb-8 md:pt-4">
+          {children}
+        </main>
       </body>
     </html>
   );

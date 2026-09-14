@@ -22,7 +22,7 @@
 
 import { Pool } from "pg";
 import { PISO_DE_VOLUME, UNIVERSO, Z_MINIMO_DO_SITE } from "./config";
-import type { Barra, Evento, Papel, Pregao, Universo } from "./types";
+import type { Barra, Evento, FaixaDeDesvio, Papel, Pregao, Universo } from "./types";
 
 let pool: Pool | null = null;
 
@@ -339,4 +339,58 @@ export async function universo(): Promise<Universo> {
     coberturaMinima: UNIVERSO.coberturaMinima,
     avaliados: todos.length,
   };
+}
+
+/** Quantos papeis do pregao ficaram em cada faixa de desvio, pelo maior z entre as janelas. */
+export async function distribuicaoDoPregao(data: string): Promise<FaixaDeDesvio[]> {
+  const { rows } = await conexao().query<{ faixa: number; papeis: string }>(
+    `SELECT LEAST(GREATEST(FLOOR(z)::int, 0), 6) AS faixa, COUNT(*) AS papeis
+       FROM (
+         SELECT m.ticker, MAX(m.z_log) AS z
+           FROM volume_scanner.volume_metrics m
+           JOIN volume_scanner.daily_bars b
+             ON b.ticker = m.ticker AND b.trade_date = m.trade_date
+          WHERE m.trade_date = $1 AND m.z_log IS NOT NULL AND b.volume_financial >= $2
+          GROUP BY m.ticker
+       ) t
+      GROUP BY 1`,
+    [data, PISO_DE_VOLUME],
+  );
+  const porFaixa = new Map(rows.map((r) => [Number(r.faixa), Number(r.papeis)]));
+  return [0, 1, 2, 3, 4, 5, 6].map((faixa) => ({ faixa, papeis: porFaixa.get(faixa) ?? 0 }));
+}
+
+/**
+ * Os ultimos `sessoes` pregoes de cada papel pedido, ate `data`, numa consulta.
+ * Alimenta os mini-graficos do scanner: volume de cada linha e a previa.
+ */
+export async function barrasRecentes(
+  tickers: string[],
+  data: string,
+  sessoes = 40,
+): Promise<Record<string, Barra[]>> {
+  if (tickers.length === 0) return {};
+  const { rows } = await conexao().query(
+    `SELECT ticker, trade_date, open, high, low, close, volume_financial
+       FROM (
+         SELECT b.*, ROW_NUMBER() OVER (PARTITION BY b.ticker ORDER BY b.trade_date DESC) AS n
+           FROM volume_scanner.daily_bars b
+          WHERE b.ticker = ANY($1) AND b.trade_date <= $2
+       ) t
+      WHERE n <= $3
+      ORDER BY ticker, trade_date`,
+    [tickers, data, sessoes],
+  );
+  const saida: Record<string, Barra[]> = {};
+  for (const r of rows) {
+    (saida[r.ticker] ??= []).push({
+      tradeDate: dia(r.trade_date),
+      open: num(r.open),
+      high: num(r.high),
+      low: num(r.low),
+      close: num(r.close) ?? 0,
+      volumeFinancial: num(r.volume_financial) ?? 0,
+    });
+  }
+  return saida;
 }

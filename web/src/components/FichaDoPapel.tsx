@@ -1,13 +1,15 @@
 "use client";
 
+import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
-import { AlertasDoPapel } from "@/components/AlertasDoPapel";
+import { AnelDoDesvio } from "@/components/AnelDoDesvio";
+import { Grafico } from "@/components/Grafico";
+import { PainelDeAlerta } from "@/components/PainelDeAlerta";
 import { candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
-import { aberturaDaBanda, bollinger } from "@/lib/indicadores";
+import { LIMIAR_DO_ALERTA } from "@/lib/config";
 import {
   data as fmtData,
-  diaCurto,
   dinheiro,
   leituraDaFaixa,
   leituraDoTicket,
@@ -18,62 +20,73 @@ import {
   reais,
 } from "@/lib/formato";
 import type { Barra, Evento } from "@/lib/types";
+import { useAlertasDoPapel } from "@/lib/useAlertasDoPapel";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
 
 type Props = { ticker: string; barras: Barra[]; eventos: Evento[] };
 
-function Metrica({
-  rotulo,
-  valor,
-  nota,
-  destaque,
-}: {
-  rotulo: string;
-  valor: string;
-  nota?: string;
-  destaque?: boolean;
-}) {
+/** Onde a barra de cada janela fecha: 8σ ocupa a largura toda. */
+const TETO_DAS_JANELAS = 8;
+
+function ChipDeVariacao({ valor, grande = false }: { valor: number | null; grande?: boolean }) {
+  if (valor === null) return null;
+  const alta = valor >= 0;
   return (
-    <div className="bg-fundo px-4 py-3">
-      <div className="rotulo">{rotulo}</div>
-      <div
-        className={`num mt-0.5 text-[20px] font-semibold md:text-[22px] ${
-          destaque ? "text-ambar" : ""
-        }`}
-      >
-        {valor}
-      </div>
-      {nota && <div className="num text-[10px] text-tinta-3">{nota}</div>}
-    </div>
+    <span
+      className={`num inline-flex items-center rounded-full font-bold ${
+        grande ? "h-7 px-2.5 text-[13px]" : "h-6 px-2 text-[12px]"
+      } ${alta ? "bg-alta-fundo text-alta" : "bg-baixa-fundo text-baixa"}`}
+    >
+      {percentual(valor)}
+    </span>
   );
 }
 
-function Linha({
+/** Um marcador sobre um trilho de 0 a 100%: onde o valor caiu dentro da faixa. */
+function Trilho({ fracao }: { fracao: number | null }) {
+  if (fracao === null || !Number.isFinite(fracao)) return null;
+  const pos = Math.min(Math.max(fracao, 0), 1) * 100;
+  return (
+    <span className="relative hidden h-1.5 w-[72px] rounded-full bg-selecao sm:block">
+      <span
+        className="absolute -top-[3px] h-3 w-3 rounded-full border-[3px] border-acento bg-painel"
+        style={{ left: `calc(${pos}% - 6px)` }}
+      />
+    </span>
+  );
+}
+
+function LinhaDeContexto({
   rotulo,
   valor,
-  cor,
-  forte,
+  cor = "text-tinta",
+  fracao,
 }: {
   rotulo: string;
   valor: string;
   cor?: string;
-  forte?: boolean;
+  fracao?: number | null;
 }) {
   return (
-    <div className="flex items-baseline justify-between border-b border-linha py-2.5 last:border-b-0">
-      <span
-        className={`text-[12px] ${forte ? "font-semibold text-tinta" : "text-tinta-2"}`}
-      >
-        {rotulo}
-      </span>
-      <span
-        className={`num text-[13px] ${forte ? "text-[15px] font-semibold" : ""} ${cor ?? ""}`}
-      >
-        {valor}
-      </span>
+    <div className="flex min-h-[42px] items-center gap-3 border-b border-linha">
+      <span className="flex-1 text-[13px] font-semibold text-tinta-2">{rotulo}</span>
+      {fracao !== undefined && <Trilho fracao={fracao} />}
+      <span className={`num min-w-[56px] text-right text-[14px] font-extrabold ${cor}`}>{valor}</span>
     </div>
   );
 }
+
+function Quadro({ rotulo, valor, nota }: { rotulo: string; valor: string; nota?: string | null }) {
+  return (
+    <div className="flex min-w-0 flex-col gap-1 rounded-2xl bg-painel-2 p-3">
+      <span className="truncate text-[12px] font-bold text-tinta-3">{rotulo}</span>
+      <span className="num truncate text-[19px] font-extrabold tracking-tight">{valor}</span>
+      {nota && <span className="num truncate text-[11px] font-semibold text-tinta-3">{nota}</span>}
+    </div>
+  );
+}
+
+const corDaDirecao = (v: number | null) => ((v ?? 0) >= 0 ? "text-alta" : "text-baixa");
 
 export function FichaDoPapel({ ticker, barras, eventos }: Props) {
   const params = useSearchParams();
@@ -101,12 +114,7 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
     [barras, evento],
   );
 
-  const abertura = useMemo(() => {
-    if (!evento) return null;
-    const ate = barras.findIndex((b) => b.tradeDate === evento.tradeDate);
-    if (ate < 0) return null;
-    return aberturaDaBanda(bollinger(barras.slice(0, ate + 1), 20, 2));
-  }, [barras, evento]);
+  const estadoDosAlertas = useAlertasDoPapel(ticker, barras, evento?.tradeDate, hoje);
 
   const faixa = leituraDaFaixa(evento?.pos252 ?? null);
   const ticket = leituraDoTicket(
@@ -117,228 +125,255 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
   const janelas = Object.keys(evento?.zByWindow ?? {})
     .map(Number)
     .sort((a, b) => a - b);
-  const maiorZ = Math.max(1, ...janelas.map((j) => evento?.zByWindow[j] ?? 0));
+  const mercadoCalmo = (evento?.mktVolZ ?? 0) < 2;
 
   return (
-    <>
-      <header className="border-b border-linha bg-painel px-4 py-3.5 md:px-6">
-        <div className="flex flex-wrap items-start gap-x-4 gap-y-2">
-          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg border border-linha-2 bg-selecao">
-            <span className="num text-[14px] font-semibold text-ambar">
-              {ticker.slice(0, 2)}
-            </span>
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-[20px] font-bold tracking-tight md:text-[22px]">
-              {ticker}
-            </h1>
-            <p className="num text-[11px] text-tinta-3">
-              {evento ? `Pregão de ${fmtData(evento.tradeDate)}` : "sem evento no período"}
-            </p>
-          </div>
-          <div className="flex-1" />
-          {barra && (
-            <div className="text-right">
-              <div className="flex items-baseline justify-end gap-2.5">
-                <span className="num text-[22px] font-semibold md:text-[24px]">
-                  {reais(barra.close)}
-                </span>
-                <span
-                  className={`num text-[15px] font-semibold ${
-                    (evento?.retDay ?? 0) >= 0 ? "text-alta" : "text-baixa"
-                  }`}
-                >
-                  {percentual(evento?.retDay ?? null)}
-                </span>
-              </div>
-              {evento?.notificado && (
-                <span className="num text-[10px] text-ambar">notificado no Telegram</span>
-              )}
-            </div>
-          )}
-          {parcial && (
-            <div className="basis-full text-right md:basis-auto">
-              <div className="flex items-baseline justify-end gap-2">
-                <span className="rotulo">{diaCurto(parcial.dia)} parcial</span>
-                <span className="num text-[15px] font-semibold">{reais(parcial.close)}</span>
-                {ultimoOficial !== null && (
-                  <span
-                    className={`num text-[12px] font-semibold ${
-                      parcial.close >= ultimoOficial ? "text-alta" : "text-baixa"
-                    }`}
-                  >
-                    {percentual(parcial.close / ultimoOficial - 1)}
-                  </span>
-                )}
-              </div>
-              <span className="num text-[10px] text-tinta-2">
-                cotação das {horaNaB3(parcial.hora)} · {parcial.fonte}
-              </span>
-            </div>
-          )}
-        </div>
-      </header>
-
+    <div className="flex flex-col gap-4">
       {pedidoAusente && pedido && (
-        <p className="border-b border-linha border-l-2 border-l-ambar bg-selecao px-4 py-3 text-[12px] leading-relaxed md:px-6">
+        <p className="rounded-2xl bg-evento-fundo px-4 py-3 text-[13px] font-semibold leading-relaxed text-evento-tinta">
           O pregão de <strong className="num">{fmtData(pedido)}</strong> ainda não chegou a
-          esta página. O site é atualizado alguns minutos depois do alerta; recarregue
-          daqui a pouco.
-          {evento && (
-            <>
-              {" "}Abaixo, o evento mais recente disponível ({fmtData(evento.tradeDate)}).
-            </>
-          )}
+          esta página. O site é atualizado alguns minutos depois do alerta; recarregue daqui
+          a pouco.
+          {evento && <> Abaixo, o evento mais recente disponível ({fmtData(evento.tradeDate)}).</>}
         </p>
       )}
 
-      {evento && (
-        <div className="grid grid-cols-2 gap-px border-b border-linha bg-linha md:grid-cols-4">
-          <Metrica
-            rotulo={`z_log · ${evento.zJanela}d`}
-            valor={numero(evento.zLog)}
-            nota={janelas
-              .filter((j) => j !== evento.zJanela)
-              .map((j) => `${j}d ${numero(evento.zByWindow[j])}`)
-              .join(" · ")}
-            destaque
-          />
-          <Metrica
-            rotulo="Volume relativo"
-            valor={multiplo(evento.rvol)}
-            nota={`mediana de ${janelas[0] ?? 30} pregões`}
-          />
-          <Metrica
-            rotulo="Financeiro"
-            valor={dinheiro(evento.volumeFinancial)}
-            nota={
-              evento.tradesCount
-                ? `${numero(evento.tradesCount, 0)} negócios`
-                : undefined
-            }
-          />
-          <Metrica
-            rotulo="Ticket médio"
-            valor={reais(evento.avgTicket, 0)}
-            nota={ticket ?? `z ${numero(evento.ticketZ, 1)}`}
-          />
-        </div>
-      )}
-
-      <div className="p-4 md:p-6">
-        <AlertasDoPapel
-          ticker={ticker}
-          barras={barras}
-          eventos={eventos}
-          destaque={evento?.tradeDate}
-          altura={380}
-          hoje={hoje}
-        />
-      </div>
-
-      {evento && (
-        <div className="grid gap-4 px-4 pb-6 md:grid-cols-[1fr_320px] md:px-6">
-          <div className="flex flex-col gap-3">
-            {ticket && (
-              <p className="rounded-r-md border border-l-2 border-linha border-l-ambar bg-painel px-3.5 py-3 text-[12px] leading-relaxed">
-                Ticket de <strong className="num">{reais(evento.avgTicket, 0)}</strong>
-                {evento.tradesCount ? (
-                  <>
-                    {" "}
-                    com{" "}
-                    <strong className="num">{numero(evento.tradesCount, 0)}</strong>{" "}
-                    negócios
-                  </>
-                ) : null}
-                : {ticket}.
+      <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr]">
+        {/* Identidade: papel, pregao e preco */}
+        <section className="cartao flex flex-col gap-3.5 p-5 lg:col-start-1 lg:row-start-1">
+          <div className="flex items-center gap-3">
+            <Link
+              href="/"
+              aria-label="Voltar ao scanner"
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-linha text-tinta-2 transition-colors hover:text-acento lg:hidden"
+            >
+              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+                <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+              </svg>
+            </Link>
+            <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-selecao text-[15px] font-extrabold text-acento lg:flex">
+              {ticker.slice(0, 2)}
+            </span>
+            <div className="min-w-0 flex-1">
+              <h1 className="text-[26px] font-extrabold leading-none tracking-tight">{ticker}</h1>
+              <p className="num mt-1 text-[13px] font-semibold text-tinta-3">
+                {evento ? `Pregão de ${fmtData(evento.tradeDate)}` : "sem evento no período"}
               </p>
-            )}
-            {abertura !== null && abertura > 1.15 && (
-              <p className="rounded-r-md border border-l-2 border-linha border-l-ambar bg-painel px-3.5 py-3 text-[12px] leading-relaxed">
-                Banda de Bollinger{" "}
-                <strong className="num">{multiplo(abertura)}</strong> mais larga que a
-                média recente do papel — volatilidade expandindo junto com o volume.
-              </p>
-            )}
-            {eventos.length > 1 && (
-              <p className="rounded-md border border-linha bg-painel px-3.5 py-3 text-[12px] leading-relaxed text-tinta-2">
-                Este papel cruzou o limiar{" "}
-                <strong className="num text-tinta">{eventos.length}</strong> vezes no
-                período mantido. Cada uma aparece no gráfico com o candle e o volume em âmbar — vale ver o que o
-                preço fez depois de cada.
-              </p>
+            </div>
+            {evento && (
+              <span className="lg:hidden">
+                <AnelDoDesvio z={evento.zLog} tamanho={56} espessura={5} fonte={14} />
+              </span>
             )}
           </div>
 
-          <aside>
-            <div className="rotulo mb-1">Contexto do evento</div>
-            <p className="mb-3 text-[11px] leading-snug text-tinta-3">
-              Os números que o alerta manda. A leitura é sua.
-            </p>
-            <Linha
-              rotulo="Variação do dia"
-              valor={percentual(evento.retDay)}
-              cor={(evento.retDay ?? 0) >= 0 ? "text-alta" : "text-baixa"}
-            />
-            <Linha
-              rotulo="Gap de abertura"
-              valor={percentual(evento.gap)}
-              cor={(evento.gap ?? 0) >= 0 ? "text-alta" : "text-baixa"}
-            />
-            <Linha rotulo="Fechou no range" valor={proporcao(evento.clv)} />
-            <Linha rotulo="Amplitude do dia" valor={proporcao(evento.rangeNorm, 1)} />
-            <Linha
-              rotulo="Faixa de 252 pregões"
-              valor={
-                faixa
-                  ? `${proporcao(evento.pos252)} · ${faixa}`
-                  : proporcao(evento.pos252)
-              }
-            />
-            <Linha
-              rotulo="20 pregões anteriores"
-              valor={percentual(evento.retPrior20)}
-              cor={(evento.retPrior20 ?? 0) >= 0 ? "text-alta" : "text-baixa"}
-            />
-            <Linha rotulo="z do ticket" valor={numero(evento.ticketZ, 1)} />
-            <Linha rotulo="z do mercado" valor={numero(evento.mktVolZ)} />
-            <Linha
-              rotulo="z líquido do mercado"
-              valor={numero(evento.zExcess)}
-              cor="text-ambar"
-              forte
-            />
-
-            <div className="mt-4 rounded-md border border-linha bg-painel p-3">
-              <div className="rotulo mb-2">z por janela</div>
-              <div className="flex flex-col gap-2">
-                {janelas.map((j) => (
-                  <div key={j} className="flex items-center gap-2.5">
-                    <span className="num w-7 text-[11px] text-tinta-3">{j}d</span>
-                    <span className="block h-[5px] flex-1 overflow-hidden rounded-sm bg-linha-2">
-                      <span
-                        className="block h-full bg-ambar"
-                        style={{
-                          width: `${((evento.zByWindow[j] ?? 0) / maiorZ) * 100}%`,
-                        }}
-                      />
-                    </span>
-                    <span className="num w-9 text-right text-[12px]">
-                      {numero(evento.zByWindow[j])}
-                    </span>
-                  </div>
-                ))}
-              </div>
-              {evento.zRobust !== null && (
-                <div className="mt-2.5 flex justify-between border-t border-linha pt-2.5">
-                  <span className="text-[11px] text-tinta-3">z robusto (MAD)</span>
-                  <span className="num text-[12px]">{numero(evento.zRobust)}</span>
-                </div>
+          {barra && (
+            <div className="flex flex-wrap items-center gap-2.5">
+              <span className="num text-[30px] font-extrabold tracking-tight">{reais(barra.close)}</span>
+              <ChipDeVariacao valor={evento?.retDay ?? null} grande />
+              {evento?.notificado && (
+                <span className="rounded-full bg-evento-fundo px-2.5 py-1 text-[11px] font-bold text-evento-tinta">
+                  notificado no Telegram
+                </span>
               )}
             </div>
-          </aside>
-        </div>
-      )}
-    </>
+          )}
+
+          {parcial && (
+            <div className="flex items-center gap-2.5 rounded-xl bg-painel-2 px-3 py-2.5">
+              <span className="relative h-2.5 w-2.5 shrink-0">
+                <span className="pulso absolute -inset-1.5 rounded-full bg-acento" />
+                <span className="absolute inset-0 rounded-full bg-acento" />
+              </span>
+              <span className="num whitespace-nowrap text-[12px] font-bold text-tinta-3">
+                Hoje · {horaNaB3(parcial.hora)}
+              </span>
+              <span className="num flex-1 whitespace-nowrap text-right text-[15px] font-extrabold">
+                {reais(parcial.close)}
+              </span>
+              {ultimoOficial !== null && (
+                <span className={`num text-[13px] font-extrabold ${corDaDirecao(parcial.close / ultimoOficial - 1)}`}>
+                  {percentual(parcial.close / ultimoOficial - 1)}
+                </span>
+              )}
+            </div>
+          )}
+        </section>
+
+        {/* Grafico */}
+        <section className="cartao flex min-w-0 flex-col gap-4 p-4 md:p-5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
+          <div className="flex flex-col gap-0.5">
+            <h2 className="text-[18px] font-extrabold">Gráfico diário</h2>
+            <p className="text-[13px] font-semibold text-tinta-3">
+              {barras.length} pregões{parcial ? " e a cotação de hoje" : ""} · candle do evento em dourado
+            </p>
+          </div>
+
+          <Grafico
+            barras={barras}
+            eventos={eventos}
+            destaque={evento?.tradeDate}
+            alertas={estadoDosAlertas.alertas}
+            escolhendoPreco={estadoDosAlertas.escolhendo}
+            aoEscolherPreco={estadoDosAlertas.escolherNoGrafico}
+            hoje={hoje}
+            classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
+          />
+
+          {eventos.length > 0 && (
+            <div className="flex flex-col gap-2.5 rounded-2xl bg-painel-2 p-3 md:flex-row md:items-center">
+              <span className="flex shrink-0 flex-col">
+                <span className="text-[13px] font-extrabold">Eventos deste papel</span>
+                <span className="text-[11px] font-semibold text-tinta-3">
+                  {eventos.length === 1 ? "cruzou 3σ uma vez" : `cruzou 3σ ${eventos.length} vezes`}
+                </span>
+              </span>
+              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+                {eventos.map((e) => {
+                  const selecionado = e.tradeDate === evento?.tradeDate;
+                  return (
+                    <Link
+                      key={e.tradeDate}
+                      href={`/papel/${ticker}/?data=${e.tradeDate}`}
+                      replace
+                      scroll={false}
+                      aria-current={selecionado ? "true" : undefined}
+                      className={`num flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-bold transition-colors ${
+                        selecionado
+                          ? "bg-primario text-primario-tinta"
+                          : "border border-linha bg-painel text-tinta hover:border-acento"
+                      }`}
+                    >
+                      {e.zLog >= LIMIAR_DO_ALERTA && <span className="h-2 w-2 rounded-full bg-evento" />}
+                      {fmtData(e.tradeDate).slice(0, 5)}
+                      <span className={selecionado ? "opacity-75" : "text-acento"}>{numero(e.zLog)}</span>
+                    </Link>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </section>
+
+        {/* Desvio, numeros e leitura */}
+        {evento && (
+          <section className="flex flex-col gap-4 lg:col-start-1 lg:row-start-2">
+            <div className="cartao flex flex-col gap-4 p-5">
+              <div className="flex items-center justify-between">
+                <h2 className="text-[16px] font-extrabold">Desvio do volume</h2>
+                <span className="text-[12px] font-bold text-evento-tinta">
+                  alerta em {numero(LIMIAR_DO_ALERTA, 0)}σ
+                </span>
+              </div>
+              <div className="hidden items-center gap-4 lg:flex">
+                <AnelDoDesvio z={evento.zLog} tamanho={104} espessura={11} />
+                <div className="flex flex-col gap-1">
+                  <span className="text-[13px] font-bold text-tinta-2">maior entre as janelas</span>
+                  <span className="num text-[12px] font-semibold text-tinta-3">
+                    janela de {evento.zJanela} pregões
+                  </span>
+                  {evento.zRobust !== null && (
+                    <span className="num text-[12px] font-semibold text-tinta-3">
+                      z robusto {numero(evento.zRobust)}
+                    </span>
+                  )}
+                </div>
+              </div>
+              <div className="flex flex-col gap-2.5">
+                {janelas.map((j) => {
+                  const z = evento.zByWindow[j] ?? 0;
+                  const largura = Math.min(Math.max(z, 0), TETO_DAS_JANELAS) / TETO_DAS_JANELAS;
+                  return (
+                    <div key={j} className="flex items-center gap-2.5">
+                      <span className="num w-8 text-[12px] font-bold text-tinta-3">{j}d</span>
+                      <span className="relative h-2 flex-1 rounded-full bg-selecao">
+                        <span
+                          className={`absolute inset-y-0 left-0 rounded-full ${z >= LIMIAR_DO_ALERTA ? "bg-evento" : "bg-acento"}`}
+                          style={{ width: `${largura * 100}%` }}
+                        />
+                        <span
+                          className="absolute -top-1 h-4 w-0.5 rounded-sm bg-evento"
+                          style={{ left: `${(LIMIAR_DO_ALERTA / TETO_DAS_JANELAS) * 100}%` }}
+                        />
+                      </span>
+                      <span className="num w-10 text-right text-[13px] font-extrabold">{numero(z)}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            <div className="cartao grid grid-cols-2 gap-2.5 p-3.5">
+              <Quadro
+                rotulo="Volume relativo"
+                valor={multiplo(evento.rvol)}
+                nota={`mediana de ${janelas[0] ?? 30}d`}
+              />
+              <Quadro
+                rotulo="Financeiro"
+                valor={dinheiro(evento.volumeFinancial)}
+                nota={evento.tradesCount ? `${numero(evento.tradesCount, 0)} negócios` : null}
+              />
+              <Quadro
+                rotulo="Ticket médio"
+                valor={reais(evento.avgTicket, 0)}
+                nota={`z ${numero(evento.ticketZ, 1)}`}
+              />
+              <Quadro
+                rotulo="z do mercado"
+                valor={numero(evento.mktVolZ)}
+                nota={mercadoCalmo ? "dia normal" : "mercado agitado"}
+              />
+            </div>
+
+            {ticket && (
+              <p className="rounded-2xl bg-selecao px-4 py-3.5 text-[13px] leading-relaxed text-tinta-2">
+                Ticket de <strong className="num text-tinta">{reais(evento.avgTicket, 0)}</strong>
+                {evento.tradesCount ? (
+                  <>
+                    {" "}com <strong className="num text-tinta">{numero(evento.tradesCount, 0)}</strong> negócios
+                  </>
+                ) : null}
+                : <strong className="text-acento">{ticket}</strong>.
+              </p>
+            )}
+          </section>
+        )}
+
+        {/* Contexto e alerta */}
+        <section className="flex flex-col gap-4 lg:col-start-3 lg:row-span-2 lg:row-start-1">
+          {evento && (
+            <div className="cartao px-5 pb-2 pt-5">
+              <div className="mb-1.5 flex items-center justify-between">
+                <h2 className="text-[16px] font-extrabold">Contexto do evento</h2>
+                <span className="text-[12px] font-semibold text-tinta-3">a leitura é sua</span>
+              </div>
+              <LinhaDeContexto rotulo="Variação do dia" valor={percentual(evento.retDay)} cor={corDaDirecao(evento.retDay)} />
+              <LinhaDeContexto rotulo="Gap de abertura" valor={percentual(evento.gap)} cor={corDaDirecao(evento.gap)} />
+              <LinhaDeContexto rotulo="Fechou no range" valor={proporcao(evento.clv)} fracao={evento.clv} />
+              <LinhaDeContexto rotulo="Amplitude do dia" valor={proporcao(evento.rangeNorm, 1)} />
+              <LinhaDeContexto
+                rotulo={faixa ? `Faixa de 252 pregões · ${faixa}` : "Faixa de 252 pregões"}
+                valor={proporcao(evento.pos252)}
+                fracao={evento.pos252}
+              />
+              <LinhaDeContexto
+                rotulo="20 pregões anteriores"
+                valor={percentual(evento.retPrior20)}
+                cor={corDaDirecao(evento.retPrior20)}
+              />
+              <LinhaDeContexto rotulo="z do ticket" valor={numero(evento.ticketZ, 1)} />
+              <div className="flex min-h-[50px] items-center gap-3">
+                <span className="flex-1 text-[13px] font-extrabold">z líquido do mercado</span>
+                <span className="num inline-flex h-8 items-center rounded-full bg-selecao px-3 text-[15px] font-extrabold text-acento">
+                  {numero(evento.zExcess)}
+                </span>
+              </div>
+            </div>
+          )}
+          <PainelDeAlerta estado={estadoDosAlertas} />
+        </section>
+      </div>
+    </div>
   );
 }

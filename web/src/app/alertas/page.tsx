@@ -1,6 +1,6 @@
 import { ehDono, signIn, signOut } from "@/auth";
-import { listarAlertas } from "@/lib/alertas";
 import { ListaDeAlertas } from "@/components/ListaDeAlertas";
+import { listarAlertas } from "@/lib/alertas";
 
 /**
  * A unica tela do site que depende de quem esta olhando.
@@ -12,19 +12,15 @@ import { ListaDeAlertas } from "@/components/ListaDeAlertas";
 export const dynamic = "force-dynamic";
 
 export default async function Alertas() {
-  // Mesma pergunta que as rotas de API fazem, pela mesma funcao. Tinha duas
-  // formas de perguntar "e o dono?" -- `auth()` aqui e `ehDono()` la -- e duas
-  // formas de perguntar a mesma coisa e uma delas ficando para tras.
   if (!(await ehDono())) {
     return (
-      <div className="p-6 md:p-10">
-        <h1 className="text-[17px] font-bold">Alertas de rompimento</h1>
-        <p className="mt-2 max-w-[52ch] text-[13px] leading-relaxed text-tinta-2">
-          Escolha um nível no gráfico de um papel e receba no Telegram quando o
-          preço chegar lá. A checagem roda de 15 em 15 minutos durante o pregão.
+      <section className="cartao mx-auto flex max-w-[560px] flex-col gap-4 p-6 md:mt-8 md:p-8">
+        <h1 className="text-[22px] font-extrabold tracking-tight">Alertas de rompimento</h1>
+        <p className="text-[14px] leading-relaxed text-tinta-2">
+          Escolha um nível no gráfico de um papel e receba no Telegram quando o preço chegar lá.
+          A checagem roda de 15 em 15 minutos durante o pregão.
         </p>
         <form
-          className="mt-6"
           action={async () => {
             "use server";
             await signIn("github", { redirectTo: "/alertas" });
@@ -32,27 +28,35 @@ export default async function Alertas() {
         >
           <button
             type="submit"
-            className="toque rounded border border-ambar bg-selecao px-4 py-2 text-[13px] text-ambar transition-colors hover:bg-linha-2"
+            className="toque flex h-12 w-full items-center justify-center gap-2.5 rounded-full bg-primario text-[15px] font-extrabold text-primario-tinta"
           >
+            <svg width="18" height="18" viewBox="0 0 16 16" fill="currentColor" aria-hidden>
+              <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0016 8c0-4.42-3.58-8-8-8z" />
+            </svg>
             Entrar com GitHub
           </button>
         </form>
-        <p className="mt-3 text-[11px] text-tinta-3">
+        <p className="text-[12px] font-semibold text-tinta-3">
           Só a conta dona do projeto entra. Ter conta no GitHub não basta.
         </p>
-      </div>
+      </section>
     );
   }
 
   const alertas = await listarAlertas();
 
   return (
-    <>
-      <header className="flex flex-wrap items-center gap-4 border-b border-linha bg-painel px-4 py-3.5 md:px-6">
+    <div className="flex flex-col gap-4">
+      <section className="cartao flex flex-wrap items-center gap-4 p-5">
         {/* Sem contador aqui: ele mudaria ao religar ou apagar, e este e um
             componente de servidor -- ficaria mostrando o numero de antes. Ele
             vive dentro da lista, junto do estado que o determina. */}
-        <h1 className="text-[17px] font-bold">Alertas de rompimento</h1>
+        <div className="flex flex-col gap-0.5">
+          <h1 className="text-[22px] font-extrabold tracking-tight">Alertas de rompimento</h1>
+          <p className="text-[13px] font-semibold text-tinta-3">
+            Checagem de 15 em 15 minutos durante o pregão
+          </p>
+        </div>
         <div className="flex-1" />
         <form
           action={async () => {
@@ -62,14 +66,14 @@ export default async function Alertas() {
         >
           <button
             type="submit"
-            className="toque rounded border border-linha-2 px-3 py-1.5 text-[11px] text-tinta-2 transition-colors hover:text-tinta"
+            className="toque h-10 rounded-full border border-linha-2 px-4 text-[13px] font-bold text-tinta-2 transition-colors hover:text-tinta"
           >
-            sair
+            Sair
           </button>
         </form>
-      </header>
+      </section>
 
       <ListaDeAlertas iniciais={alertas} />
-    </>
+    </div>
   );
 }

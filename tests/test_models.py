@@ -25,12 +25,16 @@ def test_nomes_das_tabelas() -> None:
     #
     # `price_alerts` (migration 0003) e a unica que guarda decisao do usuario e
     # nao dado derivado do COTAHIST: o nivel de preco que ele pediu para vigiar.
+    #
+    # `digest_sends` (migration 0004) da ao resumo o dedupe que `notified_at` ja
+    # dava ao alerta: uma linha por pregao cujo resumo saiu.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
         "events",
         "daily_features",
         "price_alerts",
+        "digest_sends",
     }
 
 

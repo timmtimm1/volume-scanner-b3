@@ -1,0 +1,46 @@
+# Agenda dos workflows disparados de fora.
+#
+# O agendador nativo do GitHub Actions nao e confiavel em repositorio publico
+# gratuito: atrasos medidos de 7, 35 e 392 minutos, e cerca de 11% dos horarios
+# esperados efetivamente entregues. Para um job que so tem uma janela por dia
+# isso e inaceitavel. Os workflows por isso perderam o `on: schedule` e quem os
+# dispara e um cron externo (cron-job.org), via `workflow_dispatch`.
+#
+# ESTE ARQUIVO NAO E EXECUTADO POR NADA. Ele e a fonte de verdade do que deve
+# estar configurado la fora, e e o que os testes conferem -- sem ele o horario
+# do pipeline deixaria de ser uma decisao versionada e viraria um campo de
+# formulario que ninguem revisa. Mudou aqui, mude no painel; e vice-versa.
+#
+# Cada job no cron-job.org e um POST para
+#   https://api.github.com/repos/<owner>/<repo>/actions/workflows/<workflow>/dispatches
+# com corpo {"ref":"main"} e os headers:
+#   Authorization: Bearer <PAT com actions=write>
+#   Accept: application/vnd.github+json
+#   Content-Type: application/json
+# Sucesso e 204 No Content, sem corpo -- qualquer validacao de resposta no
+# painel precisa aceitar 2xx vazio.
+
+# O cron de cada job e lido neste fuso, e nao em UTC. Os horarios abaixo sao,
+# portanto, horario de Brasilia direto, sem conversao.
+timezone: America/Sao_Paulo
+
+jobs:
+  daily:
+    workflow: daily.yml
+    cron: "40 7 * * 2-6"
+    porque: >-
+      07:40, terca a sabado. Processa o pregao anterior, cujo arquivo a B3
+      publica de madrugada -- rodar na mesma noite nao sobreviveu ao teste: as
+      20:26 o arquivo do dia ainda dava 404. Termina antes das 10h, quando o
+      pregao abre e a leitura deixaria de ser preparacao para virar reacao. O
+      minuto 40 evita a fila da hora cheia.
+
+  rompimentos:
+    workflow: rompimentos.yml
+    cron: "7,22,37,52 10-18 * * 1-5"
+    porque: >-
+      De 15 em 15 minutos durante o pregao, segunda a sexta. Vai ate as 18:xx e
+      nao ate as 17:xx de proposito: o pregao fecha as 18:00 e o leilao de
+      fechamento se estende alguns minutos, que e justamente quando um
+      rompimento acontece. Feriado da B3 tambem cai em dia util, e o cron nao
+      sabe disso -- quem barra e a guarda `is_trading_day` no `alerta checar`.

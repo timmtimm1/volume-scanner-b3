@@ -44,6 +44,9 @@ export type Barra = {
   volumeFinancial: number;
 };
 
+/** Papeis do pregao cujo maior z caiu em [faixa, faixa+1); a faixa 6 junta 6 ou mais. */
+export type FaixaDeDesvio = { faixa: number; papeis: number };
+
 export type Pregao = {
   tradeDate: string;
   mktVolZ: number | null;

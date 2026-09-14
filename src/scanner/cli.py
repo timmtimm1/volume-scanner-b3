@@ -164,9 +164,11 @@ def db_status() -> None:
     from scanner.storage.repository import (
         count_bars,
         count_metrics,
+        mb,
         retention_cutoff,
         sessions_stored,
         stored_range,
+        tamanho_do_banco,
     )
 
     engine = build_engine()
@@ -185,6 +187,10 @@ def db_status() -> None:
     typer.echo(
         f"retencao:  {keep} pregoes" + (f", corte em {corte}" if corte else ", nada a podar")
     )
+    total, tabelas = tamanho_do_banco(engine)
+    typer.echo(f"tamanho:   {mb(total):>10}")
+    for nome, tamanho in tabelas.items():
+        typer.echo(f"  {nome:<16}{mb(tamanho):>10}")
 
 
 @db_app.command("prune")
@@ -216,9 +222,10 @@ def db_prune(
         typer.echo(f"[dry-run] apagaria tudo anterior a {corte.isoformat()}")
         return
 
-    barras, metricas = prune_bars(engine, manter)
+    poda = prune_bars(engine, manter)
     typer.echo(
-        f"podado ate {corte.isoformat()}: {barras:,} barras e {metricas:,} metricas removidas"
+        f"podado ate {corte.isoformat()}: {poda.barras:,} barras, {poda.metricas:,} metricas "
+        f"e {poda.contexto:,} linhas de contexto removidas"
     )
 
 
@@ -375,7 +382,7 @@ def daily(
     from scanner.ingest.pipeline import ingest_day
     from scanner.recompute import carregar_contexto, refresh_metrics
     from scanner.storage.engine import build_engine
-    from scanner.storage.repository import prune_bars, retention_cutoff
+    from scanner.storage.repository import mb, prune_bars, retention_cutoff, tamanho_do_banco
 
     dia = parse_trade_date(trade_date)
     if not is_trading_day(dia):
@@ -397,7 +404,7 @@ def daily(
         from scanner.ingest.download import DownloadTemporarioError
 
         try:
-            etapa(1, ingest_day(dia, config.ingest))
+            etapa(1, ingest_day(dia, config.ingest, engine=engine))
         except DownloadTemporarioError as exc:
             # A noite isso e esperado: a B3 publica o arquivo do dia com atraso
             # que varia de um dia para outro. Sair como falha mandaria aviso no
@@ -447,12 +454,20 @@ def daily(
     manter = config.retention.keep_sessions
     corte = retention_cutoff(engine, manter)
     if corte is None:
-        etapa(6, f"nada a podar: ha menos de {manter} pregoes no banco")
+        poda_texto = f"nada a podar: ha menos de {manter} pregoes no banco"
     elif dry_run:
-        etapa(6, f"[dry-run] podaria tudo anterior a {corte.isoformat()}")
+        poda_texto = f"[dry-run] podaria tudo anterior a {corte.isoformat()}"
     else:
-        barras, metricas = prune_bars(engine, manter)
-        etapa(6, f"podado ate {corte.isoformat()}: {barras:,} barras e {metricas:,} metricas")
+        poda = prune_bars(engine, manter)
+        poda_texto = (
+            f"podado ate {corte.isoformat()}: {poda.barras:,} barras, "
+            f"{poda.metricas:,} metricas e {poda.contexto:,} linhas de contexto"
+        )
+    # O tamanho vai na mesma linha: e o numero que diz quanto falta para o limite
+    # do plano gratuito do Neon, sem precisar abrir o painel.
+    total, tabelas = tamanho_do_banco(engine)
+    maiores = ", ".join(f"{nome} {mb(tam)}" for nome, tam in list(tabelas.items())[:3])
+    etapa(6, f"{poda_texto}; banco com {mb(total)} ({maiores})")
 
 
 alerta_app = typer.Typer(help="Alertas de rompimento de preco.", no_args_is_help=True)

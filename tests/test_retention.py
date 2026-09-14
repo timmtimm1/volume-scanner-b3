@@ -17,10 +17,13 @@ from scanner.calendar import sessions_before
 from scanner.storage.engine import session_scope
 from scanner.storage.models import DailyBar, DailyFeature, Event, VolumeMetric
 from scanner.storage.repository import (
+    Poda,
     count_bars,
     prune_bars,
     retention_cutoff,
     sessions_stored,
+    tamanho_do_banco,
+    upsert_features,
     upsert_metrics,
 )
 
@@ -87,7 +90,7 @@ def test_retention_cutoff_aponta_o_primeiro_pregao_mantido(
 
 def test_sem_pregoes_suficientes_nao_poda(engine: Engine, carga: list[date]) -> None:
     antes = count_bars(engine)
-    assert prune_bars(engine, SESSOES + 100) == (0, 0)
+    assert prune_bars(engine, SESSOES + 100) == Poda(0, 0, 0)
     assert count_bars(engine) == antes
 
 
@@ -115,13 +118,38 @@ def test_poda_leva_as_metricas_junto(engine: Engine, carga: list[date]) -> None:
     )
     upsert_metrics(engine, metricas)
 
-    _, removidas = prune_bars(engine, 20)
+    removidas = prune_bars(engine, 20).metricas
     assert removidas == SESSOES - 20
     with engine.connect() as conn:
         sobraram = conn.execute(
             select(VolumeMetric.trade_date).where(VolumeMetric.ticker == TICKER)
         ).scalars()
         assert min(sobraram) == carga[-20]
+
+
+def test_poda_leva_o_contexto_junto(engine: Engine, carga: list[date]) -> None:
+    """`daily_features` crescia sem limite: a poda so apagava barras e metricas."""
+    import pandas as pd
+
+    contexto = pd.DataFrame({"ticker": TICKER, "trade_date": carga, "ret_day": 0.01})
+    upsert_features(engine, contexto)
+
+    assert prune_bars(engine, 20).contexto == SESSOES - 20
+    with engine.connect() as conn:
+        sobraram = list(
+            conn.execute(
+                select(DailyFeature.trade_date).where(DailyFeature.ticker == TICKER)
+            ).scalars()
+        )
+    assert min(sobraram) == carga[-20]
+    assert len(sobraram) == 20
+
+
+def test_tamanho_do_banco_lista_as_tabelas_do_projeto(engine: Engine) -> None:
+    total, tabelas = tamanho_do_banco(engine)
+    assert total > 0
+    assert {"daily_bars", "volume_metrics", "daily_features", "events"} <= set(tabelas)
+    assert list(tabelas.values()) == sorted(tabelas.values(), reverse=True), "maior primeiro"
 
 
 def test_poda_nunca_apaga_evento(engine: Engine, carga: list[date]) -> None:

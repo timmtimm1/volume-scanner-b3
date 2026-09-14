@@ -193,9 +193,10 @@ def alert_payload(
         else float(na_maior.iloc[0]["rvol"])
     )
 
-    barras = bars.copy()
-    barras["trade_date"] = pd.to_datetime(barras["trade_date"])
-    linha_barra = barras[(barras["ticker"] == ticker) & (barras["trade_date"] == dia)]
+    # Filtra o papel antes de converter a data: copiar e converter todas as
+    # barras do historico a cada evento custava uma passada inteira por alerta.
+    do_ticker = bars[bars["ticker"] == ticker]
+    linha_barra = do_ticker[pd.to_datetime(do_ticker["trade_date"]) == dia]
     fechamento = None if linha_barra.empty else float(linha_barra.iloc[0]["close"])
 
     features = event.get("features") or {}

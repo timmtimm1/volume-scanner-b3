@@ -11,6 +11,7 @@ from datetime import date
 from pathlib import Path
 
 import pandas as pd
+from sqlalchemy import Engine
 
 from scanner.config import IngestConfig
 from scanner.ingest.cotahist import parse_file
@@ -44,9 +45,19 @@ def ingest_range(
         yield f"{report.summary()}; {written:,} barras gravadas no intervalo"
 
 
-def ingest_day(day: date, config: IngestConfig, *, cache: Path = DEFAULT_CACHE) -> str:
-    """Carrega o arquivo de um unico pregao."""
+def ingest_day(
+    day: date,
+    config: IngestConfig,
+    *,
+    cache: Path = DEFAULT_CACHE,
+    engine: Engine | None = None,
+) -> str:
+    """Carrega o arquivo de um unico pregao.
+
+    `engine` deixa o `scanner daily` usar a mesma conexao das outras etapas, em
+    vez de abrir um segundo pool ate o Neon so para a carga.
+    """
     path = download_daily(day, cache)
     frame, report = parse_file(path, config)
-    written = upsert_bars(build_engine(), _clip(frame, day, day))
+    written = upsert_bars(engine or build_engine(), _clip(frame, day, day))
     return f"{report.summary()}; {written:,} barras gravadas"

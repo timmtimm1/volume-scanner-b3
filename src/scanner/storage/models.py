@@ -70,6 +70,10 @@ class VolumeMetric(Base):
     """Z-scores de uma janela para um papel num pregao (secao 3.1)."""
 
     __tablename__ = "volume_metrics"
+    # A PK comeca por `ticker`, e nao serve para filtro so por data -- que e o
+    # que o site faz para achar o ultimo pregao. Barras e contexto ja tinham o
+    # seu; esta, que e a maior das tres em linhas, nao tinha.
+    __table_args__ = (Index("ix_volume_metrics_trade_date", "trade_date"),)
 
     ticker: Mapped[str] = mapped_column(Text, primary_key=True)
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)

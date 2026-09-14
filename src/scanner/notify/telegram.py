@@ -9,8 +9,9 @@ O token e o chat vem do ambiente (`SCANNER_TELEGRAM_*`), nunca do repositorio.
 from __future__ import annotations
 
 import sys
-from collections.abc import Mapping
-from dataclasses import dataclass
+import time
+from collections.abc import Callable, Mapping
+from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
 
@@ -28,6 +29,26 @@ NEAR_HIGH = 0.80
 
 class TelegramError(Exception):
     """O Telegram recusou a mensagem."""
+
+
+# O Telegram aceita cerca de uma mensagem por segundo no mesmo chat. Num dia de
+# estresse o scan manda dezenas de alertas seguidos; sem espacar, os ultimos
+# voltam 429 e o job cai no meio do envio. Todos continuam saindo: isto e ritmo,
+# nao teto nem supressao.
+INTERVALO_ENTRE_MENSAGENS = 1.0
+# Quantas vezes tentar a mesma mensagem quando o Telegram manda esperar (429).
+TENTATIVAS_EM_429 = 3
+# Maior `retry_after` que vale esperar. Acima disso, falha: o job tem timeout, e
+# um aviso de falha agora e melhor que um job morto por tempo sem dizer nada.
+ESPERA_MAXIMA_EM_429 = 60.0
+
+
+def _retry_after(resposta: httpx.Response) -> float | None:
+    """Quantos segundos o Telegram pediu para esperar, se pediu."""
+    try:
+        return float(resposta.json()["parameters"]["retry_after"])
+    except (ValueError, KeyError, TypeError):
+        return None
 
 
 def br(value: float | None, casas: int = 2) -> str:
@@ -125,16 +146,34 @@ def console_safe(text: str) -> str:
     return text.encode(codificacao, errors="replace").decode(codificacao, errors="replace")
 
 
-@dataclass(frozen=True)
+@dataclass
 class TelegramNotifier:
-    """Envia alertas para um chat do Telegram."""
+    """Envia alertas para um chat do Telegram.
+
+    Nao e congelado: guarda a hora do ultimo envio para espacar o proximo.
+    `dormir` e `relogio` existem para os testes nao esperarem de verdade.
+    """
 
     token: str
     chat_id: str
     base_url: str = "http://localhost:3000"
+    dormir: Callable[[float], None] = field(default=time.sleep, repr=False)
+    relogio: Callable[[], float] = field(default=time.monotonic, repr=False)
+    _ultimo_envio: float | None = field(default=None, init=False, repr=False)
+
+    def _espacar(self) -> None:
+        if self._ultimo_envio is None:
+            return
+        falta = INTERVALO_ENTRE_MENSAGENS - (self.relogio() - self._ultimo_envio)
+        if falta > 0:
+            self.dormir(falta)
 
     def send_text(self, text: str) -> bool:
-        """Envia uma mensagem. Devolve True se o Telegram aceitou."""
+        """Envia uma mensagem. Devolve True se o Telegram aceitou.
+
+        O erro nunca carrega a URL: ela tem o token do bot. O GitHub mascara o
+        secret no log do Actions, mas uma execucao local imprimiria o token.
+        """
         url = f"{API_BASE}/bot{self.token}/sendMessage"
         payload = {
             "chat_id": self.chat_id,
@@ -142,12 +181,28 @@ class TelegramNotifier:
             "parse_mode": "HTML",
             "disable_web_page_preview": True,
         }
-        try:
-            resposta = httpx.post(url, json=payload, timeout=TIMEOUT_SECONDS)
-            resposta.raise_for_status()
-        except httpx.HTTPError as exc:
-            raise TelegramError(f"envio recusado: {exc}") from exc
-        return True
+        for tentativa in range(1, TENTATIVAS_EM_429 + 1):
+            self._espacar()
+            try:
+                resposta = httpx.post(url, json=payload, timeout=TIMEOUT_SECONDS)
+            except httpx.HTTPError as exc:
+                raise TelegramError(f"envio recusado: {type(exc).__name__}") from exc
+            finally:
+                self._ultimo_envio = self.relogio()
+
+            if resposta.status_code == 429 and tentativa < TENTATIVAS_EM_429:
+                espera = _retry_after(resposta)
+                if espera is not None and espera <= ESPERA_MAXIMA_EM_429:
+                    self.dormir(espera)
+                    continue
+
+            try:
+                resposta.raise_for_status()
+            except httpx.HTTPError as exc:
+                raise TelegramError(f"envio recusado: HTTP {resposta.status_code}") from exc
+            return True
+        # Inalcancavel: a ultima tentativa sempre sai por return ou raise acima.
+        raise TelegramError("envio recusado: tentativas esgotadas")
 
     def send_event(self, payload: Mapping[str, Any]) -> bool:
         """Formata e envia um evento."""

@@ -133,7 +133,8 @@ scanner report ticker PETR4 --window 60
 
 ## Estado
 
-Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
+As fases de [`docs/PLANO.md`](docs/PLANO.md) estão entregues. O que veio depois
+está em "Além do plano", logo abaixo.
 
 | Fase | Escopo | Estado |
 |---|---|---|
@@ -142,13 +143,30 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | F2 | Parser e carga COTAHIST | ✅ |
 | F3 | Z-scores + features de contexto | ✅ |
 | F4 | Alertas + Telegram | ✅ |
-| F5 | Deploy: Neon, Actions, secrets | ✅ código / ⏳ acumulando execuções agendadas |
+| F5 | Deploy: Neon, Actions, secrets | ✅ código / ⏳ medindo com o cron externo |
 | F6 | Interface: scanner, ficha do papel, histórico | ✅ |
 | F7 | PWA | ✅ |
 
 O critério de aceite da F5 — *três execuções agendadas consecutivas bem-sucedidas* —
 passou a ser medido pelo cron externo (seção "O job diário"), já que o agendador
 nativo do GitHub foi abandonado.
+
+## Além do plano
+
+Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
+
+- **Resumo diário no Telegram.** Os 10 papéis que mais fugiram do próprio volume
+  normal no pregão, tenham cruzado o limiar ou não. Sai uma vez por pregão.
+- **Alertas de rompimento de preço.** Na ficha do papel, logado, você clica no
+  gráfico e escolhe um nível. A cada 15 minutos durante o pregão o
+  `rompimentos.yml` consulta a brapi e o Yahoo, fica com a cotação de hora mais
+  nova e avisa no Telegram quando o preço toca o nível. Cotação que não é do
+  pregão de hoje não dispara. É o único dado do sistema que não vem do COTAHIST.
+- **Candle de hoje na ficha.** Depois que a página abre, o gráfico ganha o candle
+  do pregão em andamento, vazado, com a hora e a fonte da cotação. Não entra em
+  nenhum cálculo e some quando o COTAHIST do dia chega.
+- **Login com GitHub**, restrito a uma conta, só para os alertas. O resto do site
+  é público.
 
 ## A interface
 
@@ -158,8 +176,14 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-O site é **estático**. As consultas rodam no build, o Actions dispara o rebuild
-depois do scan, e não há API no ar — é o que faz abrir instantâneo no 4G.
+As telas de dado — scanner, histórico, papéis e cada ficha — são **estáticas**.
+As consultas rodam no build, o Actions dispara o rebuild depois do scan, e é o
+que faz abrir instantâneo no 4G.
+
+Só três rotas rodam no servidor: `/api/auth` (login), `/api/alertas` (exige
+login) e `/api/cotacao` (o candle de hoje, com cache de 5 minutos por papel).
+Quem abre a ficha pelo link do Telegram recebe a página pronta e o candle chega
+depois.
 
 O build lê o mesmo `.env` da raiz, via `dotenv` no `next.config.ts`. Uma cópia
 dentro de `web/` seria uma segunda fonte de verdade para a mesma credencial.
@@ -167,7 +191,16 @@ dentro de `web/` seria uma segunda fonte de verdade para a mesma credencial.
 ### Deploy na Vercel
 
 1. Novo projeto apontando para a pasta `web/`
-2. Variável de ambiente `SCANNER_DATABASE_URL` com a connection string do Neon
+2. Variáveis de ambiente, em **Settings → Environment Variables**:
+
+| Nome | Conteúdo | Ambientes |
+|---|---|---|
+| `SCANNER_DATABASE_URL` | a connection string do Neon | Production e Preview (o build lê o banco) |
+| `AUTH_SECRET` | segredo da sessão (`npx auth secret`) | Production |
+| `AUTH_GITHUB_ID` / `AUTH_GITHUB_SECRET` | o OAuth App do GitHub | Production |
+| `AUTH_GITHUB_LOGIN` | o login do GitHub que pode entrar | Production |
+| `SCANNER_BRAPI_TOKEN` | opcional; sem ele o candle de hoje usa só o Yahoo | Production |
+
 3. Copie o **Deploy Hook** e cadastre como secret `VERCEL_DEPLOY_HOOK` no GitHub —
    é o que faz o `daily.yml` reconstruir o site depois de cada pregão
 
@@ -277,7 +310,9 @@ Em **Settings → Secrets and variables → Actions**:
 | Secret | `SCANNER_TELEGRAM_BOT_TOKEN` | o token do BotFather |
 | Secret | `SCANNER_TELEGRAM_CHAT_ID` | o `chat_id` |
 | Secret | `VERCEL_DEPLOY_HOOK` | opcional, só a partir da F6 |
+| Secret | `SCANNER_BRAPI_TOKEN` | opcional; token da brapi para os alertas de preço |
 | Variable | `SCANNER_WEB_BASE_URL` | URL do site; não é segredo |
+| Variable | `SCANNER_BRAPI_LOTE` | opcional; papéis por requisição na brapi (gratuito 1, Startup 10, Pro 20) |
 
 ### 4. O job diário
 

@@ -253,14 +253,17 @@ def run_scan(
     novos = insert_events(engine, eventos)
     pendentes = pending_events(engine, trade_date)
 
-    enviados: list[int] = []
+    enviados = 0
     if notifier is not None:
         for _, linha in pendentes.iterrows():
             if notifier.send_event(alert_payload(linha, metrics, bars, janelas)):
-                enviados.append(int(linha["id"]))
-        mark_notified(engine, enviados)
+                # Carimbo logo depois de cada envio, e nao no fim do laco: se a
+                # quinta mensagem falhar, as quatro primeiras ja estao marcadas e
+                # nao saem de novo quando o job rodar outra vez.
+                mark_notified(engine, [int(linha["id"])])
+                enviados += 1
 
     relatorio = ScanReport(
-        trade_date, avaliados, len(eventos), barrados, novos, len(enviados), dry_run=False
+        trade_date, avaliados, len(eventos), barrados, novos, enviados, dry_run=False
     )
     return relatorio, eventos

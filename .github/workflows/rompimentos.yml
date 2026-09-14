@@ -52,17 +52,45 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      # O cron externo dispara de segunda a sexta, e feriado da B3 cai em dia
+      # util. Sem esta guarda, cada feriado instalaria as dependencias e abriria
+      # conexao com o Neon 36 vezes so para desistir no fim. Roda com o Python do
+      # runner e so a biblioteca padrao: `scanner.calendar` nao importa nada de
+      # fora. A guarda do `alerta checar` continua la, por garantia.
+      - name: Hoje e pregao?
+        id: pregao
+        shell: bash
+        run: |
+          # 0 = pregao, 10 = nao e pregao. Qualquer outro codigo e erro do
+          # proprio teste (Python sem base de fusos, import quebrado) e derruba
+          # o passo: erro aqui nao pode virar "feriado" e pular a checagem em
+          # silencio todo dia.
+          set +e
+          PYTHONPATH=src python3 -c "import sys; from scanner.calendar import hoje_na_b3, is_trading_day; sys.exit(0 if is_trading_day(hoje_na_b3()) else 10)"
+          codigo=$?
+          set -e
+          if [ "$codigo" -eq 0 ]; then
+            echo "aberto=true" >> "$GITHUB_OUTPUT"
+          elif [ "$codigo" -eq 10 ]; then
+            echo "::notice::Hoje nao e pregao na B3; nada a checar"
+          else
+            exit "$codigo"
+          fi
+
       - uses: astral-sh/setup-uv@v7
+        if: steps.pregao.outputs.aberto == 'true'
         with:
           python-version: "3.12"
           enable-cache: true
 
       - name: Instalar dependencias
         id: deps
+        if: steps.pregao.outputs.aberto == 'true'
         run: uv sync --locked --no-dev
 
       - name: Migrations
         id: migrations
+        if: steps.pregao.outputs.aberto == 'true'
         # O `daily` tambem migra, mas so roda de terca a sabado: uma migration
         # mergeada numa segunda ficaria sem aplicar ate a terca de manha, e
         # todas as passadas de segunda bateriam num schema velho. Aqui e barato
@@ -71,6 +99,7 @@ jobs:
 
       - name: Checar rompimentos
         id: checagem
+        if: steps.pregao.outputs.aberto == 'true'
         # Sem alerta ativo o comando sai em um segundo, sem tocar a rede: a
         # consulta aos fornecedores so acontece se houver o que vigiar.
         run: uv run scanner alerta checar
@@ -83,12 +112,15 @@ jobs:
         if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
         shell: bash
         env:
+          RES_PREGAO: ${{ steps.pregao.outcome }}
           RES_DEPS: ${{ steps.deps.outcome }}
           RES_MIGRATIONS: ${{ steps.migrations.outcome }}
           RES_CHECAGEM: ${{ steps.checagem.outcome }}
         run: |
           onde="passo desconhecido"
-          if [ "$RES_DEPS" = failure ]; then
+          if [ "$RES_PREGAO" = failure ]; then
+            onde="conferencia do calendario da B3"
+          elif [ "$RES_DEPS" = failure ]; then
             onde="instalacao das dependencias"
           elif [ "$RES_MIGRATIONS" = failure ]; then
             onde="migrations"

@@ -28,6 +28,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "daily.yml"
 WORKFLOWS = sorted((PROJECT_ROOT / ".github" / "workflows").glob("*.yml"))
 CRON_EXTERNO = PROJECT_ROOT / ".github" / "cron-externo.yml"
+ROMPIMENTOS = PROJECT_ROOT / ".github" / "workflows" / "rompimentos.yml"
 
 FIM = date(2026, 6, 30)
 SESSOES = 50
@@ -361,3 +362,28 @@ def test_aviso_de_falha_nao_se_diz_teste(workflow: dict[Any, Any]) -> None:
     # Com o cron externo toda execucao e workflow_dispatch; marcar dispatch como
     # "[teste]" rotulava toda falha real como teste.
     assert "[teste]" not in WORKFLOW.read_text(encoding="utf-8")
+
+
+def test_rompimentos_em_feriado_nao_instala_nem_conecta() -> None:
+    """Feriado da B3 cai em dia util: o job para antes de instalar e conectar.
+
+    E o erro do proprio teste do calendario nao pode passar por feriado -- a
+    guarda distingue "nao e pregao" (10) de qualquer outra saida.
+    """
+    conteudo = dict(yaml.safe_load(ROMPIMENTOS.read_text(encoding="utf-8")))
+    (job,) = conteudo["jobs"].values()
+    passos = list(job["steps"])
+
+    (guarda,) = [p for p in passos if p.get("id") == "pregao"]
+    run = str(guarda["run"])
+    assert "set +e" in run
+    assert '"$codigo" -eq 10' in run
+    assert 'exit "$codigo"' in run, "erro na guarda tem de derrubar o passo"
+
+    depois = passos[passos.index(guarda) + 1 :]
+    condicionados = [p for p in depois if "failure()" not in str(p.get("if", ""))]
+    assert condicionados, "nao ha passos depois da guarda"
+    for passo in condicionados:
+        assert "steps.pregao.outputs.aberto == 'true'" in str(passo.get("if", "")), (
+            f"{passo.get('name') or passo.get('uses')} roda mesmo em feriado"
+        )

@@ -269,3 +269,32 @@ def test_features_sobrevivem_ao_jsonb(engine: Engine, mercado: pd.DataFrame) -> 
     assert set(guardado["features"]) == set(FEATURE_COLUMNS)
     assert all(valor is not None for valor in guardado["features"].values())
     assert guardado["triggered_windows"] == JANELAS
+
+
+@pytest.mark.db
+@pytest.mark.usefixtures("limpa_eventos")
+def test_falha_no_meio_do_envio_nao_reenvia_os_que_ja_sairam(
+    engine: Engine, mercado: pd.DataFrame
+) -> None:
+    """Se a segunda mensagem falha, a primeira ja fica marcada como enviada.
+
+    Antes o carimbo vinha no fim do laco: uma falha no meio deixava tudo sem
+    marca, e a proxima execucao mandava de novo o que ja tinha chegado.
+    """
+
+    class FalhaNaSegunda(ConsoleNotifier):
+        def send_event(self, payload: object) -> bool:
+            if self.sent is not None and len(self.sent) >= 1:
+                raise RuntimeError("Telegram fora do ar")
+            return super().send_event(payload)  # type: ignore[arg-type]
+
+    bars = com_spike(com_spike(mercado, "AAAA3", FIM, 20.0), "BBBB4", FIM, 30.0)
+    enviadas: list[str] = []
+
+    with pytest.raises(RuntimeError):
+        run_scan(engine, CONFIG, FIM, notifier=FalhaNaSegunda(sent=enviadas), bars=bars)
+
+    assert len(enviadas) == 1
+    pendentes = pending_events(engine, FIM)
+    assert len(pendentes) == 1, "so o que falhou continua pendente"
+    assert pendentes.iloc[0]["ticker"] not in enviadas[0]

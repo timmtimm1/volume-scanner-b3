@@ -154,12 +154,29 @@ def test_console_safe_degrada_sem_estourar() -> None:
 
 
 class RespostaFalsa:
-    def __init__(self, erro: Exception | None = None) -> None:
+    def __init__(
+        self,
+        erro: Exception | None = None,
+        status_code: int = 200,
+        corpo: dict[str, Any] | None = None,
+    ) -> None:
         self.erro = erro
+        self.status_code = status_code
+        self.corpo = corpo or {}
 
     def raise_for_status(self) -> None:
         if self.erro is not None:
             raise self.erro
+
+    def json(self) -> dict[str, Any]:
+        return self.corpo
+
+
+def _notifier_sem_espera(esperas: list[float], **kwargs: Any) -> TelegramNotifier:
+    """Relogio parado e sono anotado: nenhum teste espera de verdade."""
+    return TelegramNotifier(
+        token="TOKEN", chat_id="123", dormir=esperas.append, relogio=lambda: 1000.0, **kwargs
+    )
 
 
 def test_envio_monta_a_chamada_certa(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -208,3 +225,75 @@ def test_mensagem_traz_a_data_do_pregao() -> None:
 def test_data_do_pregao_vem_de_trade_date_nao_de_hoje() -> None:
     outro = {**EVENTO, "trade_date": date(2024, 11, 5)}
     assert "Pregao de 05/11/2024" in format_alert(outro, BASE)
+
+
+# --- Ritmo e 429 ---------------------------------------------------------------
+
+
+def _responde_429(retry_after: float) -> RespostaFalsa:
+    erro = httpx.HTTPStatusError("429", request=None, response=None)  # type: ignore[arg-type]
+    return RespostaFalsa(erro, 429, {"parameters": {"retry_after": retry_after}})
+
+
+def test_mensagens_seguidas_sao_espacadas(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Dezenas de alertas no mesmo pregao nao podem sair de uma vez so."""
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: RespostaFalsa())
+    esperas: list[float] = []
+    notifier = _notifier_sem_espera(esperas)
+
+    notifier.send_text("um")
+    notifier.send_text("dois")
+
+    assert esperas == [1.0], "a segunda mensagem espera o intervalo; a primeira nao"
+
+
+def test_429_espera_o_que_o_telegram_pede_e_tenta_de_novo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    respostas = [_responde_429(3), RespostaFalsa()]
+    chamadas: list[int] = []
+
+    def falso_post(*_a: Any, **_k: Any) -> RespostaFalsa:
+        chamadas.append(1)
+        return respostas[len(chamadas) - 1]
+
+    monkeypatch.setattr(httpx, "post", falso_post)
+    esperas: list[float] = []
+
+    assert _notifier_sem_espera(esperas).send_text("oi") is True
+    assert len(chamadas) == 2
+    assert 3.0 in esperas
+
+
+def test_429_persistente_vira_erro(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: _responde_429(1))
+    with pytest.raises(TelegramError, match="429"):
+        _notifier_sem_espera([]).send_text("oi")
+
+
+def test_429_com_espera_longa_demais_falha_na_hora(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Esperar uma hora estouraria o timeout do job sem avisar nada.
+    chamadas: list[int] = []
+
+    def falso_post(*_a: Any, **_k: Any) -> RespostaFalsa:
+        chamadas.append(1)
+        return _responde_429(3600)
+
+    monkeypatch.setattr(httpx, "post", falso_post)
+    esperas: list[float] = []
+    with pytest.raises(TelegramError):
+        _notifier_sem_espera(esperas).send_text("oi")
+    assert len(chamadas) == 1
+    assert 3600 not in esperas
+
+
+def test_erro_do_telegram_nao_leva_o_token(monkeypatch: pytest.MonkeyPatch) -> None:
+    segredo = "123456:SEGREDO-DO-BOT"
+    url = f"https://api.telegram.org/bot{segredo}/sendMessage"
+    erro = httpx.HTTPStatusError(f"Client error for url {url}", request=None, response=None)  # type: ignore[arg-type]
+    monkeypatch.setattr(httpx, "post", lambda *a, **k: RespostaFalsa(erro, 400))
+
+    notifier = TelegramNotifier(token=segredo, chat_id="123")
+    with pytest.raises(TelegramError) as info:
+        notifier.send_text("oi")
+    assert segredo not in str(info.value)

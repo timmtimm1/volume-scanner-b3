@@ -90,6 +90,12 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
     return eventos[0] ?? null;
   }, [eventos, pedido]);
 
+  // O alerta sai no Telegram antes de o site ser reconstruido: por alguns
+  // minutos o link aponta para um pregao que esta pagina ainda nao tem. Sem
+  // este aviso, a ficha mostrava o evento anterior como se fosse o pedido.
+  const pedidoAusente =
+    pedido !== null && /^\d{4}-\d{2}-\d{2}$/.test(pedido) && evento?.tradeDate !== pedido;
+
   const barra = useMemo(
     () => barras.find((b) => b.tradeDate === evento?.tradeDate) ?? null,
     [barras, evento],
@@ -173,13 +179,26 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
         </div>
       </header>
 
+      {pedidoAusente && pedido && (
+        <p className="border-b border-linha border-l-2 border-l-ambar bg-selecao px-4 py-3 text-[12px] leading-relaxed md:px-6">
+          O pregão de <strong className="num">{fmtData(pedido)}</strong> ainda não chegou a
+          esta página. O site é atualizado alguns minutos depois do alerta; recarregue
+          daqui a pouco.
+          {evento && (
+            <>
+              {" "}Abaixo, o evento mais recente disponível ({fmtData(evento.tradeDate)}).
+            </>
+          )}
+        </p>
+      )}
+
       {evento && (
         <div className="grid grid-cols-2 gap-px border-b border-linha bg-linha md:grid-cols-4">
           <Metrica
-            rotulo={`z_log · ${janelas[0] ?? 30}d`}
+            rotulo={`z_log · ${evento.zJanela}d`}
             valor={numero(evento.zLog)}
             nota={janelas
-              .slice(1)
+              .filter((j) => j !== evento.zJanela)
               .map((j) => `${j}d ${numero(evento.zByWindow[j])}`)
               .join(" · ")}
             destaque

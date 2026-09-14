@@ -1,9 +1,7 @@
 import { ListaDeEventos } from "@/components/ListaDeEventos";
-import { eventosDoPregao, ultimoPregao, Z_MINIMO_DO_SITE } from "@/lib/db";
+import { LIMIAR_DO_ALERTA, Z_MINIMO_DO_SITE } from "@/lib/config";
+import { eventosDoPregao, ultimoPregao } from "@/lib/db";
 import { data, diaDaSemana, numero } from "@/lib/formato";
-
-/** Espelha `alert.threshold` do config.yaml. */
-const LIMIAR_DO_ALERTA = 6;
 
 export default async function Scanner() {
   const pregao = await ultimoPregao();

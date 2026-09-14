@@ -3,7 +3,10 @@
 export type Evento = {
   ticker: string;
   tradeDate: string; // ISO, AAAA-MM-DD
+  /** O maior z entre as janelas: o que decide o alerta. */
   zLog: number;
+  /** A janela de onde veio o `zLog`. */
+  zJanela: number;
   zByWindow: Record<number, number>;
   zRobust: number | null;
   rvol: number | null;
@@ -25,6 +28,12 @@ export type Evento = {
   /** true quando cruzou o limiar do config e virou alerta no Telegram. */
   notificado: boolean;
 };
+
+/** O que a tabela do historico mostra. So isso vai para o navegador. */
+export type LinhaDoHistorico = Pick<
+  Evento,
+  "ticker" | "tradeDate" | "zLog" | "rvol" | "retDay" | "zExcess" | "avgTicket" | "volumeFinancial"
+>;
 
 export type Barra = {
   tradeDate: string;

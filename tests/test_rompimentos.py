@@ -14,7 +14,9 @@ from scanner.cotacoes.base import Cotacao, ticker_valido
 from scanner.notify.telegram import ConsoleNotifier, format_rompimento
 from scanner.rompimentos import (
     Alerta,
+    RelatorioDeChecagem,
     checar_rompimentos,
+    cotacoes_de_hoje,
     payload_do_disparo,
     rompeu,
     selecionar_disparos,
@@ -29,6 +31,9 @@ from scanner.storage.repository import (
 )
 
 DIA = date(2026, 9, 4)
+# A passada de checagem: segunda 14/09/2026, 13:00 em Brasilia.
+HOJE = date(2026, 9, 14)
+AGORA = datetime(2026, 9, 14, 16, 0, tzinfo=UTC)
 
 
 def alerta(preco: str, direcao: str = "acima", ticker: str = "PETR4") -> Alerta:
@@ -42,8 +47,10 @@ def alerta(preco: str, direcao: str = "acima", ticker: str = "PETR4") -> Alerta:
     )
 
 
-def cotacao(preco: str, ticker: str = "PETR4", fonte: str = "brapi") -> Cotacao:
-    return Cotacao(ticker, Decimal(preco), fonte)
+def cotacao(
+    preco: str, ticker: str = "PETR4", fonte: str = "brapi", hora: datetime = AGORA
+) -> Cotacao:
+    return Cotacao(ticker, Decimal(preco), fonte, hora)
 
 
 # --- A regra ------------------------------------------------------------------
@@ -189,10 +196,13 @@ class ProvedorFalso:
 
     precos: dict[str, str]
     nome: str = "falso"
+    hora: datetime = AGORA
 
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
         return {
-            t: Cotacao(t, Decimal(self.precos[t]), self.nome) for t in tickers if t in self.precos
+            t: Cotacao(t, Decimal(self.precos[t]), self.nome, self.hora)
+            for t in tickers
+            if t in self.precos
         }
 
 
@@ -206,6 +216,7 @@ def test_checagem_dispara_avisa_e_desativa(engine: Engine) -> None:
             engine,
             ProvedorFalso({"PETR4": "38.10"}),
             notifier=ConsoleNotifier(sent=enviadas),
+            hoje=HOJE,
         )
 
         assert relatorio.disparados == 1
@@ -230,6 +241,7 @@ def test_dry_run_avisa_mas_nao_desativa(engine: Engine) -> None:
             ProvedorFalso({"PETR4": "38.10"}),
             notifier=ConsoleNotifier(sent=enviadas),
             dry_run=True,
+            hoje=HOJE,
         )
         assert len(enviadas) == 1
         assert novo in {a.id for a in alertas_ativos(engine)}
@@ -255,9 +267,71 @@ def test_telegram_recusando_mantem_o_alerta_ativo(engine: Engine) -> None:
     novo = criar_alerta(engine, "PETR4", DIA, Decimal("38.00"), "acima")
     try:
         relatorio = checar_rompimentos(
-            engine, ProvedorFalso({"PETR4": "38.10"}), notifier=NotifierQueFalha()
+            engine, ProvedorFalso({"PETR4": "38.10"}), notifier=NotifierQueFalha(), hoje=HOJE
         )
         assert relatorio.disparados == 0
         assert novo in {a.id for a in alertas_ativos(engine)}, "continua ativo para tentar de novo"
+    finally:
+        apagar_alerta(engine, novo)
+
+
+# --- Cotacao atual ------------------------------------------------------------
+
+
+def test_cotacao_de_outro_dia_nao_vale() -> None:
+    """O fechamento de sexta alem do nivel nao e rompimento na segunda."""
+    sexta = datetime(2026, 9, 11, 21, 0, tzinfo=UTC)
+    cotacoes = {
+        "PETR4": cotacao("39.00", hora=AGORA),
+        "VALE3": cotacao("60.00", ticker="VALE3", hora=sexta),
+    }
+    assert set(cotacoes_de_hoje(cotacoes, HOJE)) == {"PETR4"}
+
+
+def test_o_dia_da_cotacao_e_o_de_sao_paulo() -> None:
+    """22:30 de Brasilia ja e o dia seguinte em UTC, mas o pregao e o de hoje."""
+    noite = datetime(2026, 9, 15, 1, 30, tzinfo=UTC)
+    assert set(cotacoes_de_hoje({"PETR4": cotacao("39.00", hora=noite)}, HOJE)) == {"PETR4"}
+
+
+def test_mensagem_traz_a_hora_da_cotacao_no_fuso_da_b3() -> None:
+    disparo = selecionar_disparos(
+        [alerta("38.50")], {"PETR4": cotacao("38.62", fonte="yahoo", hora=AGORA)}
+    )[0]
+    texto = format_rompimento(payload_do_disparo(disparo))
+    assert "às 13:00" in texto, "16:00 UTC sao 13:00 em Brasilia"
+    assert "yahoo" in texto
+
+
+def test_resumo_da_checagem_diz_de_onde_veio_cada_preco() -> None:
+    relatorio = RelatorioDeChecagem(
+        ativos=5,
+        consultados=4,
+        sem_cotacao=0,
+        disparados=0,
+        velhas=1,
+        fontes=(("brapi", 1), ("yahoo", 2)),
+    )
+    linha = relatorio.summary()
+    assert "(brapi 1, yahoo 2)" in linha
+    assert "1 de outro dia ignoradas" in linha
+
+
+@pytest.mark.db
+def test_cotacao_velha_nao_dispara_e_mantem_o_alerta(engine: Engine) -> None:
+    novo = criar_alerta(engine, "PETR4", DIA, Decimal("38.00"), "acima")
+    try:
+        enviadas: list[str] = []
+        sexta = datetime(2026, 9, 11, 21, 0, tzinfo=UTC)
+        relatorio = checar_rompimentos(
+            engine,
+            ProvedorFalso({"PETR4": "40.00"}, hora=sexta),
+            notifier=ConsoleNotifier(sent=enviadas),
+            hoje=HOJE,
+        )
+        assert relatorio.disparados == 0
+        assert relatorio.velhas == 1
+        assert enviadas == []
+        assert novo in {a.id for a in alertas_ativos(engine)}
     finally:
         apagar_alerta(engine, novo)

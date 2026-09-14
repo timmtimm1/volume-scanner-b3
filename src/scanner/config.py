@@ -131,6 +131,9 @@ class Settings(BaseSettings):
     # Opcional: sem ele a brapi aceita lotes de ate 3 papeis e o Yahoo cobre o
     # resto. Com ele, lotes de 10 e menos chamadas.
     brapi_token: SecretStr | None = None
+    # Papeis por requisicao na brapi, conforme o plano: gratuito 1, Startup 10,
+    # Pro 20. Acima do permitido a brapi recusa a requisicao inteira.
+    brapi_lote: int = Field(default=1, ge=1, le=20)
     web_base_url: str = "http://localhost:3000"
     config_path: Path = DEFAULT_CONFIG_PATH
 

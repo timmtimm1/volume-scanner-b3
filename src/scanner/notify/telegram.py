@@ -16,6 +16,8 @@ from typing import Any
 
 import httpx
 
+from scanner.calendar import FUSO_B3
+
 API_BASE = "https://api.telegram.org"
 TIMEOUT_SECONDS = 20.0
 
@@ -271,9 +273,13 @@ def format_rompimento(payload: Mapping[str, Any], base_url: str | None = None) -
     nivel = money_simples(payload.get("nivel"))
     preco = money_simples(payload.get("preco"))
 
+    # A hora e a da cotacao, no fuso da B3 -- nao a da checagem. Nenhum
+    # fornecedor e tempo real, e "tocou 11,51 as 13:30" le diferente de "agora".
+    hora = payload.get("hora")
+    quando = f" às {hora.astimezone(FUSO_B3):%H:%M}" if hora is not None else ""
     linhas = [
         f"🎯 <b>{ticker} {direcao} {nivel}</b>",
-        f"agora {preco} · {payload.get('fonte', '-')}",
+        f"{preco}{quando} · {payload.get('fonte', '-')}",
     ]
 
     criado = payload.get("criado_em")

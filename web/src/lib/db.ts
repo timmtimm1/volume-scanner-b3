@@ -21,13 +21,8 @@
  */
 
 import { Pool } from "pg";
+import { PISO_DE_VOLUME, UNIVERSO, Z_MINIMO_DO_SITE } from "./config";
 import type { Barra, Evento, Papel, Pregao, Universo } from "./types";
-
-/** Piso do que o site carrega. Abaixo disso nao ha o que ler no grafico. */
-export const Z_MINIMO_DO_SITE = 3.0;
-
-/** Espelha `alert.min_volume_brl` do config.yaml. */
-export const PISO_DE_VOLUME = 500_000;
 
 let pool: Pool | null = null;
 
@@ -90,28 +85,63 @@ type LinhaEvento = {
 };
 
 /**
- * Eventos acima de `Z_MINIMO_DO_SITE`, um por (papel, pregao), com o z de cada
- * janela agrupado. A janela de referencia do z principal e a menor configurada,
- * que e a mais sensivel.
+ * Eventos com z >= `Z_MINIMO_DO_SITE` em alguma janela, um por (papel, pregao).
+ *
+ * O z principal e o MAIOR entre as janelas, como a secao 6 do plano pede e como
+ * o alerta decide (qualquer janela cruzando dispara). Antes era o da menor
+ * janela que tivesse passado de 3, e as janelas abaixo de 3 nem vinham: um
+ * evento com 60d em 6,3 e 30d em 5,5 aparecia com 5,5, abaixo da linha do
+ * alerta que ja tinha chegado no Telegram. Medido no banco local: 21 de 117
+ * eventos acima de 6.
+ *
+ * Por isso a consulta tem duas partes: `chaves` escolhe os pares que passam
+ * (e aplica o limite, se houver), e a de fora traz TODAS as janelas desses
+ * pares, para o "z por janela" da ficha nao perder nenhuma.
+ *
+ * `onde` filtra dentro de `chaves` e usa o alias `m`; seus parametros comecam
+ * em $3 ($1 e o piso de volume, $2 o z minimo).
  */
-async function lerEventos(where: string, params: unknown[]): Promise<Evento[]> {
+async function lerEventos(
+  onde: string,
+  params: unknown[],
+  limite?: number,
+): Promise<Evento[]> {
+  const valores: unknown[] = [PISO_DE_VOLUME, Z_MINIMO_DO_SITE, ...params];
+  let corte = "";
+  if (limite !== undefined) {
+    valores.push(limite);
+    corte = `LIMIT $${valores.length}`;
+  }
+
   const { rows } = await conexao().query<LinhaEvento>(
-    `SELECT m.ticker, m.trade_date, m.z_log, m.window_size, m.z_robust, m.rvol,
+    `WITH chaves AS (
+       SELECT m.ticker, m.trade_date, MAX(m.z_log) AS z_max
+         FROM volume_scanner.volume_metrics m
+         JOIN volume_scanner.daily_bars b
+           ON b.ticker = m.ticker AND b.trade_date = m.trade_date
+        WHERE b.volume_financial >= $1
+          AND ${onde}
+        GROUP BY m.ticker, m.trade_date
+       HAVING MAX(m.z_log) >= $2
+        ORDER BY m.trade_date DESC, z_max DESC
+        ${corte}
+     )
+     SELECT m.ticker, m.trade_date, m.z_log, m.window_size, m.z_robust, m.rvol,
             b.close, b.volume_financial, b.trades_count, b.trades_censored,
             COALESCE(f.features, e.features) AS features,
             (e.id IS NOT NULL AND e.notified_at IS NOT NULL) AS notificado
-       FROM volume_scanner.volume_metrics m
+       FROM chaves k
+       JOIN volume_scanner.volume_metrics m
+         ON m.ticker = k.ticker AND m.trade_date = k.trade_date
        JOIN volume_scanner.daily_bars b
-         ON b.ticker = m.ticker AND b.trade_date = m.trade_date
+         ON b.ticker = k.ticker AND b.trade_date = k.trade_date
        LEFT JOIN volume_scanner.events e
-         ON e.ticker = m.ticker AND e.trade_date = m.trade_date
+         ON e.ticker = k.ticker AND e.trade_date = k.trade_date
        LEFT JOIN volume_scanner.daily_features f
-         ON f.ticker = m.ticker AND f.trade_date = m.trade_date
+         ON f.ticker = k.ticker AND f.trade_date = k.trade_date
       WHERE m.z_log IS NOT NULL
-        AND b.volume_financial >= $1
-        AND ${where}
-      ORDER BY m.trade_date DESC, m.z_log DESC`,
-    [PISO_DE_VOLUME, ...params],
+      ORDER BY k.trade_date DESC, k.z_max DESC, m.window_size`,
+    valores,
   );
 
   const porChave = new Map<string, Evento>();
@@ -126,6 +156,7 @@ async function lerEventos(where: string, params: unknown[]): Promise<Evento[]> {
         ticker: r.ticker,
         tradeDate: data,
         zLog: z,
+        zJanela: r.window_size,
         zByWindow: {},
         zRobust: num(r.z_robust),
         rvol: num(r.rvol),
@@ -148,9 +179,15 @@ async function lerEventos(where: string, params: unknown[]): Promise<Evento[]> {
       porChave.set(chave, ev);
     }
     ev.zByWindow[r.window_size] = z;
-    // O z principal e o da menor janela, a mais sensivel.
+    // As linhas vem por janela crescente: so troca com z estritamente maior,
+    // e no empate fica a janela menor.
+    if (z > ev.zLog) {
+      ev.zLog = z;
+      ev.zJanela = r.window_size;
+    }
+    // rvol e z robusto seguem vindo da menor janela, que e a que a ficha
+    // rotula ("mediana de 30 pregoes").
     const menor = Math.min(...Object.keys(ev.zByWindow).map(Number));
-    ev.zLog = ev.zByWindow[menor];
     if (r.window_size === menor) {
       ev.zRobust = num(r.z_robust);
       ev.rvol = num(r.rvol);
@@ -201,23 +238,31 @@ export async function ultimoPregao(): Promise<Pregao> {
 
 /** Eventos do pregao, para a Tela 1. */
 export async function eventosDoPregao(data: string): Promise<Evento[]> {
-  return lerEventos("m.trade_date = $2 AND m.z_log >= $3", [data, Z_MINIMO_DO_SITE]);
+  return lerEventos("m.trade_date = $3", [data]);
 }
 
-/** Eventos de todo o historico disponivel, para a Tela 3. */
-export async function eventosDoHistorico(limite = 400): Promise<Evento[]> {
-  const todos = await lerEventos("m.z_log >= $2", [Z_MINIMO_DO_SITE]);
-  return todos.slice(0, limite);
+/**
+ * Os eventos mais recentes, para a Tela 3.
+ *
+ * O limite vai no SQL. Antes a consulta trazia o historico inteiro e cortava
+ * no JavaScript, a cada build.
+ */
+export async function eventosDoHistorico(limite = 1000): Promise<Evento[]> {
+  return lerEventos("TRUE", [], limite);
 }
 
 /** Barras e eventos de um papel, para a ficha. */
 export async function papel(ticker: string, sessoes = 180): Promise<Papel> {
-  const { rows } = await conexao().query(
-    `SELECT trade_date, open, high, low, close, volume_financial
-       FROM volume_scanner.daily_bars
-      WHERE ticker = $1 ORDER BY trade_date DESC LIMIT $2`,
-    [ticker, sessoes],
-  );
+  // As duas consultas em paralelo: o build faz isso para cada papel com ficha.
+  const [{ rows }, eventos] = await Promise.all([
+    conexao().query(
+      `SELECT trade_date, open, high, low, close, volume_financial
+         FROM volume_scanner.daily_bars
+        WHERE ticker = $1 ORDER BY trade_date DESC LIMIT $2`,
+      [ticker, sessoes],
+    ),
+    lerEventos("m.ticker = $3", [ticker]),
+  ]);
   const barras: Barra[] = rows
     .map((r) => ({
       tradeDate: dia(r.trade_date),
@@ -229,10 +274,6 @@ export async function papel(ticker: string, sessoes = 180): Promise<Papel> {
     }))
     .reverse();
 
-  const eventos = await lerEventos("m.ticker = $2 AND m.z_log >= $3", [
-    ticker,
-    Z_MINIMO_DO_SITE,
-  ]);
   return { ticker, barras, eventos };
 }
 
@@ -252,20 +293,6 @@ export async function fecharConexao(): Promise<void> {
     pool = null;
   }
 }
-
-/**
- * Espelha `universe` do config.yaml.
- *
- * Estes numeros existem em dois lugares: aqui e no `config.yaml` que o Python
- * le. A regra e simples o bastante (mediana e cobertura) para o risco de
- * divergencia ser pequeno, e `scanner universe show` continua sendo a fonte de
- * verdade -- se um dia os dois discordarem, o Python esta certo.
- */
-export const UNIVERSO = {
-  janela: 60,
-  pisoMediana: 500_000,
-  coberturaMinima: 0.8,
-} as const;
 
 /** Papeis que o scanner acompanha, e por que cada um entrou. */
 export async function universo(): Promise<Universo> {

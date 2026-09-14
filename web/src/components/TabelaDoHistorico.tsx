@@ -3,47 +3,67 @@
 import Link from "next/link";
 import { useMemo, useState } from "react";
 import { data as fmtData, dinheiro, multiplo, numero, percentual, reais } from "@/lib/formato";
-import type { Evento } from "@/lib/types";
+import type { LinhaDoHistorico } from "@/lib/types";
+
+/**
+ * Quantas linhas vao para a tela de cada vez. Cada linha renderizada pesa perto
+ * de 1 KB de HTML; com os 1.000 eventos na tela, a pagina passava de 1 MB. O
+ * dado de todos continua carregado, e os filtros valem sobre ele inteiro.
+ */
+const LINHAS_POR_VEZ = 100;
 
 type Props = {
-  eventos: Evento[];
-  /** Quantos cruzaram o limiar do alerta. O rotulo ao lado diz "acima de Nσ",
-   * entao aqui vai isso mesmo -- antes vinha a contagem de notificados, que e
-   * outra coisa: o historico e carga retroativa, e evento antigo nunca foi
-   * notificado. */
-  acimaDoLimiar: number;
-  de?: string;
-  ate?: string;
+  /** Os eventos mais recentes, do pregao mais novo para o mais antigo. */
+  eventos: LinhaDoHistorico[];
   limiarDoAlerta: number;
   minimo: number;
 };
 
-/** Serve para revisitar eventos e ir construindo repertorio de padroes. */
-export function TabelaDoHistorico({
-  eventos,
-  acimaDoLimiar,
-  de,
-  ate,
-  limiarDoAlerta,
-  minimo,
-}: Props) {
+/**
+ * Serve para revisitar eventos e ir construindo repertorio de padroes.
+ *
+ * Filtra por papel, faixa de z e periodo, como a Tela 3 do plano pede. O
+ * periodo vai ate onde os eventos carregados alcancam; o cabecalho diz qual e.
+ */
+export function TabelaDoHistorico({ eventos, limiarDoAlerta, minimo }: Props) {
+  const ate = eventos[0]?.tradeDate;
+  const de = eventos.at(-1)?.tradeDate;
+  // Quantos cruzaram o limiar do alerta. O rotulo ao lado diz "acima de Nσ",
+  // e nao "notificados": o historico e carga retroativa, e evento antigo nunca
+  // foi notificado.
+  const acimaDoLimiar = useMemo(
+    () => eventos.filter((e) => e.zLog >= limiarDoAlerta).length,
+    [eventos, limiarDoAlerta],
+  );
+
   const [corte, setCorte] = useState(minimo);
   const [busca, setBusca] = useState("");
+  // "" = sem limite daquele lado. Datas ISO comparam certo como texto.
+  const [desde, setDesde] = useState("");
+  const [atePeriodo, setAtePeriodo] = useState("");
   // null = ordem padrao (pregao mais recente primeiro, ja vinda do banco).
   // Um clique no cabecalho "Desvio (z)" liga a ordenacao por esse valor;
   // outro clique inverte; o terceiro volta a ordem padrao.
   const [ordemZ, setOrdemZ] = useState<"desc" | "asc" | null>(null);
+  // Quantas linhas mostrar, amarrado aos filtros: mudou um filtro, volta a
+  // mostrar a primeira leva sem precisar zerar estado dentro de efeito.
+  const chaveDosFiltros = `${corte}|${busca}|${desde}|${atePeriodo}|${ordemZ}`;
+  const [leva, setLeva] = useState({ chave: chaveDosFiltros, linhas: LINHAS_POR_VEZ });
+  const linhasNaTela = leva.chave === chaveDosFiltros ? leva.linhas : LINHAS_POR_VEZ;
 
   const visiveis = useMemo(() => {
     const alvo = busca.trim().toUpperCase();
     const filtrados = eventos.filter(
       (e) =>
-        e.zLog >= corte && (!alvo || e.ticker.includes(alvo)),
+        e.zLog >= corte &&
+        (!alvo || e.ticker.includes(alvo)) &&
+        (!desde || e.tradeDate >= desde) &&
+        (!atePeriodo || e.tradeDate <= atePeriodo),
     );
     if (!ordemZ) return filtrados;
     const sinal = ordemZ === "desc" ? -1 : 1;
     return [...filtrados].sort((a, b) => sinal * (a.zLog - b.zLog));
-  }, [eventos, corte, busca, ordemZ]);
+  }, [eventos, corte, busca, desde, atePeriodo, ordemZ]);
 
   function alternarOrdemZ() {
     setOrdemZ((atual) => (atual === "desc" ? "asc" : atual === "asc" ? null : "desc"));
@@ -55,7 +75,9 @@ export function TabelaDoHistorico({
         <div>
           <h1 className="text-[17px] font-bold">Histórico de eventos</h1>
           <p className="num mt-0.5 text-[11px] text-tinta-3">
-            {de && ate ? `${fmtData(de)} a ${fmtData(ate)}` : "sem eventos no período"}
+            {de && ate
+              ? `${fmtData(de)} a ${fmtData(ate)} · os ${numero(eventos.length, 0)} eventos mais recentes`
+              : "sem eventos no período"}
           </p>
         </div>
         <div className="flex-1" />
@@ -81,6 +103,31 @@ export function TabelaDoHistorico({
           />
         </label>
 
+        <div className="flex gap-3">
+          <label className="block">
+            <span className="rotulo mb-1.5 block">De</span>
+            <input
+              type="date"
+              value={desde}
+              min={de}
+              max={ate}
+              onChange={(e) => setDesde(e.target.value)}
+              className="num toque w-[9.5rem] rounded border border-linha-2 bg-painel px-2 py-1.5 text-[12px] outline-none focus:border-ambar"
+            />
+          </label>
+          <label className="block">
+            <span className="rotulo mb-1.5 block">Até</span>
+            <input
+              type="date"
+              value={atePeriodo}
+              min={de}
+              max={ate}
+              onChange={(e) => setAtePeriodo(e.target.value)}
+              className="num toque w-[9.5rem] rounded border border-linha-2 bg-painel px-2 py-1.5 text-[12px] outline-none focus:border-ambar"
+            />
+          </label>
+        </div>
+
         <div className="min-w-[180px] flex-1 md:max-w-[280px]">
           <div className="mb-1.5 flex justify-between">
             <span className="rotulo">z mínimo</span>
@@ -101,7 +148,7 @@ export function TabelaDoHistorico({
         </div>
 
         <span className="num self-end text-[11px] text-tinta-3">
-          {visiveis.length} de {eventos.length}
+          {numero(visiveis.length, 0)} de {numero(eventos.length, 0)}
         </span>
       </div>
 
@@ -139,7 +186,7 @@ export function TabelaDoHistorico({
               <span className="rotulo text-right">Volume</span>
             </div>
 
-            {visiveis.map((e) => (
+            {visiveis.slice(0, linhasNaTela).map((e) => (
               <Link
                 key={`${e.ticker}-${e.tradeDate}`}
                 href={`/papel/${e.ticker}?data=${e.tradeDate}`}
@@ -176,6 +223,19 @@ export function TabelaDoHistorico({
               </Link>
             ))}
           </div>
+        )}
+
+        {visiveis.length > linhasNaTela && (
+          <button
+            type="button"
+            onClick={() =>
+              setLeva({ chave: chaveDosFiltros, linhas: linhasNaTela + LINHAS_POR_VEZ })
+            }
+            className="toque mt-3 w-full rounded-md border border-linha-2 bg-painel px-4 py-2.5 text-[12px] text-tinta-2 transition-colors hover:text-tinta"
+          >
+            mostrar mais {Math.min(LINHAS_POR_VEZ, visiveis.length - linhasNaTela)} · faltam{" "}
+            <span className="num">{visiveis.length - linhasNaTela}</span>
+          </button>
         )}
       </div>
     </>

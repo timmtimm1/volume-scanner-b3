@@ -64,9 +64,12 @@ def test_argumentos_invalidos_sao_erro_de_uso(argv: list[str]) -> None:
 
 
 def test_parse_trade_date() -> None:
+    from scanner.calendar import hoje_na_b3
+
     assert parse_trade_date("2024-03-15") == date(2024, 3, 15)
-    assert parse_trade_date("today") == date.today()
-    assert parse_trade_date("HOJE") == date.today()
+    # "hoje" e o dia em Sao Paulo, nao o da maquina: o runner roda em UTC.
+    assert parse_trade_date("today") == hoje_na_b3()
+    assert parse_trade_date("HOJE") == hoje_na_b3()
 
 
 def test_calendar_holidays_lista_o_ano() -> None:
@@ -218,11 +221,12 @@ def test_daily_em_ensaio_nao_grava_nem_carrega(monkeypatch: pytest.MonkeyPatch) 
 
 
 def test_parse_trade_date_aceita_ultimo() -> None:
-    from scanner.calendar import is_trading_day
+    from scanner.calendar import hoje_na_b3, is_trading_day, ultimo_pregao_encerrado
 
     for token in ("ultimo", "ULTIMO", "last"):
         dia = parse_trade_date(token)
-        assert dia < date.today(), "o ultimo pregao ja terminou; hoje pode nem ter aberto"
+        assert dia == ultimo_pregao_encerrado()
+        assert dia <= hoje_na_b3(), "o ultimo pregao encerrado nunca esta no futuro"
         assert is_trading_day(dia), "o que volta tem de ser pregao"
 
 
@@ -239,3 +243,52 @@ def test_ontem_continua_invalido() -> None:
     # Recusado de proposito: ontem pode nao ter sido pregao, e a ambiguidade
     # entre "o dia anterior" e "o ultimo pregao" e a origem do bug.
     assert runner.invoke(app, ["scan", "--date", "ontem"]).exit_code == 2
+
+
+# --- Pregao de hoje ainda nao publicado -----------------------------------------
+
+
+def _ingest_que_falha(monkeypatch: pytest.MonkeyPatch, erro: Exception) -> None:
+    from scanner.ingest import pipeline
+
+    def falha(*_a: object, **_k: object) -> str:
+        raise erro
+
+    monkeypatch.setattr(pipeline, "ingest_day", falha)
+
+
+@pytest.mark.parametrize("status", [404, 403])
+def test_daily_de_hoje_sem_arquivo_sai_como_adiado(
+    monkeypatch: pytest.MonkeyPatch, status: int
+) -> None:
+    """A noite, a B3 ainda nao ter publicado e esperado: sai 75, sem traceback."""
+    from scanner import cli
+    from scanner.ingest.download import AindaNaoPublicadoError, B3IndisponivelError
+
+    etapas = _EtapasFalsas(monkeypatch)
+    erro = AindaNaoPublicadoError("404") if status == 404 else B3IndisponivelError("403")
+    _ingest_que_falha(monkeypatch, erro)
+    monkeypatch.setattr(cli, "hoje_na_b3", lambda: date(2026, 9, 4))
+
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
+
+    assert result.exit_code == cli.SAIDA_ADIADO, result.output
+    assert "[1/6] adiado" in result.output
+    assert etapas.chamadas == [], "adiado nao calcula, nao notifica e nao poda"
+
+
+def test_daily_de_pregao_passado_sem_arquivo_e_falha_de_verdade(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """De manha o arquivo da vespera ja devia existir: ai e falha, com aviso."""
+    from scanner import cli
+    from scanner.ingest.download import AindaNaoPublicadoError
+
+    _EtapasFalsas(monkeypatch)
+    _ingest_que_falha(monkeypatch, AindaNaoPublicadoError("404"))
+    monkeypatch.setattr(cli, "hoje_na_b3", lambda: date(2026, 9, 8))
+
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
+
+    assert result.exit_code not in (0, cli.SAIDA_ADIADO)
+    assert isinstance(result.exception, AindaNaoPublicadoError)

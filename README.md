@@ -131,9 +131,8 @@ Em construção, fase por fase, segundo [`docs/PLANO.md`](docs/PLANO.md).
 | F7 | PWA | ✅ |
 
 O critério de aceite da F5 — *três execuções agendadas consecutivas bem-sucedidas* —
-não é algo que se faça de uma vez: o cron roda às 23:00 UTC em dias úteis, então
-acumula sozinho. Uma execução manual já passou de ponta a ponta, com carga,
-métricas, scan e retenção.
+passou a ser medido pelo cron externo (seção "O job diário"), já que o agendador
+nativo do GitHub foi abandonado.
 
 ## A interface
 
@@ -266,9 +265,22 @@ Em **Settings → Secrets and variables → Actions**:
 
 ### 4. O job diário
 
-`.github/workflows/daily.yml` roda às **23:00 UTC (20:00 em Brasília), de segunda
-a sexta**, e faz: migrations → carga do pregão → métricas → scan → retenção →
-rebuild na Vercel.
+`.github/workflows/daily.yml` faz: migrations → carga do pregão → métricas →
+scan → resumo → retenção → rebuild na Vercel.
+
+Quem dispara é um cron externo ([cron-job.org](https://cron-job.org)), via
+`workflow_dispatch`: o agendador nativo do GitHub, em repositório público
+gratuito, entregou cerca de 11% dos horários. A agenda versionada fica em
+`.github/cron-externo.yml`, e são dois disparos, ambos pedindo o pregão
+encerrado mais recente no relógio de Brasília:
+
+| Quando (Brasília) | Dias | O que acontece |
+|---|---|---|
+| **21:30** | seg a sex | Processa o pregão do dia. Se a B3 ainda não publicou, termina como **adiado**: sem aviso de falha e sem rebuild |
+| **07:40** | ter a sáb | Reserva. Processa o pregão da véspera se a noite não conseguiu; se conseguiu, nada se repete |
+
+Alerta, resumo e carga são idempotentes: rodar duas vezes o mesmo pregão não
+manda mensagem duplicada.
 
 Feriado da B3 não precisa de exceção: `scanner ingest daily` conhece o calendário
 e sai sem erro quando não houve pregão.
@@ -276,14 +288,10 @@ e sai sem erro quando não houve pregão.
 Dá para disparar à mão em **Actions → daily → Run workflow**, inclusive apontando
 um pregão específico — é assim que se testa antes de esperar o cron.
 
-> **Por que 20h e não 18h.** O plano fixa 21:00 UTC, que é o minuto do
-> fechamento. A B3 leva horas depois disso para publicar o arquivo do pregão —
-> medindo em 08/09/2026 às 15:12, o arquivo do dia ainda dava 404. Às 18h o job
-> falharia na carga todo dia. 23:00 UTC é o limite: passar de 23:59 viraria o dia
-> seguinte no container, e o job pediria o pregão errado.
->
-> Ainda assim o download do arquivo diário tenta de novo em caso de 404, com
-> espera entre as tentativas. Atraso de um dia específico não derruba o job.
+> **Por que dois horários.** A B3 publica o arquivo do dia com atraso variável:
+> às 21:08 em 08/09/2026, mas em 11/09 às 21:59 ainda dava 404, e às 02:42 a B3
+> respondeu 403. O download tenta de novo em 404, 403, 429 e 5xx, com espera
+> entre as tentativas. Se mesmo assim não sair à noite, a manhã cobre.
 
 ## Segredos
 

@@ -4,12 +4,14 @@ name: daily
 # agendador nativo do GitHub: em repositório público gratuito ele atrasa e falha
 # demais para um job que só tem uma janela por dia.
 #
-# Agenda no cron externo: 07:40 BRT, de terça a sábado (2-6), fuso America/Sao_Paulo.
-# - Processa o pregão do dia anterior (terça processa segunda; sábado processa sexta).
-# - Segunda não roda pois domingo não tem pregão.
-# - Às 07:40 pois a B3 atualiza os arquivos de madrugada, garantindo dados
-#   consolidados mais de 2 horas antes da abertura do mercado (10:00).
-# - Minuto 40 evita filas de alta carga comuns em horas cheias.
+# Agenda no cron externo (fuso America/Sao_Paulo), dois disparos com o mesmo
+# corpo -- a agenda completa esta em .github/cron-externo.yml:
+# - 21:30, segunda a sexta: processa o pregao do proprio dia. A B3 costuma
+#   publicar por volta das 21h, mas atrasa. Se o arquivo ainda nao saiu, o job
+#   termina como ADIADO (sem aviso de falha e sem rebuild na Vercel).
+# - 07:40, terca a sabado: reserva. Processa o pregao da vespera. Se a noite ja
+#   processou, nada se repete: evento, resumo e carga sao idempotentes.
+# Os dois pedem `ultimo`, que e o pregao encerrado mais recente em Sao Paulo.
 on:
   workflow_dispatch:
     inputs:
@@ -65,11 +67,23 @@ jobs:
         shell: bash
         run: |
           set -o pipefail
+          set +e
           uv run scanner daily --date "$PREGAO" 2>&1 | tee /tmp/daily.log
+          codigo=$?
+          set -e
+          # 75 = o arquivo do pregao de hoje ainda nao saiu da B3. Nao e falha:
+          # a passada das 07:40 processa. Marca o passo para pular o rebuild.
+          if [ "$codigo" -eq 75 ]; then
+            echo "adiado=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::B3 ainda nao publicou o pregao de hoje; a passada das 07:40 processa"
+            exit 0
+          fi
+          exit "$codigo"
 
       - name: Disparar rebuild na Vercel
         id: vercel
-        if: ${{ env.VERCEL_DEPLOY_HOOK != '' }}
+        # Adiado nao gravou nada: reconstruir o site so gastaria build.
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.pregao.outputs.adiado != 'true' }}
         run: |
           curl -sS -f --retry 3 --retry-delay 2 --retry-connrefused \
             -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null
@@ -78,7 +92,6 @@ jobs:
         if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
         shell: bash
         env:
-          PREFIXO: ${{ github.event_name == 'workflow_dispatch' && '[teste] ' || '' }}
           RES_DEPS: ${{ steps.deps.outcome }}
           RES_SEGREDOS: ${{ steps.segredos.outcome }}
           RES_MIGRATIONS: ${{ steps.migrations.outcome }}
@@ -104,8 +117,8 @@ jobs:
           fi
 
           onde=$(printf '%s' "$onde" | tr -d '<>&')
-          texto=$(printf '⚠️ <b>%sO scanner falhou</b>\nPregão de %s\nOnde: %s\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
-            "$PREFIXO" "$PREGAO" "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          texto=$(printf '⚠️ <b>O scanner falhou</b>\nPregão de %s\nOnde: %s\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$PREGAO" "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
 
           curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
             "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \

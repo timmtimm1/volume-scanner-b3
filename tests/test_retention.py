@@ -189,29 +189,37 @@ def test_workflow_e_disparado_de_fora_e_nao_pelo_agendador_do_github(
     )
 
 
-def test_agenda_externa_roda_de_manha_e_processa_o_pregao_anterior() -> None:
-    """07:40 em Brasilia, de terca a sabado.
-
-    Rodar na mesma noite nao sobreviveu a B3: as 20:26 BRT o arquivo do dia
-    ainda dava 404. De manha o arquivo do dia anterior esta publicado ha horas.
-
-    Tem de terminar antes das 10h, que e quando o pregao abre -- e ai a leitura
-    deixa de ser preparacao e vira reacao.
-
-    O horario mudou de arquivo, nao de natureza: continua sendo decisao do
-    projeto, so que agora aplicada por um painel de fora. Se este teste sumisse
-    junto com o `schedule`, a janela util deixaria de ser verificada por
-    qualquer coisa.
-    """
+def _cron_do_daily(nome: str) -> tuple[str, int, list[str]]:
     agenda = _agenda_externa()
     # O fuso do job e Brasilia, entao a hora do cron ja e a hora de Brasilia.
     assert agenda["timezone"] == "America/Sao_Paulo"
-
-    minuto, hora, *resto = str(agenda["jobs"]["daily"]["cron"]).split()
-    assert 6 <= int(hora) < 10, "fora da janela util: depois das 10h o pregao ja abriu"
+    job = agenda["jobs"][nome]
+    assert job["workflow"] == "daily.yml"
+    minuto, hora, *resto = str(job["cron"]).split()
     assert minuto != "0", "minuto 0 cai na fila da hora cheia"
-    # Terca a sabado: cada sessao e processada na manha seguinte, e a manha
-    # seguinte a sexta e o sabado.
+    return minuto, int(hora), resto
+
+
+def test_agenda_da_noite_roda_depois_da_publicacao_da_b3() -> None:
+    """21h em diante, segunda a sexta: o pregao do proprio dia.
+
+    A B3 publicou as 21:08 em 08/09/2026. Antes das 21h o arquivo quase nunca
+    existe, e a passada sairia sempre como adiada -- inutil.
+    """
+    _, hora, resto = _cron_do_daily("daily-noite")
+    assert 21 <= hora <= 23, "antes das 21h a B3 ainda nao publicou"
+    assert resto == ["*", "*", "1-5"]
+
+
+def test_agenda_da_manha_cobre_a_noite_antes_da_abertura() -> None:
+    """07:40, terca a sabado: a reserva da noite.
+
+    Tem de terminar antes das 10h, quando o pregao abre -- ai a leitura deixa de
+    ser preparacao e vira reacao. Terca a sabado porque a manha seguinte a sexta
+    e o sabado.
+    """
+    _, hora, resto = _cron_do_daily("daily-manha")
+    assert 6 <= hora < 10, "fora da janela util: depois das 10h o pregao ja abriu"
     assert resto == ["*", "*", "2-6"]
 
 
@@ -329,3 +337,26 @@ def test_guarda_impede_teste_de_abrir_o_banco_de_trabalho() -> None:
 
     with pytest.raises(RuntimeError, match="banco de trabalho"):
         build_engine()
+
+
+def test_pregao_adiado_nao_e_falha_nem_reconstroi_o_site(workflow: dict[Any, Any]) -> None:
+    """Saida 75 do `scanner daily` = arquivo de hoje ainda nao publicado.
+
+    O passo tem de trata-la como sucesso (senao dispara o aviso de falha) e
+    marcar a saida `adiado`, que o rebuild da Vercel consulta para nao rodar.
+    """
+    passos = _passos_do_job(workflow)
+    (pregao,) = [p for p in passos if p.get("id") == "pregao"]
+    (vercel,) = [p for p in passos if p.get("id") == "vercel"]
+
+    run = str(pregao["run"])
+    assert "set +e" in run, "sem desligar o -e, o codigo 75 nunca chega a ser lido"
+    assert '"$codigo" -eq 75' in run
+    assert "adiado=true" in run
+    assert "steps.pregao.outputs.adiado != 'true'" in str(vercel["if"])
+
+
+def test_aviso_de_falha_nao_se_diz_teste(workflow: dict[Any, Any]) -> None:
+    # Com o cron externo toda execucao e workflow_dispatch; marcar dispatch como
+    # "[teste]" rotulava toda falha real como teste.
+    assert "[teste]" not in WORKFLOW.read_text(encoding="utf-8")

@@ -14,7 +14,7 @@ import pandas as pd
 import typer
 
 from scanner import __version__
-from scanner.calendar import previous_trading_day
+from scanner.calendar import hoje_na_b3, ultimo_pregao_encerrado
 from scanner.config import load_config
 
 app = typer.Typer(
@@ -40,12 +40,19 @@ app.add_typer(universe_app, name="universe")
 app.add_typer(db_app, name="db")
 
 
+# Codigo de saida do `daily` quando o arquivo do pregao de HOJE ainda nao saiu
+# da B3. E o EX_TEMPFAIL do sysexits.h: "tente mais tarde". O workflow trata
+# como adiado, e nao como falha -- a passada das 07:40 processa o pregao.
+SAIDA_ADIADO = 75
+
+
 def parse_trade_date(value: str) -> date:
     """Aceita `today`/`hoje`, `ultimo`/`last`, ou uma data ISO (AAAA-MM-DD).
 
-    `ultimo` e o pregao completo mais recente -- ontem, ou sexta numa segunda.
-    E o que o job da manha pede: as 7h40 o arquivo do dia anterior ja saiu, e o
-    do proprio dia nem existe (a B3 ainda nao abriu).
+    `ultimo` e o pregao encerrado mais recente, no relogio de Sao Paulo: as
+    21:30 e o proprio dia, as 07:40 e a vespera (sexta, numa segunda). E o que
+    os dois disparos do `daily` pedem, sem cada um precisar dizer a data.
+    `hoje` tambem e o dia em Sao Paulo, e nao o da maquina.
 
     Nao aceita "ontem" de proposito: ontem pode nao ter sido pregao, e a
     diferenca entre "o dia anterior" e "o ultimo pregao" e justamente o que o
@@ -53,9 +60,9 @@ def parse_trade_date(value: str) -> date:
     """
     escolha = value.lower()
     if escolha in {"today", "hoje"}:
-        return date.today()
+        return hoje_na_b3()
     if escolha in {"ultimo", "último", "last"}:
-        return previous_trading_day(date.today())
+        return ultimo_pregao_encerrado()
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
@@ -387,7 +394,19 @@ def daily(
         # A carga grava; num ensaio ela fica de fora e vale o que ja esta la.
         etapa(1, "[dry-run] carga pulada; vale o que ja esta no banco")
     else:
-        etapa(1, ingest_day(dia, config.ingest))
+        from scanner.ingest.download import DownloadTemporarioError
+
+        try:
+            etapa(1, ingest_day(dia, config.ingest))
+        except DownloadTemporarioError as exc:
+            # A noite isso e esperado: a B3 publica o arquivo do dia com atraso
+            # que varia de um dia para outro. Sair como falha mandaria aviso no
+            # Telegram quase toda sexta. Para um pregao que nao e o de hoje, o
+            # arquivo ja devia existir, e ai e falha de verdade.
+            if dia != hoje_na_b3():
+                raise
+            etapa(1, f"adiado: {exc}. A passada das 07:40 processa este pregao.")
+            raise typer.Exit(code=SAIDA_ADIADO) from exc
 
     # A unica leitura das barras e o unico calculo do dia. Tudo abaixo reusa.
     contexto = carregar_contexto(engine, config)

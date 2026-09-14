@@ -6,7 +6,7 @@ que chama o proprio codigo para produzir o gabarito nao prova nada.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime
 
 import pytest
 from sqlalchemy import Engine
@@ -25,6 +25,7 @@ from scanner.calendar import (
     previous_trading_day,
     sessions_before,
     trading_days,
+    ultimo_pregao_encerrado,
 )
 
 FERIADOS_2024 = {
@@ -222,3 +223,28 @@ def test_calendario_bate_com_os_pregoes_reais_do_cotahist(working_engine: Engine
     calculados = set(trading_days(min(reais), max(reais)))
     assert calculados - reais == set(), "calendario diz pregao mas a B3 nao publicou"
     assert reais - calculados == set(), "a B3 publicou pregao que o calendario chama de feriado"
+
+
+# --- ultimo pregao encerrado ---------------------------------------------------
+#
+# As horas vao em UTC de proposito: e o relogio do runner do Actions. 00:30 UTC
+# sao 21:30 em Brasilia; 10:40 UTC sao 07:40.
+
+
+@pytest.mark.parametrize(
+    ("agora_utc", "esperado", "caso"),
+    [
+        (datetime(2026, 9, 15, 0, 30, tzinfo=UTC), date(2026, 9, 14), "seg 21:30: o proprio dia"),
+        (datetime(2026, 9, 15, 10, 40, tzinfo=UTC), date(2026, 9, 14), "ter 07:40: a vespera"),
+        (datetime(2026, 9, 12, 0, 30, tzinfo=UTC), date(2026, 9, 11), "sex 21:30: a sexta"),
+        (datetime(2026, 9, 12, 10, 40, tzinfo=UTC), date(2026, 9, 11), "sab 07:40: a sexta"),
+        (datetime(2026, 9, 11, 21, 29, tzinfo=UTC), date(2026, 9, 10), "sex 18:29: ainda aberto"),
+        (datetime(2026, 9, 11, 21, 30, tzinfo=UTC), date(2026, 9, 11), "sex 18:30: encerrado"),
+        (datetime(2026, 9, 8, 10, 40, tzinfo=UTC), date(2026, 9, 4), "ter apos feriado: sexta"),
+        (datetime(2026, 9, 8, 0, 30, tzinfo=UTC), date(2026, 9, 4), "feriado 21:30: sexta"),
+    ],
+)
+def test_ultimo_pregao_encerrado_no_relogio_de_sao_paulo(
+    agora_utc: datetime, esperado: date, caso: str
+) -> None:
+    assert ultimo_pregao_encerrado(agora_utc) == esperado, caso

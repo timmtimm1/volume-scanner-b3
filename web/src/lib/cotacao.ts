@@ -17,7 +17,9 @@ import { type CandleDeHoje, maisRecente, montarCandle } from "./candle-de-hoje";
 const CACHE_SEGUNDOS = 300;
 
 const YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart";
-const BRAPI = "https://brapi.dev/api/quote";
+// v2, nao a v1 legada (/api/quote/{tickers}): mesmos campos, e ainda avisa
+// quando um ticker foi renomeado (ver comentario em `daBrapi`).
+const BRAPI = "https://brapi.dev/api/v2/stocks/quote";
 
 // Sem User-Agent de navegador o Yahoo responde 429 (medido em 09/09/2026).
 const CABECALHOS_YAHOO = { "User-Agent": "Mozilla/5.0 (compatible; volume-scanner-b3)" };
@@ -64,7 +66,7 @@ async function daBrapi(ticker: string, token: string): Promise<CandleDeHoje | nu
   try {
     // Token no cabecalho, como a brapi recomenda. Uma requisicao por papel,
     // que e o que o plano gratuito aceita.
-    const r = await fetch(`${BRAPI}/${ticker}`, {
+    const r = await fetch(`${BRAPI}?symbols=${ticker}`, {
       headers: { Authorization: `Bearer ${token}` },
       cache: "force-cache",
       next: { revalidate: CACHE_SEGUNDOS },
@@ -75,14 +77,20 @@ async function daBrapi(ticker: string, token: string): Promise<CandleDeHoje | nu
     }
     const dados = await r.json();
     const item = dados?.results?.[0];
+    // `symbol` e o codigo ATUAL do papel -- se a brapi disser que ele foi
+    // renomeado (`changed: true`), e esse codigo que deve bater com o ticker
+    // pedido, nao o `requestedSymbol`. Papel renomeado sem chegar aqui ainda
+    // vira ficha vazia de candle parcial; nao ha alerta cadastrado a atualizar
+    // neste caminho, so o grafico.
     if (item?.symbol !== ticker) return null;
-    const hora = typeof item.regularMarketTime === "string" ? new Date(item.regularMarketTime) : null;
+    const info = item?.data;
+    const hora = typeof info?.regularMarketTime === "string" ? new Date(info.regularMarketTime) : null;
     return montarCandle(ticker, "brapi", {
-      preco: item.regularMarketPrice,
-      abertura: item.regularMarketOpen,
-      maxima: item.regularMarketDayHigh,
-      minima: item.regularMarketDayLow,
-      volume: item.regularMarketVolume,
+      preco: info?.regularMarketPrice,
+      abertura: info?.regularMarketOpen,
+      maxima: info?.regularMarketDayHigh,
+      minima: info?.regularMarketDayLow,
+      volume: info?.regularMarketVolume,
       hora,
     });
   } catch (erro) {

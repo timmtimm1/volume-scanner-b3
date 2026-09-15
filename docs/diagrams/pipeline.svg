@@ -1,0 +1,232 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg viewBox="0 0 952 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vsb-pipeline-title vsb-pipeline-desc">
+      <title id="vsb-pipeline-title">Pipeline do volume-scanner-b3</title>
+      <desc id="vsb-pipeline-desc">Fluxograma do pipeline: o arquivo diário da B3 é carregado no banco, as métricas de z-score são calculadas, o scan compara com o limiar de 6 sigma, e um evento dispara notificação no Telegram e atualização do site até a mensagem chegar no celular do usuário.</desc>
+
+      <style>
+        .flow-token { opacity: 0.9; }
+        @media (prefers-reduced-motion: reduce) {
+          .flow-token { display: none; }
+        }
+      </style>
+
+      <defs><style>@import url('https://fonts.googleapis.com/css2?family=Instrument+Serif:ital@0;1&amp;family=Geist:wght@400;500;600&amp;family=Geist+Mono:wght@400;500;600&amp;display=swap');</style>
+        <marker id="arrow"        markerWidth="8" markerHeight="6" refX="7" refY="3"   orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4a4d6a"/></marker>
+        <marker id="arrow-accent" markerWidth="8" markerHeight="6" refX="7" refY="3"   orient="auto"><polygon points="0 0, 8 3, 0 6" fill="#4f46e5"/></marker>
+
+        <pattern id="dots" width="22" height="22" patternUnits="userSpaceOnUse">
+          <circle cx="11" cy="11" r="0.8" fill="#17163b" fill-opacity="0.10"/>
+        </pattern>
+
+        <path id="flow-path" d="M198,76 L248,76 H302 Q310,76 310,84 V124 L310,156 L360,156 L372,156 L422,156 L472,156 L484,156 L534,156 L584,148 H638 Q646,148 646,156 V204 L646,236 L696,236 H862 Q870,236 870,244 V284 L870,316" fill="none"/>
+      </defs>
+
+      <!-- background -->
+      <rect width="952" height="436" fill="#eef0f6"/>
+      <rect width="952" height="436" fill="url(#dots)" opacity="0.55"/>
+
+      <!-- lane tints (odd-indexed lanes: SISTEMA, VOCÊ) -->
+      <rect x="140" y="116" width="812" height="80" fill="#17163b" fill-opacity="0.018"/>
+      <rect x="140" y="276" width="812" height="80" fill="#17163b" fill-opacity="0.018"/>
+
+      <!-- lane dividers -->
+      <line x1="0" y1="36"  x2="952" y2="36"  stroke="#17163b" stroke-opacity="0.12" stroke-width="0.8"/>
+      <line x1="0" y1="116" x2="952" y2="116" stroke="#17163b" stroke-opacity="0.12" stroke-width="0.8"/>
+      <line x1="0" y1="196" x2="952" y2="196" stroke="#17163b" stroke-opacity="0.12" stroke-width="0.8"/>
+      <line x1="0" y1="276" x2="952" y2="276" stroke="#17163b" stroke-opacity="0.12" stroke-width="0.8"/>
+      <line x1="0" y1="356" x2="952" y2="356" stroke="#17163b" stroke-opacity="0.12" stroke-width="0.8"/>
+
+      <!-- label column divider -->
+      <line x1="140" y1="36" x2="140" y2="356" stroke="#17163b" stroke-opacity="0.20" stroke-width="1"/>
+
+      <!-- lane labels -->
+      <text x="70" y="80"  fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.08em" text-anchor="middle">B3</text>
+      <text x="70" y="160" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.08em" text-anchor="middle">SISTEMA</text>
+      <text x="70" y="240" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.08em" text-anchor="middle">TELEGRAM</text>
+      <text x="70" y="320" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.08em" text-anchor="middle">VOCÊ</text>
+
+      <!-- step header chips -->
+      <!-- step 0 ARQUIVO -->
+      <rect x="190" y="8" width="16" height="16" rx="8" fill="#17163b" fill-opacity="0.12"/>
+      <text x="198" y="19" fill="#17163b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" text-anchor="middle">1</text>
+      <text x="198" y="32" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6" font-weight="500" letter-spacing="0.12em" text-anchor="middle">ARQUIVO</text>
+      <!-- step 1 CARGA -->
+      <rect x="302" y="8" width="16" height="16" rx="8" fill="#17163b" fill-opacity="0.12"/>
+      <text x="310" y="19" fill="#17163b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" text-anchor="middle">2</text>
+      <text x="310" y="32" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6" font-weight="500" letter-spacing="0.12em" text-anchor="middle">CARGA</text>
+      <!-- step 2 MÉTRICAS -->
+      <rect x="414" y="8" width="16" height="16" rx="8" fill="#17163b" fill-opacity="0.12"/>
+      <text x="422" y="19" fill="#17163b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" text-anchor="middle">3</text>
+      <text x="422" y="32" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6" font-weight="500" letter-spacing="0.12em" text-anchor="middle">MÉTRICAS</text>
+      <!-- step 3 SCAN (focal) -->
+      <rect x="526" y="8" width="16" height="16" rx="8" fill="#4f46e5" fill-opacity="0.20"/>
+      <text x="534" y="19" fill="#4f46e5" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" text-anchor="middle">4</text>
+      <text x="534" y="32" fill="#4f46e5" font-family="'Geist Mono', monospace" font-size="6" font-weight="500" letter-spacing="0.12em" text-anchor="middle">SCAN</text>
+      <!-- step 4 AVISA -->
+      <rect x="638" y="8" width="16" height="16" rx="8" fill="#17163b" fill-opacity="0.12"/>
+      <text x="646" y="19" fill="#17163b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" text-anchor="middle">5</text>
+      <text x="646" y="32" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6" font-weight="500" letter-spacing="0.12em" text-anchor="middle">AVISA</text>
+      <!-- step 5 REBUILD -->
+      <rect x="750" y="8" width="16" height="16" rx="8" fill="#17163b" fill-opacity="0.12"/>
+      <text x="758" y="19" fill="#17163b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" text-anchor="middle">6</text>
+      <text x="758" y="32" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6" font-weight="500" letter-spacing="0.12em" text-anchor="middle">REBUILD</text>
+      <!-- step 6 RECEBE -->
+      <rect x="862" y="8" width="16" height="16" rx="8" fill="#17163b" fill-opacity="0.12"/>
+      <text x="870" y="19" fill="#17163b" font-family="'Geist Mono', monospace" font-size="8" font-weight="600" text-anchor="middle">7</text>
+      <text x="870" y="32" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6" font-weight="500" letter-spacing="0.12em" text-anchor="middle">RECEBE</text>
+
+      <!-- ============ ARROWS (before nodes) ============ -->
+      <!-- 1: Arquivo(B3,s0) -> Carga(SIS,s1) normal, downward -->
+      <path d="M248,76 H302 Q310,76 310,84 V124" fill="none" stroke="#4a4d6a" stroke-width="1" marker-end="url(#arrow)"/>
+      <!-- 2: Carga -> Métricas, same lane -->
+      <line x1="360" y1="156" x2="372" y2="156" stroke="#4a4d6a" stroke-width="1" marker-end="url(#arrow)"/>
+      <!-- 3: Métricas -> Scan (focal-in), same lane -->
+      <line x1="472" y1="156" x2="484" y2="156" stroke="#4f46e5" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <!-- 4: Scan -> Notificação (focal-out), downward -->
+      <path d="M584,148 H638 Q646,148 646,156 V204" fill="none" stroke="#4f46e5" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <!-- 5: Scan -> Site atualiza (focal-out), downward, 2 lanes / 2 steps -->
+      <path d="M584,164 H750 Q758,164 758,172 V284" fill="none" stroke="#4f46e5" stroke-width="1.2" marker-end="url(#arrow-accent)"/>
+      <!-- 6: Notificação -> Chega no celular, downward -->
+      <path d="M696,236 H862 Q870,236 870,244 V284" fill="none" stroke="#4a4d6a" stroke-width="1" marker-end="url(#arrow)"/>
+
+      <!-- ============ NODES ============ -->
+
+      <!-- Node 1: Pregão do dia (B3, step0) -->
+      <rect x="148" y="44" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
+      <rect x="152" y="48" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
+      <text x="159" y="56" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">B3</text>
+      <text x="198" y="70" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Pregão do dia</text>
+      <text x="198" y="84" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">COTAHIST · 245B</text>
+      <text x="198" y="96" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">download diário</text>
+      <rect x="224" y="98" width="16" height="8" rx="2" fill="#9c6b50"/>
+      <text x="232" y="104" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">FL</text>
+
+      <!-- Node 2: Carga (SIS, step1) -->
+      <rect x="260" y="124" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
+      <rect x="264" y="128" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
+      <text x="271" y="136" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">SIS</text>
+      <text x="310" y="150" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Carga</text>
+      <text x="310" y="164" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">grava em daily_bars</text>
+      <text x="310" y="176" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">GitHub Actions</text>
+      <rect x="264" y="178" width="16" height="8" rx="2" fill="#9c6b50"/>
+      <text x="272" y="184" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">FL</text>
+      <rect x="340" y="178" width="16" height="8" rx="2" fill="#5e7a9b"/>
+      <text x="348" y="184" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">DB</text>
+
+      <!-- Node 3: Métricas (SIS, step2) -->
+      <rect x="372" y="124" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
+      <rect x="376" y="128" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
+      <text x="383" y="136" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">SIS</text>
+      <text x="422" y="150" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Métricas</text>
+      <text x="422" y="164" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">z-score 30/45/60</text>
+      <text x="422" y="176" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">pandas · numpy</text>
+      <rect x="376" y="178" width="16" height="8" rx="2" fill="#5e7a9b"/>
+      <text x="384" y="184" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">DB</text>
+      <rect x="452" y="178" width="16" height="8" rx="2" fill="#b8915a"/>
+      <text x="460" y="184" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">TB</text>
+
+      <!-- Node 4: Scan (SIS, step3) FOCAL -->
+      <rect x="484" y="124" width="100" height="64" rx="6" fill="#4f46e5" fill-opacity="0.07" stroke="#4f46e5" stroke-width="1.2"/>
+      <rect x="488" y="128" width="14" height="10" rx="2" fill="#4f46e5" fill-opacity="0.15" stroke="#4f46e5" stroke-width="0.8"/>
+      <text x="495" y="136" fill="#4f46e5" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">SIS</text>
+      <text x="534" y="150" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Scan</text>
+      <text x="534" y="164" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">cruzou 6σ?</text>
+      <text x="534" y="176" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">scanner scan</text>
+      <rect x="488" y="178" width="16" height="8" rx="2" fill="#b8915a"/>
+      <text x="496" y="184" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">TB</text>
+      <rect x="564" y="178" width="16" height="8" rx="2" fill="#b8915a"/>
+      <text x="572" y="184" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">TB</text>
+
+      <!-- Node 5: Notificação (TEL, step4) -->
+      <rect x="596" y="204" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
+      <rect x="600" y="208" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
+      <text x="607" y="216" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">TEL</text>
+      <text x="646" y="230" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Notificação</text>
+      <text x="646" y="244" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">evento → mensagem</text>
+      <text x="646" y="256" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">Bot API</text>
+      <rect x="600" y="258" width="16" height="8" rx="2" fill="#b8915a"/>
+      <text x="608" y="264" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">TB</text>
+      <rect x="676" y="258" width="16" height="8" rx="2" fill="#6e6479"/>
+      <text x="684" y="264" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">WB</text>
+
+      <!-- Node 6: Site atualiza (VOC, step5) -->
+      <rect x="708" y="284" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
+      <rect x="712" y="288" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
+      <text x="719" y="296" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">VOC</text>
+      <text x="758" y="310" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Site atualiza</text>
+      <text x="758" y="324" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">rebuild da Vercel</text>
+      <text x="758" y="336" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">deploy hook</text>
+      <rect x="712" y="338" width="16" height="8" rx="2" fill="#b8915a"/>
+      <text x="720" y="344" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">TB</text>
+      <rect x="788" y="338" width="16" height="8" rx="2" fill="#6e6479"/>
+      <text x="796" y="344" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">WB</text>
+
+      <!-- Node 7: Chega no celular (VOC, step6) -->
+      <rect x="820" y="284" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
+      <rect x="824" y="288" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
+      <text x="831" y="296" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">VOC</text>
+      <text x="870" y="310" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Chega no celular</text>
+      <text x="870" y="324" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">abre o gráfico</text>
+      <text x="870" y="336" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">Telegram</text>
+      <rect x="824" y="338" width="16" height="8" rx="2" fill="#6e6479"/>
+      <text x="832" y="344" fill="#ffffff" font-family="'Geist Mono', monospace" font-size="5" font-weight="700" text-anchor="middle">WB</text>
+
+      <!-- ============ FLOW TOKEN (decorative, loop) ============ -->
+      <circle class="flow-token" r="4" fill="#4f46e5" aria-hidden="true" focusable="false">
+        <animateMotion dur="5s" repeatCount="indefinite">
+          <mpath href="#flow-path"/>
+        </animateMotion>
+      </circle>
+
+      <!-- ============ LEGEND ============ -->
+      <text x="144" y="368" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.14em">PASSOS</text>
+      <g font-family="'Geist Mono', monospace" font-size="6" letter-spacing="0.06em">
+        <rect x="270" y="360" width="14" height="14" rx="7" fill="#17163b" fill-opacity="0.12"/>
+        <text x="277" y="370" fill="#17163b" text-anchor="middle" font-weight="600">1</text>
+        <text x="292" y="370" fill="#4a4d6a">ARQUIVO</text>
+        <rect x="356" y="360" width="14" height="14" rx="7" fill="#17163b" fill-opacity="0.12"/>
+        <text x="363" y="370" fill="#17163b" text-anchor="middle" font-weight="600">2</text>
+        <text x="378" y="370" fill="#4a4d6a">CARGA</text>
+        <rect x="432" y="360" width="14" height="14" rx="7" fill="#17163b" fill-opacity="0.12"/>
+        <text x="439" y="370" fill="#17163b" text-anchor="middle" font-weight="600">3</text>
+        <text x="454" y="370" fill="#4a4d6a">MÉTRICAS</text>
+        <rect x="524" y="360" width="14" height="14" rx="7" fill="#4f46e5" fill-opacity="0.20"/>
+        <text x="531" y="370" fill="#4f46e5" text-anchor="middle" font-weight="600">4</text>
+        <text x="546" y="370" fill="#4f46e5">SCAN</text>
+        <rect x="600" y="360" width="14" height="14" rx="7" fill="#17163b" fill-opacity="0.12"/>
+        <text x="607" y="370" fill="#17163b" text-anchor="middle" font-weight="600">5</text>
+        <text x="622" y="370" fill="#4a4d6a">AVISA</text>
+        <rect x="678" y="360" width="14" height="14" rx="7" fill="#17163b" fill-opacity="0.12"/>
+        <text x="685" y="370" fill="#17163b" text-anchor="middle" font-weight="600">6</text>
+        <text x="700" y="370" fill="#4a4d6a">REBUILD</text>
+        <rect x="778" y="360" width="14" height="14" rx="7" fill="#17163b" fill-opacity="0.12"/>
+        <text x="785" y="370" fill="#17163b" text-anchor="middle" font-weight="600">7</text>
+        <text x="800" y="370" fill="#4a4d6a">RECEBE</text>
+      </g>
+
+      <text x="144" y="389" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.14em">DADO</text>
+      <g font-family="'Geist Mono', monospace" font-size="6.5">
+        <rect x="270" y="381" width="16" height="8" rx="2" fill="#9c6b50"/>
+        <text x="278" y="387" fill="#ffffff" font-size="5" font-weight="700" text-anchor="middle">FL</text>
+        <text x="294" y="388" fill="#4a4d6a">arquivo</text>
+        <rect x="350" y="381" width="16" height="8" rx="2" fill="#5e7a9b"/>
+        <text x="358" y="387" fill="#ffffff" font-size="5" font-weight="700" text-anchor="middle">DB</text>
+        <text x="374" y="388" fill="#4a4d6a">registro</text>
+        <rect x="436" y="381" width="16" height="8" rx="2" fill="#b8915a"/>
+        <text x="444" y="387" fill="#ffffff" font-size="5" font-weight="700" text-anchor="middle">TB</text>
+        <text x="460" y="388" fill="#4a4d6a">tabela</text>
+        <rect x="516" y="381" width="16" height="8" rx="2" fill="#6e6479"/>
+        <text x="524" y="387" fill="#ffffff" font-size="5" font-weight="700" text-anchor="middle">WB</text>
+        <text x="540" y="388" fill="#4a4d6a">público</text>
+        <text x="620" y="388" fill="#666985" font-style="italic">esquerda = entra · direita = sai</text>
+      </g>
+
+      <text x="144" y="410" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="8" letter-spacing="0.14em">FLUXO</text>
+      <g font-family="'Geist Mono', monospace" font-size="6.5">
+        <line x1="270" y1="406" x2="300" y2="406" stroke="#4a4d6a" stroke-width="1"/>
+        <text x="308" y="409" fill="#4a4d6a">passo a passo</text>
+        <line x1="420" y1="406" x2="450" y2="406" stroke="#4f46e5" stroke-width="1.2"/>
+        <text x="458" y="409" fill="#4f46e5">decisão (scan)</text>
+      </g>
+
+    </svg>

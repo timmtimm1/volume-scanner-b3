@@ -31,6 +31,7 @@ O sistema **detecta e apresenta**.
 - [Banco de dados](#banco-de-dados)
 - [Deploy](#deploy)
 - [Dificuldades conhecidas](#dificuldades-conhecidas)
+- [Desempenho](#desempenho)
 - [Segredos](#segredos)
 
 ## Como funciona, ponta a ponta
@@ -500,6 +501,54 @@ pareceriam complexas demais para o problema.
 - **O rompimento só vê o preço do instante da checagem**, a cada 15 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.
+
+## Desempenho
+
+O job diário inteiro leva menos de um minuto. A execução das 21:30 de 14/09/2026,
+lida no log do Actions, antes da otimização abaixo:
+
+| Etapa | Tempo | Desde o disparo |
+|---|---|---|
+| Fila, runner e dependências | ~11s | 11s |
+| Migrations (conecta no Neon) | ~7s | 18s |
+| `[1/6]` baixa o arquivo da B3 e grava as barras | ~8s | 26s |
+| `[2/6]` lê o histórico e calcula z-scores e contexto | ~8s | 34s |
+| `[3/6]` grava métricas e contexto | ~5,5s | 40s |
+| `[4/6]` scan e **alerta no Telegram** | <1s | **~40s** |
+| `[5/6]` resumo no Telegram | ~2s | ~43s |
+| `[6/6]` poda do banco | ~3,5s | 46s |
+| Aviso de rebuild para a Vercel | ~5s | ~51s |
+
+A mensagem chega no celular por volta dos 40 segundos; poda e Vercel vêm depois
+dela. O build do site na Vercel não está nessa conta e ainda não foi medido.
+
+### O que foi otimizado no código
+
+Medido contra o Postgres local, sem latência de rede, com os mesmos 400 pregões
+que o Neon guarda (132 mil barras):
+
+| Mudança | Antes | Depois |
+|---|---|---|
+| `rolling_mad`: mediana só nas janelas completas | 2,5s | 0,6s |
+| Contexto: um pivô da tabela em vez de nove | 0,65s | 0,11s |
+| **Cálculo inteiro do contexto** | **5,7s** | **2,9s** |
+
+O `rolling_mad` usava `np.nanmedian` em todas as janelas. Janela com pregão
+faltando tem `NaN`, e isso leva o numpy a um caminho lento, de arrays mascarados
+— para calcular valores que a regra de janela cheia descarta logo em seguida.
+
+Nenhum número mudou. Métricas e contexto saem idênticos, na comparação exata,
+às versões anteriores. Os testes mantêm as implementações antigas como
+referência e exigem igualdade bit a bit.
+
+No Actions, o `uv run` ganhou `--no-sync`: sem ele, cada execução baixava mypy,
+ruff e pytest, que o job nunca usa.
+
+**Medido e deixado como está**, porque cada item fica abaixo de 0,1s: converter
+os números no SQL em vez de no pandas, as cópias e conversões de data no scan e
+no resumo, e a consulta do corte da poda feita duas vezes. O resto do minuto é
+preparar o runner e conversar com o Neon, que fica em São Paulo enquanto o
+runner roda nos EUA.
 
 ## Segredos
 

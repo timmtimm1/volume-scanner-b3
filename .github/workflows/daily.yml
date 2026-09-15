@@ -60,7 +60,9 @@ jobs:
 
       - name: Migrations
         id: migrations
-        run: uv run alembic upgrade head
+        # --no-sync: sem ele o `uv run` ressincroniza com o grupo dev e baixa
+        # mypy, ruff e pytest a cada execucao, depois do `--no-dev` acima.
+        run: uv run --no-sync alembic upgrade head
 
       - name: Pregao do dia
         id: pregao
@@ -68,7 +70,7 @@ jobs:
         run: |
           set -o pipefail
           set +e
-          uv run scanner daily --date "$PREGAO" 2>&1 | tee /tmp/daily.log
+          uv run --no-sync scanner daily --date "$PREGAO" 2>&1 | tee /tmp/daily.log
           codigo=$?
           set -e
           # 75 = o arquivo do pregao de hoje ainda nao saiu da B3. Nao e falha:

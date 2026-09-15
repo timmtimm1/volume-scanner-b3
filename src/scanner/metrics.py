@@ -16,8 +16,8 @@ nao ha loop por ticker. Dias sem negociacao sao NaN na matriz, nunca zero.
 from __future__ import annotations
 
 import math
-import warnings
 from collections.abc import Sequence
+from typing import cast
 
 import numpy as np
 import pandas as pd
@@ -32,12 +32,34 @@ OUTPUT_COLUMNS = ("ticker", "trade_date", "window_size", *METRIC_COLUMNS)
 
 def to_wide(bars: pd.DataFrame, value: str = "volume_financial") -> pd.DataFrame:
     """Matriz pregao x ticker. Ausencia de negocio vira NaN, jamais zero."""
-    frame = bars.loc[:, ["ticker", "trade_date", value]].copy()
+    return to_wide_many(bars, [value])[value]
+
+
+def to_wide_many(bars: pd.DataFrame, values: Sequence[str]) -> dict[str, pd.DataFrame]:
+    """Varias matrizes pregao x ticker de um pivot so, uma por coluna pedida.
+
+    Cada matriz e a mesma que um `pivot_table(aggfunc="last")` daria para aquela
+    coluna: ultimo valor nao nulo por (ticker, pregao), e linha ou coluna toda
+    NaN fora. Um pivot por coluna reconvertia as datas e reagrupava a tabela
+    inteira a cada chamada.
+    """
+    colunas = list(values)
+    frame = bars.loc[:, ["ticker", "trade_date", *colunas]].copy()
     frame["trade_date"] = pd.to_datetime(frame["trade_date"])
-    wide = frame.pivot_table(
-        index="trade_date", columns="ticker", values=value, aggfunc="last"
-    ).sort_index()
-    return wide.astype(float)
+    for coluna in colunas:
+        frame[coluna] = frame[coluna].astype(float)
+    if frame.duplicated(["ticker", "trade_date"]).any():
+        # No banco a chave primaria impede; aqui preserva o "last" do pivot_table.
+        frame = frame.groupby(["ticker", "trade_date"], sort=False).last().reset_index()
+
+    largo = frame.pivot(index="trade_date", columns="ticker", values=colunas).sort_index()
+    matrizes: dict[str, pd.DataFrame] = {}
+    for coluna in colunas:
+        # Com colunas em dois niveis, `largo[coluna]` e sempre DataFrame.
+        matriz = cast(pd.DataFrame, largo[coluna]).dropna(how="all").dropna(how="all", axis=1)
+        matriz.columns.name = "ticker"
+        matrizes[coluna] = matriz
+    return matrizes
 
 
 def rolling_mad(frame: pd.DataFrame, window: int) -> pd.DataFrame:
@@ -52,15 +74,15 @@ def rolling_mad(frame: pd.DataFrame, window: int) -> pd.DataFrame:
     if len(values) >= window:
         # (linhas - janela + 1, colunas, janela)
         view = sliding_window_view(values, window, axis=0)
-        # Janela toda NaN e o caso normal de ticker antes da listagem ou depois
-        # do encerramento; nanmedian avisa e devolve NaN, que e o que queremos.
-        with warnings.catch_warnings():
-            warnings.filterwarnings("ignore", "All-NaN slice encountered", RuntimeWarning)
-            median = np.nanmedian(view, axis=-1)
-            mad = np.nanmedian(np.abs(view - median[..., None]), axis=-1)
-        # min_periods=window: a janela precisa estar cheia, sem buraco.
-        complete = (~np.isnan(view)).sum(axis=-1) == window
-        out[window - 1 :] = np.where(complete, mad, np.nan)
+        # min_periods=window: janela com buraco nao tem MAD. A mediana roda so
+        # nas janelas cheias -- com NaN no array, o nanmedian cai no caminho de
+        # arrays mascarados do numpy, 4x mais lento, para valores descartados.
+        linhas, colunas = np.nonzero(~np.isnan(view).any(axis=-1))
+        cheias = view[linhas, colunas]
+        median = np.median(cheias, axis=-1)
+        mad = np.full(view.shape[:2], np.nan, dtype=float)
+        mad[linhas, colunas] = np.median(np.abs(cheias - median[:, None]), axis=-1)
+        out[window - 1 :] = mad
 
     return pd.DataFrame(out, index=frame.index, columns=frame.columns)
 

@@ -95,14 +95,15 @@ jobs:
         # mergeada numa segunda ficaria sem aplicar ate a terca de manha, e
         # todas as passadas de segunda bateriam num schema velho. Aqui e barato
         # -- sem migration pendente o alembic sai sem tocar em nada.
-        run: uv run alembic upgrade head
+        # --no-sync: sem ele o `uv run` baixa o grupo dev (mypy, ruff, pytest).
+        run: uv run --no-sync alembic upgrade head
 
       - name: Checar rompimentos
         id: checagem
         if: steps.pregao.outputs.aberto == 'true'
         # Sem alerta ativo o comando sai em um segundo, sem tocar a rede: a
         # consulta aos fornecedores so acontece se houver o que vigiar.
-        run: uv run scanner alerta checar
+        run: uv run --no-sync scanner alerta checar
 
       # Sem isto, uma falha aqui e indistinguivel de "nada rompeu": o job fica
       # vermelho numa aba que ninguem abre e o alerta simplesmente nao chega.

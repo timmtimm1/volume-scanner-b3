@@ -44,6 +44,10 @@ reconstrói em paralelo, até a mensagem chegar no celular. `SCAN` é o único
 ponto de decisão do sistema — tudo antes dele é ingestão, tudo depois é
 distribuição do mesmo resultado por dois canais.
 
+Os tempos no diagrama são desde o disparo do job, medidos numa execução real de
+produção (15/09/2026) — detalhado na seção [Desempenho](#desempenho). A mensagem
+chega no celular bem antes do site: o rebuild da Vercel não bloqueia o alerta.
+
 ## O que torna a leitura possível: o ticket médio
 
 A fonte é o COTAHIST da B3, que traz `TOTNEG` (número de negócios) e `VOLTOT`
@@ -527,11 +531,16 @@ dela. O build do site na Vercel não está nessa conta e ainda não foi medido.
 Medido contra o Postgres local, sem latência de rede, com os mesmos 400 pregões
 que o Neon guarda (132 mil barras):
 
-| Mudança | Antes | Depois |
-|---|---|---|
-| `rolling_mad`: mediana só nas janelas completas | 2,5s | 0,6s |
-| Contexto: um pivô da tabela em vez de nove | 0,65s | 0,11s |
-| **Cálculo inteiro do contexto** | **5,7s** | **2,9s** |
+| Mudança | Antes | Depois | Ganho |
+|---|---|---|---|
+| `rolling_mad`: mediana só nas janelas completas | 2,5s | 0,6s | −76% (4,2×) |
+| Contexto: um pivô da tabela em vez de nove | 0,65s | 0,11s | −83% (5,9×) |
+| **Cálculo inteiro do contexto** | **5,7s** | **2,9s** | **−49% (1,9×)** |
+
+A diferença entre a soma das duas primeiras linhas e o total: `rolling_mad` e o
+pivô são a maior parte do cálculo, mas não são tudo — o resto (montar as
+matrizes de log, `shift`, `rolling().mean()/.std()`, concatenar as três
+janelas) não mudou e continua no mesmo tempo de antes.
 
 O `rolling_mad` usava `np.nanmedian` em todas as janelas. Janela com pregão
 faltando tem `NaN`, e isso leva o numpy a um caminho lento, de arrays mascarados

@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import pandas as pd
 
-from scanner.metrics import market_volume_z, to_wide
+from scanner.metrics import market_volume_z, to_wide_many
 
 # Janela de 252 pregoes ~ um ano de bolsa.
 YEAR_SESSIONS = 252
@@ -60,15 +60,27 @@ def compute_features(
             {c: pd.Series(dtype="float64") for c in ("ticker", "trade_date", *FEATURE_COLUMNS)}
         )
 
-    close = to_wide(bars, "close")
-    high = to_wide(bars, "high")
-    low = to_wide(bars, "low")
-    opening = to_wide(bars, "open")
-    avg_price = to_wide(bars, "avg_price")
-    volume = to_wide(bars, "volume_financial")
-    trades = to_wide(bars, "trades_count")
-    prepared = bars.assign(trades_censored=bars["trades_censored"].astype(float))
-    censored = to_wide(prepared, "trades_censored") > 0
+    largas = to_wide_many(
+        bars,
+        (
+            "close",
+            "high",
+            "low",
+            "open",
+            "avg_price",
+            "volume_financial",
+            "trades_count",
+            "trades_censored",
+        ),
+    )
+    close = largas["close"]
+    high = largas["high"]
+    low = largas["low"]
+    opening = largas["open"]
+    avg_price = largas["avg_price"]
+    volume = largas["volume_financial"]
+    trades = largas["trades_count"]
+    censored = largas["trades_censored"] > 0
 
     prev_close = close.shift(1)
 

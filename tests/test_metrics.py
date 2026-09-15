@@ -17,6 +17,7 @@ from scanner.metrics import (
     max_reachable_z,
     rolling_mad,
     to_wide,
+    to_wide_many,
 )
 
 FIM = date(2026, 6, 30)
@@ -251,3 +252,113 @@ def test_uma_linha_por_ticker_pregao_e_janela() -> None:
     resultado = compute_zscores(serie(base_com_variacao(40)), [30, 45])
     assert not bool(resultado.duplicated(["ticker", "trade_date", "window_size"]).any())
     assert set(resultado["window_size"].unique()) <= {30, 45}
+
+
+# --- Equivalencia com as implementacoes anteriores ---------------------------
+#
+# rolling_mad e to_wide foram reescritas por desempenho. Estas referencias sao
+# as versoes antigas, copiadas aqui como oraculo: a nova tem de dar o mesmo
+# numero bit a bit, nao "aproximadamente".
+
+
+def _rolling_mad_referencia(frame: pd.DataFrame, window: int) -> pd.DataFrame:
+    import warnings
+
+    from numpy.lib.stride_tricks import sliding_window_view
+
+    values = frame.to_numpy(dtype=float)
+    out = np.full(values.shape, np.nan, dtype=float)
+    if len(values) >= window:
+        view = sliding_window_view(values, window, axis=0)
+        with warnings.catch_warnings():
+            warnings.filterwarnings("ignore", "All-NaN slice encountered", RuntimeWarning)
+            median = np.nanmedian(view, axis=-1)
+            mad = np.nanmedian(np.abs(view - median[..., None]), axis=-1)
+        complete = (~np.isnan(view)).sum(axis=-1) == window
+        out[window - 1 :] = np.where(complete, mad, np.nan)
+    return pd.DataFrame(out, index=frame.index, columns=frame.columns)
+
+
+def _to_wide_referencia(bars: pd.DataFrame, value: str) -> pd.DataFrame:
+    frame = bars.loc[:, ["ticker", "trade_date", value]].copy()
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"])
+    wide = frame.pivot_table(
+        index="trade_date", columns="ticker", values=value, aggfunc="last"
+    ).sort_index()
+    return wide.astype(float)
+
+
+@pytest.mark.parametrize("window", [2, 3, 30, 45, 60])
+def test_rolling_mad_igual_a_versao_anterior_bit_a_bit(window: int) -> None:
+    rng = np.random.default_rng(42)
+    valores = rng.lognormal(mean=13, sigma=1.5, size=(150, 12))
+    # Buracos espalhados, papel que lista no meio e papel que sai antes do fim.
+    valores[rng.random(valores.shape) < 0.05] = np.nan
+    valores[:70, 3] = np.nan
+    valores[110:, 7] = np.nan
+    valores[:, 9] = np.nan
+    frame = pd.DataFrame(np.log(valores)).shift(1)
+
+    novo = rolling_mad(frame, window).to_numpy()
+    antigo = _rolling_mad_referencia(frame, window).to_numpy()
+    assert np.array_equal(novo, antigo, equal_nan=True)
+
+
+def test_rolling_mad_com_historico_menor_que_a_janela() -> None:
+    frame = pd.DataFrame({"X": [1.0, 2.0, 3.0]})
+    assert bool(rolling_mad(frame, 5).isna().all().all())
+
+
+def _barras_variadas() -> pd.DataFrame:
+    dias = pregoes(8)
+    linhas = []
+    for i, dia in enumerate(dias):
+        for ticker in ("AAAA3", "BBBB4", "CCCC11"):
+            if ticker == "CCCC11" and i < 3:
+                continue  # ainda nao listado
+            linhas.append(
+                {
+                    "ticker": ticker,
+                    "trade_date": dia,
+                    "close": 10.0 + i,
+                    "open": None if ticker == "BBBB4" else 9.5 + i,  # coluna toda nula
+                    "trades_count": 100 + i,
+                    "trades_censored": i == 5,
+                }
+            )
+    return pd.DataFrame(linhas)
+
+
+@pytest.mark.parametrize("coluna", ["close", "open", "trades_count", "trades_censored"])
+def test_to_wide_many_igual_ao_pivot_table(coluna: str) -> None:
+    barras = _barras_variadas()
+    barras["trades_censored"] = barras["trades_censored"].astype(float)
+    colunas = ["close", "open", "trades_count", "trades_censored"]
+
+    pd.testing.assert_frame_equal(
+        to_wide_many(barras, colunas)[coluna],
+        _to_wide_referencia(barras, coluna),
+        check_exact=True,
+    )
+    pd.testing.assert_frame_equal(
+        to_wide(barras, coluna), _to_wide_referencia(barras, coluna), check_exact=True
+    )
+
+
+def test_to_wide_many_com_duplicata_fica_com_o_ultimo_nao_nulo() -> None:
+    barras = _barras_variadas()
+    dia = barras["trade_date"].iloc[0]
+    repetida = pd.DataFrame(
+        [
+            {"ticker": "AAAA3", "trade_date": dia, "close": 99.0, "open": None},
+            {"ticker": "AAAA3", "trade_date": dia, "close": None, "open": 1.0},
+        ]
+    )
+    barras = pd.concat([barras, repetida], ignore_index=True)
+
+    for coluna in ("close", "open"):
+        pd.testing.assert_frame_equal(
+            to_wide_many(barras, ["close", "open"])[coluna],
+            _to_wide_referencia(barras, coluna),
+            check_exact=True,
+        )

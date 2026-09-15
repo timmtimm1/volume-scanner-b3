@@ -141,6 +141,20 @@ uv run pytest                 # testes
 uv run ruff check . && uv run mypy src/
 ```
 
+Isso cria o **schema**, vazio — scan, ficha do papel e histórico não têm o que
+mostrar ainda. Para ter dado real da B3 no Postgres local:
+
+```bash
+uv run scanner ingest backfill --start 2024-01-01   # ~250 MB, alguns minutos
+uv run scanner metrics compute --mode full          # z-score do histórico inteiro
+```
+
+São os mesmos dois comandos do passo 5 de [Banco no Neon](#1-banco-no-neon) —
+aqui sem o prefixo `SCANNER_DATABASE_URL=`, porque o `.env` já aponta para o
+Postgres local. `scanner db prune` (também documentado lá) é opcional em
+desenvolvimento: corta para os últimos 400 pregões, o que a produção faz para
+caber no plano gratuito do Neon, mas localmente não há esse limite.
+
 - a suíte roda em ~20s contra o local, e em minutos contra o Neon;
 - os testes criam um banco isolado `<db>_pytest` — que você não quer criando
   dentro do projeto de produção;

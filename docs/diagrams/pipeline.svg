@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <svg viewBox="0 0 952 436" xmlns="http://www.w3.org/2000/svg" role="img" aria-labelledby="vsb-pipeline-title vsb-pipeline-desc">
       <title id="vsb-pipeline-title">Pipeline do volume-scanner-b3</title>
-      <desc id="vsb-pipeline-desc">Fluxograma do pipeline: o arquivo diário da B3 é carregado no banco, as métricas de z-score são calculadas, o scan compara com o limiar de 6 sigma, e um evento dispara notificação no Telegram e atualização do site até a mensagem chegar no celular do usuário.</desc>
+      <desc id="vsb-pipeline-desc">Fluxograma do pipeline, com o tempo decorrido desde o disparo em cada etapa: o arquivo diário da B3 é carregado no banco (~26s), as métricas de z-score são calculadas (~40s), o scan compara com o limiar de 6 sigma, e um evento dispara notificação no Telegram (mensagem no celular por volta de 40s) e atualização do site na Vercel (~1min38s), medidos numa execução real de produção.</desc>
 
       <style>
         .flow-token { opacity: 0.9; }
@@ -105,6 +105,7 @@
       <rect x="260" y="124" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
       <rect x="264" y="128" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
       <text x="271" y="136" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">SIS</text>
+      <text x="356" y="136" fill="#666985" font-family="'Geist Mono', monospace" font-size="6" text-anchor="end">~26s</text>
       <text x="310" y="150" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Carga</text>
       <text x="310" y="164" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">grava em daily_bars</text>
       <text x="310" y="176" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">GitHub Actions</text>
@@ -117,6 +118,7 @@
       <rect x="372" y="124" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
       <rect x="376" y="128" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
       <text x="383" y="136" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">SIS</text>
+      <text x="468" y="136" fill="#666985" font-family="'Geist Mono', monospace" font-size="6" text-anchor="end">~40s</text>
       <text x="422" y="150" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Métricas</text>
       <text x="422" y="164" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">z-score 30/45/60</text>
       <text x="422" y="176" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">pandas · numpy</text>
@@ -153,6 +155,7 @@
       <rect x="708" y="284" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
       <rect x="712" y="288" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
       <text x="719" y="296" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">VOC</text>
+      <text x="804" y="296" fill="#666985" font-family="'Geist Mono', monospace" font-size="6" text-anchor="end">~1min38s</text>
       <text x="758" y="310" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Site atualiza</text>
       <text x="758" y="324" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">rebuild da Vercel</text>
       <text x="758" y="336" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">deploy hook</text>
@@ -165,6 +168,7 @@
       <rect x="820" y="284" width="100" height="64" rx="6" fill="#ffffff" stroke="#17163b" stroke-opacity="0.25" stroke-width="1"/>
       <rect x="824" y="288" width="14" height="10" rx="2" fill="none" stroke="#17163b" stroke-opacity="0.35" stroke-width="0.8"/>
       <text x="831" y="296" fill="#4a4d6a" font-family="'Geist', sans-serif" font-size="6" font-weight="600" text-anchor="middle">VOC</text>
+      <text x="916" y="296" fill="#666985" font-family="'Geist Mono', monospace" font-size="6" text-anchor="end">~40s</text>
       <text x="870" y="310" fill="#17163b" font-family="'Geist', sans-serif" font-size="9" font-weight="600" text-anchor="middle">Chega no celular</text>
       <text x="870" y="324" fill="#4a4d6a" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">abre o gráfico</text>
       <text x="870" y="336" fill="#666985" font-family="'Geist Mono', monospace" font-size="6.5" text-anchor="middle">Telegram</text>

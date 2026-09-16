@@ -193,8 +193,8 @@ def _agenda_externa() -> dict[str, Any]:
     "comando",
     [
         "alembic upgrade head",
-        # As seis etapas do pregao vivem dentro do `daily`; que ele as execute
-        # todas e o que `test_daily_roda_as_seis_etapas_do_pregao` garante.
+        # As sete etapas do pregao vivem dentro do `daily`; que ele as execute
+        # todas e o que `test_daily_roda_as_sete_etapas_do_pregao` garante.
         "scanner daily",
     ],
 )

@@ -28,6 +28,10 @@ def test_nomes_das_tabelas() -> None:
     #
     # `digest_sends` (migration 0004) da ao resumo o dedupe que `notified_at` ja
     # dava ao alerta: uma linha por pregao cujo resumo saiu.
+    #
+    # `trades`, `trade_operacoes` e `trade_snapshots` (migration 0006) sao a
+    # fase 1 da marcacao a mercado: trades reais do usuario, as operacoes que
+    # os compoem e o snapshot diario de cada um.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -35,6 +39,9 @@ def test_nomes_das_tabelas() -> None:
         "daily_features",
         "price_alerts",
         "digest_sends",
+        "trades",
+        "trade_operacoes",
+        "trade_snapshots",
     }
 
 
@@ -53,6 +60,8 @@ def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
         ("daily_bars", ["ticker", "trade_date"]),
         ("volume_metrics", ["ticker", "trade_date", "window_size"]),
         ("events", ["id"]),
+        ("trades", ["id"]),
+        ("trade_snapshots", ["trade_id", "trade_date"]),
     ],
 )
 def test_chaves_primarias(name: str, expected: list[str]) -> None:

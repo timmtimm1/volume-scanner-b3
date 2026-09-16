@@ -29,6 +29,9 @@ from scanner.storage.models import (
     DigestSend,
     Event,
     PriceAlert,
+    Trade,
+    TradeOperacao,
+    TradeSnapshot,
     VolumeMetric,
 )
 
@@ -541,3 +544,99 @@ def apagar_alerta(engine: Engine, alerta_id: int) -> bool:
     """Remove o alerta de vez."""
     with engine.begin() as conn:
         return conn.execute(delete(PriceAlert).where(PriceAlert.id == alerta_id)).rowcount > 0
+
+
+# --- Trades e marcacao a mercado ---------------------------------------------
+#
+# `trade_snapshots` fica fora da poda de `prune_bars`: e a razao dela existir.
+# As barras que sustentam o fechamento de um trade antigo podem ja ter sido
+# descartadas -- o snapshot e o que sobrevive.
+
+
+def trades_para_marcar(engine: Engine) -> pd.DataFrame:
+    """Todos os trades, com o ultimo pregao ja marcado a mercado (se houver).
+
+    LEFT JOIN com o maior `trade_date` de `trade_snapshots` por trade: um trade
+    sem snapshot nenhum ainda volta com `ultimo_snapshot` nulo, e a funcao pura
+    de `trades.py` marca desde `aberto_em`.
+    """
+    ultimo = (
+        select(
+            TradeSnapshot.trade_id,
+            func.max(TradeSnapshot.trade_date).label("ultimo_snapshot"),
+        )
+        .group_by(TradeSnapshot.trade_id)
+        .subquery()
+    )
+    stmt = select(
+        Trade.id,
+        Trade.ticker,
+        Trade.aberto_em,
+        Trade.encerrado_em,
+        ultimo.c.ultimo_snapshot,
+    ).outerjoin(ultimo, ultimo.c.trade_id == Trade.id)
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)
+
+
+def operacoes_dos_trades(engine: Engine, trade_ids: Sequence[int]) -> pd.DataFrame:
+    """Todas as operacoes dos trades pedidos, na forma que a marcacao a mercado le."""
+    colunas = (
+        "id",
+        "trade_id",
+        "data",
+        "quantidade_apos",
+        "preco_medio_apos",
+        "custo_comprado_apos",
+        "realizado_apos",
+    )
+    if not trade_ids:
+        return pd.DataFrame(columns=list(colunas))
+
+    stmt = select(
+        TradeOperacao.id,
+        TradeOperacao.trade_id,
+        TradeOperacao.data,
+        TradeOperacao.quantidade_apos,
+        TradeOperacao.preco_medio_apos,
+        TradeOperacao.custo_comprado_apos,
+        TradeOperacao.realizado_apos,
+    ).where(TradeOperacao.trade_id.in_(list(trade_ids)))
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)
+
+
+_SNAPSHOT_ATUALIZAVEIS = (
+    "quantidade",
+    "preco_medio",
+    "custo_comprado",
+    "realizado",
+    "fechamento",
+    "valor_posicao",
+    "resultado",
+    "sem_negocio",
+)
+
+
+def gravar_snapshots(engine: Engine, frame: pd.DataFrame) -> int:
+    """Upsert dos snapshots por (trade_id, trade_date). Devolve linhas enviadas.
+
+    Idempotente como o resto da carga: rodar a marcacao duas vezes para o mesmo
+    pregao reescreve os mesmos valores em vez de duplicar linha.
+    """
+    if frame.empty:
+        return 0
+
+    linhas = frame.loc[:, ["trade_id", "trade_date", *_SNAPSHOT_ATUALIZAVEIS]].copy()
+    linhas["trade_id"] = linhas["trade_id"].astype("int64")
+    linhas["trade_date"] = pd.to_datetime(linhas["trade_date"]).dt.date
+    rows = _to_rows(linhas)
+
+    statement = insert(TradeSnapshot)
+    statement = statement.on_conflict_do_update(
+        index_elements=["trade_id", "trade_date"],
+        set_={name: statement.excluded[name] for name in _SNAPSHOT_ATUALIZAVEIS},
+    )
+    with engine.begin() as conn:
+        conn.execute(statement, rows)
+    return len(rows)

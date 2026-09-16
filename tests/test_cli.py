@@ -131,12 +131,14 @@ class _EtapasFalsas:
         import pandas as pd
 
         from scanner import alerts, digest, recompute
+        from scanner import trades as trades_mod
         from scanner.alerts import ScanReport
         from scanner.digest import Resumo
         from scanner.ingest import pipeline
         from scanner.recompute import Contexto, RecomputeReport
         from scanner.storage import engine as engine_mod
         from scanner.storage import repository
+        from scanner.trades import RelatorioSnapshots
 
         self.chamadas: list[str] = []
         self.contextos: list[object] = []
@@ -174,6 +176,14 @@ class _EtapasFalsas:
 
         monkeypatch.setattr(alerts, "run_scan", scan)
 
+        def snapshots(*a: object, **k: object) -> RelatorioSnapshots:
+            anota("snapshots", None)
+            return RelatorioSnapshots(
+                trades=0, snapshots=0, dry_run=bool(k.get("dry_run")), dia=date(2026, 9, 4)
+            )
+
+        monkeypatch.setattr(trades_mod, "run_snapshots", snapshots)
+
         def resumo(*a: object, **k: object) -> Resumo:
             self.contextos.append(k.get("contexto"))
             anota("resumo", None)
@@ -193,14 +203,22 @@ class _EtapasFalsas:
         )
 
 
-def test_daily_roda_as_seis_etapas_do_pregao(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_daily_roda_as_sete_etapas_do_pregao(monkeypatch: pytest.MonkeyPatch) -> None:
     etapas = _EtapasFalsas(monkeypatch)
     result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
 
     assert result.exit_code == 0, result.output
-    assert etapas.chamadas == ["ingest", "contexto", "metricas", "scan", "resumo", "poda"]
-    for numero in range(1, 7):
-        assert f"[{numero}/6]" in result.output
+    assert etapas.chamadas == [
+        "ingest",
+        "contexto",
+        "metricas",
+        "scan",
+        "snapshots",
+        "resumo",
+        "poda",
+    ]
+    for numero in range(1, 8):
+        assert f"[{numero}/7]" in result.output
 
 
 def test_daily_calcula_uma_vez_so_e_reusa(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -223,7 +241,7 @@ def test_daily_em_ensaio_nao_grava_nem_carrega(monkeypatch: pytest.MonkeyPatch) 
     assert "ingest" not in etapas.chamadas
     assert "metricas" not in etapas.chamadas
     assert "poda" not in etapas.chamadas
-    assert etapas.chamadas == ["contexto", "scan", "resumo"]
+    assert etapas.chamadas == ["contexto", "scan", "snapshots", "resumo"]
 
 
 # --- "ultimo": o pregao completo mais recente --------------------------------
@@ -282,7 +300,7 @@ def test_daily_de_hoje_sem_arquivo_sai_como_adiado(
     result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
 
     assert result.exit_code == cli.SAIDA_ADIADO, result.output
-    assert "[1/6] adiado" in result.output
+    assert "[1/7] adiado" in result.output
     assert etapas.chamadas == [], "adiado nao calcula, nao notifica e nao poda"
 
 

@@ -363,7 +363,7 @@ def daily(
         bool, typer.Option("--dry-run", help="Calcula e mostra, sem gravar nem notificar.")
     ] = False,
 ) -> None:
-    """O pregao inteiro num comando: carga, metricas, alerta, resumo e poda.
+    """O pregao inteiro num comando: carga, metricas, alerta, trades, resumo e poda.
 
     Os comandos separados continuam existindo e fazem exatamente o mesmo. A
     diferenca esta em quantas vezes o trabalho e feito: rodando um a um, cada
@@ -383,6 +383,7 @@ def daily(
     from scanner.recompute import carregar_contexto, refresh_metrics
     from scanner.storage.engine import build_engine
     from scanner.storage.repository import mb, prune_bars, retention_cutoff, tamanho_do_banco
+    from scanner.trades import run_snapshots
 
     dia = parse_trade_date(trade_date)
     if not is_trading_day(dia):
@@ -395,7 +396,7 @@ def daily(
 
     def etapa(numero: int, texto: str) -> None:
         """Uma linha por etapa: sem isto, um comando so vira uma caixa preta."""
-        typer.echo(f"[{numero}/6] {texto}")
+        typer.echo(f"[{numero}/7] {texto}")
 
     if dry_run:
         # A carga grava; num ensaio ela fica de fora e vale o que ja esta la.
@@ -436,17 +437,20 @@ def daily(
     )
     etapa(4, relatorio.summary())
 
+    relatorio_snapshots = run_snapshots(engine, dia, bars=contexto.bars, dry_run=dry_run)
+    etapa(5, relatorio_snapshots.summary())
+
     if not config.digest.enabled:
-        etapa(5, "resumo desligado no config")
+        etapa(6, "resumo desligado no config")
     else:
         saida = run_resumo(
             engine, config, dia, notifier=notifier, contexto=contexto, dry_run=dry_run
         )
         if saida.repetido:
-            etapa(5, f"resumo de {dia.isoformat()} ja enviado antes; nao reenviado")
+            etapa(6, f"resumo de {dia.isoformat()} ja enviado antes; nao reenviado")
         else:
             etapa(
-                5,
+                6,
                 f"resumo: {len(saida.linhas)} papeis, {saida.avaliados} avaliados, "
                 f"{saida.cruzaram} acima do limiar",
             )
@@ -467,7 +471,7 @@ def daily(
     # do plano gratuito do Neon, sem precisar abrir o painel.
     total, tabelas = tamanho_do_banco(engine)
     maiores = ", ".join(f"{nome} {mb(tam)}" for nome, tam in list(tabelas.items())[:3])
-    etapa(6, f"{poda_texto}; banco com {mb(total)} ({maiores})")
+    etapa(7, f"{poda_texto}; banco com {mb(total)} ({maiores})")
 
 
 alerta_app = typer.Typer(help="Alertas de rompimento de preco.", no_args_is_help=True)

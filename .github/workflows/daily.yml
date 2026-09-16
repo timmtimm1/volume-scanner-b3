@@ -108,7 +108,7 @@ jobs:
           elif [ "$RES_MIGRATIONS" = failure ]; then
             onde="migrations"
           elif [ "$RES_PREGAO" = failure ]; then
-            ultima=$(grep -E '^\[[0-9]/6\]' /tmp/daily.log 2>/dev/null | tail -1 | cut -c1-52 || true)
+            ultima=$(grep -E '^\[[0-9]/7\]' /tmp/daily.log 2>/dev/null | tail -1 | cut -c1-52 || true)
             if [ -n "$ultima" ]; then
               onde="pregao, depois de $ultima"
             else

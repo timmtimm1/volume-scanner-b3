@@ -37,7 +37,7 @@ class TelegramError(Exception):
 # nao teto nem supressao.
 INTERVALO_ENTRE_MENSAGENS = 1.0
 # Quantas vezes tentar a mesma mensagem quando o Telegram manda esperar (429).
-TENTATIVAS_EM_429 = 3
+TENTATIVAS_EM_429 = 5
 # Maior `retry_after` que vale esperar. Acima disso, falha: o job tem timeout, e
 # um aviso de falha agora e melhor que um job morto por tempo sem dizer nada.
 ESPERA_MAXIMA_EM_429 = 60.0
@@ -150,7 +150,7 @@ def console_safe(text: str) -> str:
 class TelegramNotifier:
     """Envia alertas para um chat do Telegram.
 
-    Nao e congelado: guarda a hora do ultimo envio para espacar o proximo.
+    Nao e congelado: guarda a hora do ultimo envio para esperar o proximo.
     `dormir` e `relogio` existem para os testes nao esperarem de verdade.
     """
 

@@ -5,8 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { AnelDoDesvio } from "@/components/AnelDoDesvio";
 import { Grafico } from "@/components/Grafico";
+import type { Direcao } from "@/lib/alertas";
 import { PainelDeAlerta } from "@/components/PainelDeAlerta";
-import { candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
+import { PainelDeTrade } from "@/components/PainelDeTrade";
+import { candleParcial, diaNaB3, horaNaB3 } from "@/lib/candle-de-hoje";
 import { LIMIAR_DO_ALERTA } from "@/lib/config";
 import {
   data as fmtData,
@@ -22,6 +24,7 @@ import {
 import type { Barra, Evento } from "@/lib/types";
 import { useAlertasDoPapel } from "@/lib/useAlertasDoPapel";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
+import { useTradesDoPapel } from "@/lib/useTradesDoPapel";
 
 type Props = { ticker: string; barras: Barra[]; eventos: Evento[] };
 
@@ -115,6 +118,44 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
   );
 
   const estadoDosAlertas = useAlertasDoPapel(ticker, barras, evento?.tradeDate, hoje);
+  const estadoDosTrades = useTradesDoPapel(ticker, estadoDosAlertas.autenticado);
+
+  // Compras e vendas de TODOS os trades do papel (nao so o aberto) viram
+  // marcador no grafico; o PM tracejado e so do trade aberto, se houver.
+  const operacoesDeTrade = useMemo(
+    () =>
+      estadoDosTrades.trades.flatMap((t) =>
+        t.operacoes.map((o) => ({ data: o.data, tipo: o.tipo, quantidade: o.quantidade })),
+      ),
+    [estadoDosTrades.trades],
+  );
+  const precoMedioDoTrade = estadoDosTrades.tradeAberto?.precoMedio ?? null;
+
+  // "Agora" para a regua: o close de hoje, mas so quando "hoje" e mesmo o dia
+  // corrente em Sao Paulo -- fora do pregao (fim de semana, feriado) a ultima
+  // cotacao buscada pode ser de um dia que ja esta em `barras` com dado oficial,
+  // e ele e quem vale.
+  const agoraDaRegua =
+    hoje && hoje.dia === diaNaB3(new Date()) ? hoje.close : (barras.at(-1)?.close ?? null);
+  const tradeParaRegua = estadoDosTrades.tradeAberto
+    ? {
+        quantidade: estadoDosTrades.tradeAberto.quantidade,
+        precoMedio: estadoDosTrades.tradeAberto.precoMedio,
+        custoComprado: estadoDosTrades.tradeAberto.custoComprado,
+        realizado: estadoDosTrades.tradeAberto.realizado,
+      }
+    : null;
+  const regua =
+    agoraDaRegua !== null
+      ? {
+          agora: agoraDaRegua,
+          trade: tradeParaRegua,
+          podeCriarAlerta: estadoDosAlertas.autenticado === true,
+          criarAlerta: async (preco: number, direcao: Direcao) => {
+            await estadoDosAlertas.criarAlertaEm(preco, direcao);
+          },
+        }
+      : undefined;
 
   const faixa = leituraDaFaixa(evento?.pos252 ?? null);
   const ticket = leituraDoTicket(
@@ -217,6 +258,9 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
             escolhendoPreco={estadoDosAlertas.escolhendo}
             aoEscolherPreco={estadoDosAlertas.escolherNoGrafico}
             hoje={hoje}
+            operacoes={operacoesDeTrade}
+            precoMedio={precoMedioDoTrade}
+            regua={regua}
             classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
           />
 
@@ -371,6 +415,7 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
               </div>
             </div>
           )}
+          <PainelDeTrade estado={estadoDosTrades} hoje={hoje} />
           <PainelDeAlerta estado={estadoDosAlertas} />
         </section>
       </div>

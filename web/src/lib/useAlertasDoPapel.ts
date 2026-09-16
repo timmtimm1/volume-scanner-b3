@@ -123,6 +123,35 @@ export function useAlertasDoPapel(
     else setErro("não foi possível apagar");
   }
 
+  /**
+   * Cria um alerta com preco e direcao dados direto, sem passar pelo
+   * formulario (`preco`/`direcao` acima) -- e o que a regua do grafico usa:
+   * ela tem o proprio nivel medido e nao deve mexer no estado do cartao de
+   * alerta. Lanca em caso de erro; quem chama decide como mostrar.
+   */
+  async function criarAlertaEm(valor: number, direcaoEscolhida: Direcao): Promise<Alerta> {
+    if (!pregaoDoAlerta) {
+      throw new Error("sem pregão de referência para este papel");
+    }
+    const r = await fetch("/api/alertas/", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ticker,
+        preco: valor,
+        direcao: direcaoEscolhida,
+        tradeDate: pregaoDoAlerta,
+      }),
+    });
+    if (!r.ok) {
+      const corpo = (await r.json().catch(() => null)) as { erro?: string } | null;
+      throw new Error(corpo?.erro ?? "não foi possível salvar");
+    }
+    const { alerta } = (await r.json()) as { alerta: Alerta };
+    setAlertas((atual) => [alerta, ...atual]);
+    return alerta;
+  }
+
   return {
     alertas,
     autenticado,
@@ -138,6 +167,7 @@ export function useAlertasDoPapel(
     apagar,
     escolherNoGrafico,
     precoDeReferencia,
+    criarAlertaEm,
   };
 }
 

@@ -236,8 +236,18 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
 - **Candle de hoje na ficha.** Depois que a página abre, o gráfico ganha o candle
   do pregão em andamento, vazado, com a hora e a fonte da cotação. Não entra em
   nenhum cálculo e some quando o COTAHIST do dia chega.
-- **Login com GitHub**, restrito a uma conta, só para os alertas. O resto do site
-  é público.
+- **Login com GitHub**, restrito a uma conta, só para alertas e trades. O resto do
+  site é público.
+- **Acompanhamento de trades.** Logado, você registra na ficha do papel as compras
+  e vendas que fez na corretora, inclusive parciais e com data passada. O site
+  calcula preço médio e realizado, e o trade aparece marcado a mercado: na ficha
+  (com setas de compra e venda no gráfico e a linha do preço médio), em `/trades`
+  e no detalhe de cada trade, com o resultado por pregão. O fechamento de cada dia
+  fica guardado em `trade_snapshots`, gravado pelo job noturno. Sem custos de
+  corretagem e sem proventos, por enquanto.
+- **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
+  logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
+  toques medem o movimento entre dois pontos e quantos pregões ele levou.
 
 ## A interface
 
@@ -251,8 +261,10 @@ As telas de dado — scanner, histórico, papéis e cada ficha — são **estát
 As consultas rodam no build, o Actions dispara o rebuild depois do scan, e é o
 que faz abrir instantâneo no 4G.
 
-Só três rotas rodam no servidor: `/api/auth` (login), `/api/alertas` (exige
-login) e `/api/cotacao` (o candle de hoje, com cache de 5 minutos por papel).
+Só roda no servidor o que depende de quem está olhando ou do preço de agora:
+`/api/auth` (login), `/api/alertas` e `/api/trades` (exigem login), as páginas
+`/alertas` e `/trades` (mostram só o convite para entrar sem login) e
+`/api/cotacao` (o candle de hoje, com cache de 5 minutos por papel).
 Quem abre a ficha pelo link do Telegram recebe a página pronta e o candle chega
 depois.
 

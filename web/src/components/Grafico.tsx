@@ -25,13 +25,15 @@ import {
   type IPriceLine,
   type ISeriesApi,
   type ISeriesMarkersPluginApi,
+  type Logical,
   type SeriesMarker,
   type Time,
 } from "lightweight-charts";
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import type { PointerEvent as EventoDePonteiro } from "react";
+import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Alerta, Direcao } from "@/lib/alertas";
 import { type CandleDeHoje, candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
-import { diaCurto, numero } from "@/lib/formato";
+import { diaCurto, numero, percentual, reaisComSinal } from "@/lib/formato";
 import { aberturaDaBanda, bollinger, mediaMovel, type TipoDeMedia } from "@/lib/indicadores";
 import {
   CORES_DAS_MEDIAS,
@@ -42,7 +44,7 @@ import {
   rotuloDaMedia,
   semMedia,
 } from "@/lib/medias";
-import type { PontoDaRegua, TradeDaRegua } from "@/lib/regua";
+import { medirMovimento, type PontoDaRegua, type TradeDaRegua } from "@/lib/regua";
 import { useTema } from "@/lib/tema";
 import type { Barra, Evento } from "@/lib/types";
 import { useMedias } from "@/lib/useMedias";
@@ -63,10 +65,11 @@ const SERIE = {
   compra: "#2F6FED",
   venda: "#B45FE0",
   pm: "#64748B",
-  // A regua: cor propria, para nao ser confundida com alerta (roxo) nem PM
-  // (cinza) quando as tres aparecem juntas no mesmo grafico.
-  regua: "#17B4CC",
 };
+
+/** Tamanho do rotulo da regua, em pixels -- para ele nao sair da area do grafico. */
+const LARGURA_DO_ROTULO_DA_REGUA = 138;
+const ALTURA_DO_ROTULO_DA_REGUA = 60;
 
 type Props = {
   barras: Barra[];
@@ -91,8 +94,16 @@ type Props = {
   hoje?: CandleDeHoje | null;
   /** Compras e vendas de TODOS os trades do papel, para os marcadores no candle. */
   operacoes?: { data: string; tipo: "compra" | "venda"; quantidade: number }[];
-  /** Preco medio do trade aberto, para a linha tracejada "PM". Null sem trade aberto. */
-  precoMedio?: number | null;
+  /**
+   * O trade aberto do papel, ja marcado a mercado, para a linha tracejada do
+   * preco medio. Null sem trade aberto -- sem ela, nao ha linha.
+   */
+  posicao?: {
+    quantidade: number;
+    precoMedio: number;
+    resultado: number;
+    resultadoPct: number | null;
+  } | null;
   /**
    * O que a regua de medicao precisa saber para desenhar o painel. Sem esta
    * prop o botao da regua nem aparece -- e o caso de quem monta o Grafico sem
@@ -109,14 +120,28 @@ type Props = {
   };
 };
 
+/**
+ * Reserva do tema claro -- usada tanto como fallback de `coresDaSuperficie`
+ * quanto como estado inicial de `superficieRegua` antes do primeiro efeito
+ * rodar. `getComputedStyle` nao existe no servidor (o componente e "use
+ * client", mas ainda ganha uma renderizacao no servidor), entao o estado
+ * inicial nao pode chamar `coresDaSuperficie()` -- so uma constante estatica.
+ */
+const SUPERFICIE_PADRAO = {
+  fundo: "#ffffff",
+  texto: "#666985",
+  grade: "#e6e7f0",
+  rotulo: "#26235f",
+};
+
 function coresDaSuperficie() {
   const estilo = getComputedStyle(document.documentElement);
   const ler = (nome: string, reserva: string) => estilo.getPropertyValue(nome).trim() || reserva;
   return {
-    fundo: ler("--painel", "#ffffff"),
-    texto: ler("--tinta-3", "#666985"),
-    grade: ler("--linha", "#e6e7f0"),
-    rotulo: ler("--primario", "#26235f"),
+    fundo: ler("--painel", SUPERFICIE_PADRAO.fundo),
+    texto: ler("--tinta-3", SUPERFICIE_PADRAO.texto),
+    grade: ler("--linha", SUPERFICIE_PADRAO.grade),
+    rotulo: ler("--primario", SUPERFICIE_PADRAO.rotulo),
   };
 }
 
@@ -146,7 +171,7 @@ export function Grafico({
   aoEscolherPreco,
   hoje = null,
   operacoes = [],
-  precoMedio = null,
+  posicao = null,
   regua,
 }: Props) {
   const idBase = useId();
@@ -157,8 +182,24 @@ export function Grafico({
   const [tipoNovo, setTipoNovo] = useState<TipoDeMedia>("MMA");
   const [periodoNovo, setPeriodoNovo] = useState("50");
   const [corNova, setCorNova] = useState<string | null>(null);
+
+  // Estados da regua, estilo Profit: desligada -> ligada sem ponto -> ANCORADA
+  // (tem inicio, a ponta segue o cursor/dedo) -> FIXADA (inicio e fim
+  // parados). `reguaFixada` distingue as duas ultimas; `inicioDaRegua` null
+  // distingue as duas primeiras.
   const [reguaLigada, setReguaLigada] = useState(false);
-  const [pontosDaRegua, setPontosDaRegua] = useState<PontoDaRegua[]>([]);
+  const [inicioDaRegua, setInicioDaRegua] = useState<PontoDaRegua | null>(null);
+  const [pontaDaRegua, setPontaDaRegua] = useState<PontoDaRegua | null>(null);
+  const [reguaFixada, setReguaFixada] = useState(false);
+  // Os pixels dos pontos da regua (e do rotulo), recalculados num efeito --
+  // nao no render, que nao pode ler refs do grafico (`chart.current`,
+  // `serie.current`). Null sem os dois pontos ou fora da area visivel.
+  const [pixelsDaRegua, setPixelsDaRegua] = useState<{
+    inicio: { x: number; y: number };
+    ponta: { x: number; y: number };
+    rotuloEsquerda: number;
+    rotuloTopo: number;
+  } | null>(null);
 
   const alvo = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -172,19 +213,33 @@ export function Grafico({
   const linhaDoParcial = useRef<IPriceLine | null>(null);
   const marcadoresDeTrade = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const linhaDoPM = useRef<IPriceLine | null>(null);
-  const linhaDoNivel = useRef<IPriceLine | null>(null);
-  const serieDoMovimento = useRef<ISeriesApi<"Line"> | null>(null);
+  // Cores da superficie para o rotulo da regua (HTML por cima do canvas, nao
+  // desenhado pelo lightweight-charts). Estado, nao ref -- o render le para
+  // pintar o rotulo. So muda com o tema ou quando o grafico e reconstruido,
+  // nunca a cada pixel arrastado.
+  const [superficieRegua, setSuperficieRegua] = useState(SUPERFICIE_PADRAO);
 
   // Guardados em ref para o clique nao precisar deles nas dependencias -- se
   // precisasse, cada render do pai reassinaria o evento e remontaria o grafico.
   const aoEscolher = useRef(aoEscolherPreco);
   const escolhendo = useRef(escolhendoPreco);
-  const reguaLigadaRef = useRef(reguaLigada);
   useEffect(() => {
     aoEscolher.current = aoEscolherPreco;
     escolhendo.current = escolhendoPreco;
-    reguaLigadaRef.current = reguaLigada;
   });
+
+  // Tela de toque ou caneta: muda so o texto da dica da regua ("toque e
+  // arraste" em vez de "clique no ponto inicial"). Calculado uma vez -- o tipo
+  // de ponteiro do aparelho nao muda durante a sessao.
+  const [telaDeToque] = useState(
+    () => typeof window !== "undefined" && window.matchMedia("(pointer: coarse)").matches,
+  );
+
+  function limparRegua() {
+    setInicioDaRegua(null);
+    setPontaDaRegua(null);
+    setReguaFixada(false);
+  }
 
   // Regua e escolha de nivel do alerta sao exclusivas: ligar a escolha do
   // alerta desliga a regua e limpa o que estava medido. Ajustado durante a
@@ -196,21 +251,16 @@ export function Grafico({
     setEscolhendoAnterior(escolhendoPreco);
     if (escolhendoPreco) {
       setReguaLigada(false);
-      setPontosDaRegua([]);
+      limparRegua();
     }
   }
 
   function alternarRegua() {
     setReguaLigada((ligada) => {
       const proxima = !ligada;
-      if (!proxima) setPontosDaRegua([]);
+      if (!proxima) limparRegua();
       return proxima;
     });
-  }
-
-  function fecharRegua() {
-    setReguaLigada(false);
-    setPontosDaRegua([]);
   }
 
   // Quanto a banda abriu contra a media recente: o "abrindo" em numero.
@@ -222,19 +272,11 @@ export function Grafico({
 
   const parcial = useMemo(() => candleParcial(barras, hoje), [barras, hoje]);
 
-  // Pregoes conhecidos do grafico, para a regua contar quantos ha entre dois
-  // pontos -- inclui o dia de hoje quando ha candle parcial, que ainda nao
-  // esta em `barras` (o COTAHIST so traz depois que o pregao fecha).
-  const datasPregao = useMemo(() => {
-    const dias = barras.map((b) => b.tradeDate);
-    if (parcial && !dias.includes(parcial.dia)) dias.push(parcial.dia);
-    return dias;
-  }, [barras, parcial]);
-
   useEffect(() => {
     if (!alvo.current || barras.length === 0) return;
 
     const sup = coresDaSuperficie();
+    setSuperficieRegua(sup);
     const c = createChart(alvo.current, {
       layout: {
         background: { type: ColorType.Solid, color: sup.fundo },
@@ -349,40 +391,15 @@ export function Grafico({
     }
 
     // Um clique com o modo de escolher nivel ligado devolve o preco daquela
-    // altura; com a regua ligada, cada toque vira um ponto medido. Assinado
-    // uma vez: `subscribeClick` nao dispara em arrasto, entao deslocar o
-    // grafico nao mexe em nenhum dos dois.
+    // altura. Assinado uma vez: `subscribeClick` nao dispara em arrasto,
+    // entao deslocar o grafico nao mexe nisso. A regua NAO usa `subscribeClick`
+    // -- ele confunde dois cliques rapidos com duplo clique, entao o segundo
+    // ponto as vezes nao chegava a marcar nada. Ela tem seu overlay proprio,
+    // mais abaixo.
     c.subscribeClick((param) => {
-      if (!param.point || !serie.current) return;
-
-      if (escolhendo.current) {
-        const preco = serie.current.coordinateToPrice(param.point.y);
-        if (preco !== null) aoEscolher.current?.(Number(preco));
-        return;
-      }
-
-      if (!reguaLigadaRef.current) return;
+      if (!param.point || !serie.current || !escolhendo.current) return;
       const preco = serie.current.coordinateToPrice(param.point.y);
-      if (preco === null) return;
-      const precoArredondado = Math.round(Number(preco) * 100) / 100;
-
-      // A data pelo `param.time`, quando o toque caiu dentro de um candle; fora
-      // dele (comum no celular, num toque impreciso), pela barra mais proxima
-      // do indice logico daquele x.
-      let dataDoToque = (param.time as string | undefined) ?? null;
-      if (dataDoToque === null) {
-        const logico = c.timeScale().coordinateToLogical(param.point.x);
-        if (logico !== null) {
-          const i = Math.min(Math.max(Math.round(logico), 0), barras.length - 1);
-          dataDoToque = barras[i]?.tradeDate ?? null;
-        }
-      }
-      if (dataDoToque === null) return;
-
-      const novoPonto = { data: dataDoToque, preco: precoArredondado };
-      // 1o toque marca o nivel; 2o completa o movimento; o 3o recomeca do
-      // zero, como se fosse um novo 1o toque.
-      setPontosDaRegua((pontos) => (pontos.length >= 2 ? [novoPonto] : [...pontos, novoPonto]));
+      if (preco !== null) aoEscolher.current?.(Number(preco));
     });
 
     const mapaDeMedias = linhasDeMedia.current;
@@ -401,10 +418,11 @@ export function Grafico({
       // a um grafico que ja sumiu.
       marcadoresDeTrade.current = null;
       linhaDoPM.current = null;
-      // Mesma logica: a linha e a serie da regua morrem com o grafico.
-      linhaDoNivel.current = null;
-      serieDoMovimento.current = null;
       mapaDeMedias.clear();
+      // Os indices da regua eram relativos a este grafico (a este `barras`);
+      // um novo grafico pode ter outra janela de barras, entao a medicao presa
+      // ao antigo perde o sentido.
+      limparRegua();
     };
   }, [barras, eventos, destaque]);
 
@@ -413,6 +431,7 @@ export function Grafico({
     const c = chart.current;
     if (!c) return;
     const sup = coresDaSuperficie();
+    setSuperficieRegua(sup);
     c.applyOptions({
       layout: { background: { type: ColorType.Solid, color: sup.fundo }, textColor: sup.texto },
       grid: { vertLines: { color: sup.grade }, horzLines: { color: sup.grade } },
@@ -538,6 +557,11 @@ export function Grafico({
    * o trade muda. Efeito separado do que monta o grafico, igual ao das linhas
    * de alerta: registrar uma operacao nova nao pode reconstruir candles e
    * bandas.
+   *
+   * A linha do PM, estilo Profit: a cor segue o sinal do resultado (o trade
+   * esta ganhando ou perdendo, marcado ao preco de agora) e o titulo mostra
+   * quantidade e resultado -- nao so "PM". O rotulo do eixo continua mostrando
+   * o preco (e o proprio `createPriceLine` que desenha).
    */
   useEffect(() => {
     const s = serie.current;
@@ -563,76 +587,173 @@ export function Grafico({
       s.removePriceLine(linhaDoPM.current);
       linhaDoPM.current = null;
     }
-    if (precoMedio !== null) {
+    if (posicao) {
+      const cor =
+        posicao.resultado > 0 ? SERIE.alta : posicao.resultado < 0 ? SERIE.baixa : SERIE.pm;
       linhaDoPM.current = s.createPriceLine({
-        price: precoMedio,
-        color: SERIE.pm,
+        price: posicao.precoMedio,
+        color: cor,
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: "PM",
+        title: `C ${numero(posicao.quantidade, 0)} · ${reaisComSinal(posicao.resultado)} (${percentual(posicao.resultadoPct, 1)})`,
       });
     }
-  }, [operacoes, precoMedio, barras, eventos, destaque]);
+  }, [operacoes, posicao, barras, eventos, destaque]);
+
+  // A ultima versao de `recalcularPixelsDaRegua` (definida no efeito abaixo),
+  // para o efeito de redimensionamento poder chamar a atual sem precisar
+  // reassinar o ResizeObserver a cada ponto novo (varias vezes por segundo
+  // durante um arrasto).
+  const recalcularPixelsRef = useRef<() => void>(() => {});
 
   /**
-   * O desenho da regua: uma linha tracejada no 1o toque, uma serie ligando os
-   * dois pontos no 2o. Redesenha do zero a cada mudanca -- e barato (no maximo
-   * dois pontos) e mais simples que atualizar em cima do que ja existe.
+   * Os pixels dos pontos da regua: recalculados aqui (nao no render, que nao
+   * pode ler refs do grafico) sempre que os pontos mudam -- e o que da a
+   * atualizacao "ao vivo" enquanto a ponta segue o cursor ou o dedo.
+   * `useLayoutEffect` em vez de `useEffect`: roda antes da pintura, sem o
+   * atraso de um quadro que deixaria o retangulo um passo atras do ponteiro.
+   */
+  useLayoutEffect(() => {
+    function recalcular() {
+      const c = chart.current;
+      const s = serie.current;
+      const el = alvo.current;
+      if (!c || !s || !el || !inicioDaRegua || !pontaDaRegua) {
+        setPixelsDaRegua(null);
+        return;
+      }
+      const xIni = c.timeScale().logicalToCoordinate(inicioDaRegua.indice as Logical);
+      const yIni = s.priceToCoordinate(inicioDaRegua.preco);
+      const xFim = c.timeScale().logicalToCoordinate(pontaDaRegua.indice as Logical);
+      const yFim = s.priceToCoordinate(pontaDaRegua.preco);
+      if (xIni === null || yIni === null || xFim === null || yFim === null) {
+        setPixelsDaRegua(null);
+        return;
+      }
+
+      // O rotulo troca de lado perto da borda direita, e fica sempre dentro
+      // da area do grafico nas duas direcoes.
+      const areaL = el.clientWidth;
+      const areaA = el.clientHeight;
+      const margem = 10;
+      let rotuloEsquerda =
+        xFim + margem + LARGURA_DO_ROTULO_DA_REGUA > areaL
+          ? xFim - margem - LARGURA_DO_ROTULO_DA_REGUA
+          : xFim + margem;
+      rotuloEsquerda = Math.min(Math.max(rotuloEsquerda, 4), areaL - LARGURA_DO_ROTULO_DA_REGUA - 4);
+      const rotuloTopo = Math.min(
+        Math.max(yFim - ALTURA_DO_ROTULO_DA_REGUA / 2, 4),
+        areaA - ALTURA_DO_ROTULO_DA_REGUA - 4,
+      );
+
+      setPixelsDaRegua({
+        inicio: { x: xIni, y: yIni },
+        ponta: { x: xFim, y: yFim },
+        rotuloEsquerda,
+        rotuloTopo,
+      });
+    }
+    recalcularPixelsRef.current = recalcular;
+    recalcular();
+  }, [inicioDaRegua, pontaDaRegua, barras, eventos, destaque]);
+
+  /**
+   * Regua ligada: desliga a rolagem e o zoom do grafico (senao arrastar o dedo
+   * ou o mouse pra medir tambem move o candle) e acompanha o redimensionamento
+   * e o intervalo visivel para recalcular os pixels dos pontos guardados em
+   * dados -- eles moveriam na tela mesmo sem os pontos mudarem. Desligada,
+   * restaura o comportamento padrao -- o grafico volta a se comportar
+   * exatamente como sem a regua.
    */
   useEffect(() => {
-    const s = serie.current;
     const c = chart.current;
-    if (!s || !c) return;
+    if (!c) return;
+    c.applyOptions({ handleScroll: !reguaLigada, handleScale: !reguaLigada });
+    if (!reguaLigada) return;
 
-    if (linhaDoNivel.current) {
-      s.removePriceLine(linhaDoNivel.current);
-      linhaDoNivel.current = null;
+    const recalcular = () => window.requestAnimationFrame(() => recalcularPixelsRef.current());
+    const observador = new ResizeObserver(recalcular);
+    if (alvo.current) observador.observe(alvo.current);
+    c.timeScale().subscribeVisibleLogicalRangeChange(recalcular);
+    return () => {
+      observador.disconnect();
+      c.timeScale().unsubscribeVisibleLogicalRangeChange(recalcular);
+    };
+  }, [reguaLigada, barras, eventos, destaque]);
+
+  // Esc limpa e desliga a regua -- unico jeito de fazer isso pelo teclado,
+  // ja que nao ha "clicar fora" (o overlay cobre o grafico inteiro).
+  useEffect(() => {
+    if (!reguaLigada) return;
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key !== "Escape") return;
+      setReguaLigada(false);
+      limparRegua();
     }
-    if (serieDoMovimento.current) {
-      c.removeSeries(serieDoMovimento.current);
-      serieDoMovimento.current = null;
-    }
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [reguaLigada]);
 
-    if (!reguaLigada || pontosDaRegua.length === 0) return;
+  /** Preco (2 casas) e indice de barra (limitado a `barras`) sob o ponteiro. */
+  function pontoDoToque(clienteX: number, clienteY: number): PontoDaRegua | null {
+    const c = chart.current;
+    const s = serie.current;
+    const el = alvo.current;
+    if (!c || !s || !el || barras.length === 0) return null;
+    const rect = el.getBoundingClientRect();
+    const x = clienteX - rect.left;
+    const y = clienteY - rect.top;
 
-    if (pontosDaRegua.length === 1) {
-      linhaDoNivel.current = s.createPriceLine({
-        price: pontosDaRegua[0].preco,
-        color: SERIE.regua,
-        lineWidth: 2,
-        lineStyle: LineStyle.Dashed,
-        axisLabelVisible: true,
-        title: "régua",
-      });
+    const precoBruto = s.coordinateToPrice(y);
+    if (precoBruto === null) return null;
+    const preco = Math.round(Number(precoBruto) * 100) / 100;
+
+    const logico = c.timeScale().coordinateToLogical(x);
+    if (logico === null) return null;
+    const indice = Math.min(Math.max(Math.round(logico), 0), barras.length - 1);
+
+    return { indice, preco };
+  }
+
+  function aoPressionarNaRegua(e: EventoDePonteiro<HTMLDivElement>) {
+    if (e.pointerType === "mouse" && e.button !== 0) return;
+    const ponto = pontoDoToque(e.clientX, e.clientY);
+    if (!ponto) return;
+    // So captura toque/caneta: sao um gesto so (pressionar, arrastar, soltar).
+    // O mouse usa dois cliques distintos, e capturar no primeiro faria o
+    // segundo clique (que fixa) sair de baixo do ponteiro sem problema, mas
+    // sem necessidade -- o overlay ja cobre o grafico inteiro.
+    if (e.pointerType !== "mouse") e.currentTarget.setPointerCapture(e.pointerId);
+
+    if (inicioDaRegua === null || reguaFixada) {
+      // Sem ponto, ou uma medicao ja fixada: este toque comeca outra medicao.
+      setInicioDaRegua(ponto);
+      setPontaDaRegua(ponto);
+      setReguaFixada(false);
       return;
     }
+    // ANCORADA e mouse: o segundo clique fixa a medicao.
+    if (e.pointerType === "mouse") {
+      setPontaDaRegua(ponto);
+      setReguaFixada(true);
+    }
+  }
 
-    // Sempre do ponto mais antigo pro mais novo -- mesma regra de
-    // `medirMovimento`, para a linha desenhada bater com o painel.
-    const [de, ate] =
-      pontosDaRegua[0].data <= pontosDaRegua[1].data
-        ? [pontosDaRegua[0], pontosDaRegua[1]]
-        : [pontosDaRegua[1], pontosDaRegua[0]];
-    // Dois toques no mesmo pregao: a serie de linha recusa dois pontos com a
-    // mesma data (lanca erro e derruba o grafico). O painel ja mostra a
-    // variacao; sem traco nesse caso.
-    if (de.data === ate.data) return;
-    const linha = c.addSeries(LineSeries, {
-      color: SERIE.regua,
-      lineWidth: 2,
-      lineStyle: LineStyle.Dashed,
-      priceLineVisible: false,
-      lastValueVisible: false,
-      crosshairMarkerVisible: false,
-      pointMarkersVisible: true,
-    });
-    linha.setData([
-      { time: de.data as Time, value: de.preco },
-      { time: ate.data as Time, value: ate.preco },
-    ]);
-    serieDoMovimento.current = linha;
-  }, [pontosDaRegua, reguaLigada, barras, eventos, destaque]);
+  function aoMoverNaRegua(e: EventoDePonteiro<HTMLDivElement>) {
+    if (inicioDaRegua === null || reguaFixada) return;
+    const ponto = pontoDoToque(e.clientX, e.clientY);
+    if (ponto) setPontaDaRegua(ponto);
+  }
+
+  function aoSoltarNaRegua(e: EventoDePonteiro<HTMLDivElement>) {
+    // O mouse fixa no segundo clique (em `aoPressionarNaRegua`), nao ao soltar.
+    if (e.pointerType === "mouse") return;
+    if (inicioDaRegua === null || reguaFixada) return;
+    const ponto = pontoDoToque(e.clientX, e.clientY);
+    if (ponto) setPontaDaRegua(ponto);
+    setReguaFixada(true);
+  }
 
   if (barras.length === 0) {
     return (
@@ -654,6 +775,13 @@ export function Grafico({
     setAdicionando(false);
     setCorNova(null);
   }
+
+  // A medida em si nao depende de pixel nenhum -- so dos pontos em dados --
+  // entao pode ser calculada aqui no render, sem tocar em ref.
+  const medicaoDaRegua =
+    inicioDaRegua && pontaDaRegua ? medirMovimento({ inicio: inicioDaRegua, fim: pontaDaRegua }) : null;
+  const corDaRegua =
+    medicaoDaRegua !== null && medicaoDaRegua.porAcao < 0 ? SERIE.baixa : SERIE.alta;
 
   return (
     <div className="flex min-w-0 flex-col gap-3">
@@ -852,23 +980,95 @@ export function Grafico({
           Toque na altura do nível que quer vigiar. Dá para ajustar o valor exato depois.
         </p>
       )}
+
       <div
-        ref={alvo}
-        className={`w-full ${classeDeAltura}`}
+        className={`relative w-full ${classeDeAltura}`}
         style={{ cursor: escolhendoPreco || reguaLigada ? "crosshair" : undefined }}
-      />
+      >
+        {/* So o alvo do lightweight-charts: ele injeta seus proprios elementos
+            aqui por fora do React (createChart/appendChild), entao este div nao
+            pode ter filhos declarados em JSX -- misturar os dois deixaria o
+            React tentando reconciliar um DOM que ele nao criou. O overlay da
+            regua, por isso, e um irmao posicionado por cima, nao um filho. */}
+        <div ref={alvo} className="h-full w-full" />
+
+        {/* Overlay da regua: so existe com a regua ligada -- desligada, o
+            grafico se comporta exatamente como sem ela (sem ate um listener a
+            mais no caminho). `touchAction: none` impede o navegador de rolar a
+            pagina no lugar de medir quando o gesto e um arrasto vertical. O
+            `z-index` explicito e necessario: os proprios canvas do
+            lightweight-charts tem z-index 1 e 2 (o de cima e o do crosshair),
+            entao um overlay com z-index automatico ficaria por baixo deles. */}
+        {reguaLigada && (
+          <div
+            className="absolute inset-0 z-10"
+            style={{ touchAction: "none" }}
+            onPointerDown={aoPressionarNaRegua}
+            onPointerMove={aoMoverNaRegua}
+            onPointerUp={aoSoltarNaRegua}
+            onPointerCancel={aoSoltarNaRegua}
+          >
+            {pixelsDaRegua && medicaoDaRegua && (
+              <>
+                <svg className="pointer-events-none absolute inset-0 h-full w-full" aria-hidden>
+                  <rect
+                    x={Math.min(pixelsDaRegua.inicio.x, pixelsDaRegua.ponta.x)}
+                    y={Math.min(pixelsDaRegua.inicio.y, pixelsDaRegua.ponta.y)}
+                    width={Math.abs(pixelsDaRegua.ponta.x - pixelsDaRegua.inicio.x)}
+                    height={Math.abs(pixelsDaRegua.ponta.y - pixelsDaRegua.inicio.y)}
+                    fill={`${corDaRegua}26`}
+                    stroke={corDaRegua}
+                    strokeWidth={1.5}
+                  />
+                  <circle
+                    cx={pixelsDaRegua.inicio.x}
+                    cy={pixelsDaRegua.inicio.y}
+                    r={4}
+                    fill={corDaRegua}
+                    stroke={superficieRegua.fundo}
+                    strokeWidth={1.5}
+                  />
+                </svg>
+                <div
+                  className="pointer-events-none absolute rounded-xl px-2.5 py-2 text-[11px] font-bold leading-tight shadow-sm"
+                  style={{
+                    left: pixelsDaRegua.rotuloEsquerda,
+                    top: pixelsDaRegua.rotuloTopo,
+                    width: LARGURA_DO_ROTULO_DA_REGUA,
+                    background: superficieRegua.fundo,
+                    color: superficieRegua.rotulo,
+                    border: `1px solid ${corDaRegua}`,
+                  }}
+                >
+                  <div className="num" style={{ color: corDaRegua }}>
+                    {percentual(medicaoDaRegua.variacaoPct, 2)}
+                  </div>
+                  <div className="num">{reaisComSinal(medicaoDaRegua.porAcao)}</div>
+                  <div className="num text-tinta-3">{medicaoDaRegua.candles} candles</div>
+                </div>
+              </>
+            )}
+
+            {!inicioDaRegua && (
+              <div className="pointer-events-none absolute right-2 top-2 rounded-full bg-painel-2/90 px-2.5 py-1 text-[11px] font-semibold text-tinta-3">
+                {telaDeToque ? "toque e arraste" : "clique no ponto inicial"}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Painel da regua: sempre abaixo da area do grafico, nunca por cima dos
-          candles -- em 390px um popup flutuante cobriria justo o que se quer ler. */}
-      {regua && reguaLigada && (
+          candles -- em 390px um popup flutuante cobriria justo o que se quer
+          ler. So aparece com a medicao FIXADA e para quem esta logado --
+          deslogado, o rotulo no grafico ja basta. */}
+      {regua && regua.podeCriarAlerta && reguaFixada && inicioDaRegua && pontaDaRegua && (
         <PainelDaRegua
-          pontos={pontosDaRegua}
+          key={`${inicioDaRegua.indice}:${inicioDaRegua.preco}:${pontaDaRegua.indice}:${pontaDaRegua.preco}`}
+          nivel={pontaDaRegua.preco}
           agora={regua.agora}
-          datas={datasPregao}
           trade={regua.trade}
-          podeCriarAlerta={regua.podeCriarAlerta}
           criarAlerta={regua.criarAlerta}
-          aoFechar={fecharRegua}
         />
       )}
     </div>

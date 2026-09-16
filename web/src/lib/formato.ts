@@ -91,3 +91,9 @@ export function leituraDoTicket(
   if (ticketZ >= 1) return "ticket acima do normal";
   return null;
 }
+
+/** `+R$ 924,80` / `−R$ 924,80`: reais com sinal, para resultado de trade e medicao. */
+export function reaisComSinal(v: number): string {
+  const sinal = v >= 0 ? "+" : "−";
+  return `${sinal}${reais(Math.abs(v))}`;
+}

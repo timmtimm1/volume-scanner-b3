@@ -232,8 +232,10 @@ def run_resumo(
         notifier.send_resumo(payload_do_resumo(resumo, trades))
         return resumo
 
-    if digest_enviado(engine, trade_date):
-        return replace(resumo, repetido=True)
+    # TEMP: dedupe desligado para reenviar o resumo de 15/09 com o bloco
+    # "Seus trades". Reverter apos o reenvio.
+    # if digest_enviado(engine, trade_date):
+    #     return replace(resumo, repetido=True)
 
     trades = trades_do_pregao(engine, trade_date)
     if notifier.send_resumo(payload_do_resumo(resumo, trades)):

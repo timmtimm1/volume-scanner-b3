@@ -243,8 +243,9 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
   calcula preço médio e realizado, e o trade aparece marcado a mercado: na ficha
   (com setas de compra e venda no gráfico e a linha do preço médio), em `/trades`
   e no detalhe de cada trade, com o resultado por pregão. O fechamento de cada dia
-  fica guardado em `trade_snapshots`, gravado pelo job noturno. Sem custos de
-  corretagem e sem proventos, por enquanto.
+  fica guardado em `trade_snapshots`, gravado pelo job noturno, e o resumo diário
+  no Telegram ganha o bloco **Seus trades** com a posição de cada trade aberto e
+  dos encerrados no pregão. Sem custos de corretagem e sem proventos, por enquanto.
 - **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
   logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
   toques medem o movimento entre dois pontos e quantos pregões ele levou.

@@ -129,11 +129,15 @@ def montar_resumo(
     )
 
 
-def payload_do_resumo(resumo: Resumo) -> dict[str, Any]:
+def payload_do_resumo(resumo: Resumo, trades: pd.DataFrame | None = None) -> dict[str, Any]:
     """Converte o resumo no formato que a mensagem espera.
 
     Os nomes das chaves sao os do dia a dia, nao os das colunas do banco: quem
     le a mensagem nao precisa saber o que e `z_log` nem `volume_financial`.
+
+    `trades` e opcional e de proposito: quem monta o payload sem chamar
+    `trades_do_pregao` (a maioria dos testes) continua recebendo exatamente o
+    payload de antes, sem a chave `trades`.
     """
 
     def valor(bruto: Any) -> float | None:
@@ -151,7 +155,28 @@ def payload_do_resumo(resumo: Resumo) -> dict[str, Any]:
         }
         for _, linha in resumo.linhas.iterrows()
     ]
-    return {"trade_date": resumo.trade_date, "linhas": linhas}
+
+    payload: dict[str, Any] = {"trade_date": resumo.trade_date, "linhas": linhas}
+
+    if trades is not None and not trades.empty:
+        linhas_trades: list[dict[str, Any]] = []
+        for _, linha in trades.iterrows():
+            custo = float(linha["custo_comprado"])
+            resultado = float(linha["resultado"])
+            linhas_trades.append(
+                {
+                    "ticker": str(linha["ticker"]),
+                    "quantidade": int(linha["quantidade"]),
+                    "resultado": resultado,
+                    # None em vez de dividir por zero: trade sem custo comprado
+                    # (nao deveria existir, mas a mensagem nao pode quebrar por isso).
+                    "resultado_pct": (resultado / custo) if custo else None,
+                    "encerrado": bool(linha["encerrado"]),
+                }
+            )
+        payload["trades"] = linhas_trades
+
+    return payload
 
 
 def run_resumo(
@@ -180,8 +205,12 @@ def run_resumo(
     usam. `contexto` vai um passo alem: o calculo ja veio pronto de fora, como
     no `scanner daily`. `dry_run` mostra o que sairia sem carimbar nada, e por
     isso ignora o carimbo anterior.
+
+    Os trades do pregao (bloco "Seus trades" da mensagem) so sao lidos do
+    banco quando a mensagem de fato vai ser montada -- nao ha por que consultar
+    `trade_snapshots` num pregao sem resumo ou sem notificador.
     """
-    from scanner.storage.repository import digest_enviado, marcar_digest_enviado
+    from scanner.storage.repository import digest_enviado, marcar_digest_enviado, trades_do_pregao
 
     ctx = carregar_contexto(engine, config, bars=bars) if contexto is None else contexto
     if ctx.vazio:
@@ -199,12 +228,14 @@ def run_resumo(
         return resumo
 
     if dry_run:
-        notifier.send_resumo(payload_do_resumo(resumo))
+        trades = trades_do_pregao(engine, trade_date)
+        notifier.send_resumo(payload_do_resumo(resumo, trades))
         return resumo
 
     if digest_enviado(engine, trade_date):
         return replace(resumo, repetido=True)
 
-    if notifier.send_resumo(payload_do_resumo(resumo)):
+    trades = trades_do_pregao(engine, trade_date)
+    if notifier.send_resumo(payload_do_resumo(resumo, trades)):
         marcar_digest_enviado(engine, trade_date)
     return resumo

@@ -29,7 +29,7 @@ import {
   type Time,
 } from "lightweight-charts";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
-import type { Alerta } from "@/lib/alertas";
+import type { Alerta, Direcao } from "@/lib/alertas";
 import { type CandleDeHoje, candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
 import { diaCurto, numero } from "@/lib/formato";
 import { aberturaDaBanda, bollinger, mediaMovel, type TipoDeMedia } from "@/lib/indicadores";
@@ -42,9 +42,11 @@ import {
   rotuloDaMedia,
   semMedia,
 } from "@/lib/medias";
+import type { PontoDaRegua, TradeDaRegua } from "@/lib/regua";
 import { useTema } from "@/lib/tema";
 import type { Barra, Evento } from "@/lib/types";
 import { useMedias } from "@/lib/useMedias";
+import { PainelDaRegua } from "./PainelDaRegua";
 
 /** Cores das series: fixas nos dois temas. */
 const SERIE = {
@@ -61,6 +63,9 @@ const SERIE = {
   compra: "#2F6FED",
   venda: "#B45FE0",
   pm: "#64748B",
+  // A regua: cor propria, para nao ser confundida com alerta (roxo) nem PM
+  // (cinza) quando as tres aparecem juntas no mesmo grafico.
+  regua: "#17B4CC",
 };
 
 type Props = {
@@ -88,6 +93,20 @@ type Props = {
   operacoes?: { data: string; tipo: "compra" | "venda"; quantidade: number }[];
   /** Preco medio do trade aberto, para a linha tracejada "PM". Null sem trade aberto. */
   precoMedio?: number | null;
+  /**
+   * O que a regua de medicao precisa saber para desenhar o painel. Sem esta
+   * prop o botao da regua nem aparece -- e o caso de quem monta o Grafico sem
+   * saber o preco de agora do papel.
+   */
+  regua?: {
+    /** Close de hoje (candle parcial) quando ha, senao o close da ultima barra. */
+    agora: number;
+    /** Trade aberto do papel, para medir o efeito do nivel nele. Null sem trade/sessao. */
+    trade?: TradeDaRegua | null;
+    /** Logado: mostra o botao "Criar alerta em R$". */
+    podeCriarAlerta: boolean;
+    criarAlerta: (preco: number, direcao: Direcao) => Promise<void>;
+  };
 };
 
 function coresDaSuperficie() {
@@ -128,6 +147,7 @@ export function Grafico({
   hoje = null,
   operacoes = [],
   precoMedio = null,
+  regua,
 }: Props) {
   const idBase = useId();
   const { tema } = useTema();
@@ -137,6 +157,8 @@ export function Grafico({
   const [tipoNovo, setTipoNovo] = useState<TipoDeMedia>("MMA");
   const [periodoNovo, setPeriodoNovo] = useState("50");
   const [corNova, setCorNova] = useState<string | null>(null);
+  const [reguaLigada, setReguaLigada] = useState(false);
+  const [pontosDaRegua, setPontosDaRegua] = useState<PontoDaRegua[]>([]);
 
   const alvo = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -150,15 +172,46 @@ export function Grafico({
   const linhaDoParcial = useRef<IPriceLine | null>(null);
   const marcadoresDeTrade = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const linhaDoPM = useRef<IPriceLine | null>(null);
+  const linhaDoNivel = useRef<IPriceLine | null>(null);
+  const serieDoMovimento = useRef<ISeriesApi<"Line"> | null>(null);
 
   // Guardados em ref para o clique nao precisar deles nas dependencias -- se
   // precisasse, cada render do pai reassinaria o evento e remontaria o grafico.
   const aoEscolher = useRef(aoEscolherPreco);
   const escolhendo = useRef(escolhendoPreco);
+  const reguaLigadaRef = useRef(reguaLigada);
   useEffect(() => {
     aoEscolher.current = aoEscolherPreco;
     escolhendo.current = escolhendoPreco;
+    reguaLigadaRef.current = reguaLigada;
   });
+
+  // Regua e escolha de nivel do alerta sao exclusivas: ligar a escolha do
+  // alerta desliga a regua e limpa o que estava medido. Ajustado durante a
+  // renderizacao com o padrao do proprio React para "adjusting state when a
+  // prop changes" (estado, nao ref -- refs nao podem ser lidas no render): um
+  // `useEffect` so pra isso dispararia uma renderizacao em cascata a toa.
+  const [escolhendoAnterior, setEscolhendoAnterior] = useState(escolhendoPreco);
+  if (escolhendoPreco !== escolhendoAnterior) {
+    setEscolhendoAnterior(escolhendoPreco);
+    if (escolhendoPreco) {
+      setReguaLigada(false);
+      setPontosDaRegua([]);
+    }
+  }
+
+  function alternarRegua() {
+    setReguaLigada((ligada) => {
+      const proxima = !ligada;
+      if (!proxima) setPontosDaRegua([]);
+      return proxima;
+    });
+  }
+
+  function fecharRegua() {
+    setReguaLigada(false);
+    setPontosDaRegua([]);
+  }
 
   // Quanto a banda abriu contra a media recente: o "abrindo" em numero.
   const abertura = useMemo(() => {
@@ -168,6 +221,15 @@ export function Grafico({
   }, [barras, destaque]);
 
   const parcial = useMemo(() => candleParcial(barras, hoje), [barras, hoje]);
+
+  // Pregoes conhecidos do grafico, para a regua contar quantos ha entre dois
+  // pontos -- inclui o dia de hoje quando ha candle parcial, que ainda nao
+  // esta em `barras` (o COTAHIST so traz depois que o pregao fecha).
+  const datasPregao = useMemo(() => {
+    const dias = barras.map((b) => b.tradeDate);
+    if (parcial && !dias.includes(parcial.dia)) dias.push(parcial.dia);
+    return dias;
+  }, [barras, parcial]);
 
   useEffect(() => {
     if (!alvo.current || barras.length === 0) return;
@@ -286,13 +348,41 @@ export function Grafico({
       c.timeScale().fitContent();
     }
 
-    // Um clique com o modo ligado devolve o preco daquela altura. Assinado uma
-    // vez: `subscribeClick` nao dispara em arrasto, entao deslocar o grafico nao
-    // escolhe nivel nenhum.
+    // Um clique com o modo de escolher nivel ligado devolve o preco daquela
+    // altura; com a regua ligada, cada toque vira um ponto medido. Assinado
+    // uma vez: `subscribeClick` nao dispara em arrasto, entao deslocar o
+    // grafico nao mexe em nenhum dos dois.
     c.subscribeClick((param) => {
-      if (!escolhendo.current || !param.point || !serie.current) return;
+      if (!param.point || !serie.current) return;
+
+      if (escolhendo.current) {
+        const preco = serie.current.coordinateToPrice(param.point.y);
+        if (preco !== null) aoEscolher.current?.(Number(preco));
+        return;
+      }
+
+      if (!reguaLigadaRef.current) return;
       const preco = serie.current.coordinateToPrice(param.point.y);
-      if (preco !== null) aoEscolher.current?.(Number(preco));
+      if (preco === null) return;
+      const precoArredondado = Math.round(Number(preco) * 100) / 100;
+
+      // A data pelo `param.time`, quando o toque caiu dentro de um candle; fora
+      // dele (comum no celular, num toque impreciso), pela barra mais proxima
+      // do indice logico daquele x.
+      let dataDoToque = (param.time as string | undefined) ?? null;
+      if (dataDoToque === null) {
+        const logico = c.timeScale().coordinateToLogical(param.point.x);
+        if (logico !== null) {
+          const i = Math.min(Math.max(Math.round(logico), 0), barras.length - 1);
+          dataDoToque = barras[i]?.tradeDate ?? null;
+        }
+      }
+      if (dataDoToque === null) return;
+
+      const novoPonto = { data: dataDoToque, preco: precoArredondado };
+      // 1o toque marca o nivel; 2o completa o movimento; o 3o recomeca do
+      // zero, como se fosse um novo 1o toque.
+      setPontosDaRegua((pontos) => (pontos.length >= 2 ? [novoPonto] : [...pontos, novoPonto]));
     });
 
     const mapaDeMedias = linhasDeMedia.current;
@@ -311,6 +401,9 @@ export function Grafico({
       // a um grafico que ja sumiu.
       marcadoresDeTrade.current = null;
       linhaDoPM.current = null;
+      // Mesma logica: a linha e a serie da regua morrem com o grafico.
+      linhaDoNivel.current = null;
+      serieDoMovimento.current = null;
       mapaDeMedias.clear();
     };
   }, [barras, eventos, destaque]);
@@ -482,6 +575,65 @@ export function Grafico({
     }
   }, [operacoes, precoMedio, barras, eventos, destaque]);
 
+  /**
+   * O desenho da regua: uma linha tracejada no 1o toque, uma serie ligando os
+   * dois pontos no 2o. Redesenha do zero a cada mudanca -- e barato (no maximo
+   * dois pontos) e mais simples que atualizar em cima do que ja existe.
+   */
+  useEffect(() => {
+    const s = serie.current;
+    const c = chart.current;
+    if (!s || !c) return;
+
+    if (linhaDoNivel.current) {
+      s.removePriceLine(linhaDoNivel.current);
+      linhaDoNivel.current = null;
+    }
+    if (serieDoMovimento.current) {
+      c.removeSeries(serieDoMovimento.current);
+      serieDoMovimento.current = null;
+    }
+
+    if (!reguaLigada || pontosDaRegua.length === 0) return;
+
+    if (pontosDaRegua.length === 1) {
+      linhaDoNivel.current = s.createPriceLine({
+        price: pontosDaRegua[0].preco,
+        color: SERIE.regua,
+        lineWidth: 2,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "régua",
+      });
+      return;
+    }
+
+    // Sempre do ponto mais antigo pro mais novo -- mesma regra de
+    // `medirMovimento`, para a linha desenhada bater com o painel.
+    const [de, ate] =
+      pontosDaRegua[0].data <= pontosDaRegua[1].data
+        ? [pontosDaRegua[0], pontosDaRegua[1]]
+        : [pontosDaRegua[1], pontosDaRegua[0]];
+    // Dois toques no mesmo pregao: a serie de linha recusa dois pontos com a
+    // mesma data (lanca erro e derruba o grafico). O painel ja mostra a
+    // variacao; sem traco nesse caso.
+    if (de.data === ate.data) return;
+    const linha = c.addSeries(LineSeries, {
+      color: SERIE.regua,
+      lineWidth: 2,
+      lineStyle: LineStyle.Dashed,
+      priceLineVisible: false,
+      lastValueVisible: false,
+      crosshairMarkerVisible: false,
+      pointMarkersVisible: true,
+    });
+    linha.setData([
+      { time: de.data as Time, value: de.preco },
+      { time: ate.data as Time, value: ate.preco },
+    ]);
+    serieDoMovimento.current = linha;
+  }, [pontosDaRegua, reguaLigada, barras, eventos, destaque]);
+
   if (barras.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-linha-2 p-8 text-center text-[13px] text-tinta-3">
@@ -569,6 +721,41 @@ export function Grafico({
           </svg>
           Média
         </button>
+
+        {regua && (
+          <button
+            type="button"
+            onClick={alternarRegua}
+            disabled={escolhendoPreco}
+            aria-pressed={reguaLigada}
+            aria-label="Régua: medir preço e movimento tocando no gráfico"
+            className={`inline-flex h-8 items-center gap-2 rounded-full px-3 text-[12px] font-bold transition-colors disabled:opacity-40 ${
+              reguaLigada ? "bg-selecao text-acento" : "bg-painel-2 text-tinta-3"
+            }`}
+          >
+            <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden>
+              <g transform="rotate(-45 8 8)">
+                <rect
+                  x="1.5"
+                  y="6"
+                  width="13"
+                  height="4"
+                  rx="1"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                />
+                <path
+                  d="M4 6v1.6M7 6v2.4M10 6v1.6M13 6v1.6"
+                  stroke="currentColor"
+                  strokeWidth="1.3"
+                  strokeLinecap="round"
+                />
+              </g>
+            </svg>
+            Régua
+          </button>
+        )}
       </div>
 
       {adicionando && (
@@ -668,8 +855,22 @@ export function Grafico({
       <div
         ref={alvo}
         className={`w-full ${classeDeAltura}`}
-        style={{ cursor: escolhendoPreco ? "crosshair" : undefined }}
+        style={{ cursor: escolhendoPreco || reguaLigada ? "crosshair" : undefined }}
       />
+
+      {/* Painel da regua: sempre abaixo da area do grafico, nunca por cima dos
+          candles -- em 390px um popup flutuante cobriria justo o que se quer ler. */}
+      {regua && reguaLigada && (
+        <PainelDaRegua
+          pontos={pontosDaRegua}
+          agora={regua.agora}
+          datas={datasPregao}
+          trade={regua.trade}
+          podeCriarAlerta={regua.podeCriarAlerta}
+          criarAlerta={regua.criarAlerta}
+          aoFechar={fecharRegua}
+        />
+      )}
     </div>
   );
 }

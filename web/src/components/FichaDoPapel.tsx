@@ -5,9 +5,10 @@ import { useSearchParams } from "next/navigation";
 import { useMemo } from "react";
 import { AnelDoDesvio } from "@/components/AnelDoDesvio";
 import { Grafico } from "@/components/Grafico";
+import type { Direcao } from "@/lib/alertas";
 import { PainelDeAlerta } from "@/components/PainelDeAlerta";
 import { PainelDeTrade } from "@/components/PainelDeTrade";
-import { candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
+import { candleParcial, diaNaB3, horaNaB3 } from "@/lib/candle-de-hoje";
 import { LIMIAR_DO_ALERTA } from "@/lib/config";
 import {
   data as fmtData,
@@ -130,6 +131,32 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
   );
   const precoMedioDoTrade = estadoDosTrades.tradeAberto?.precoMedio ?? null;
 
+  // "Agora" para a regua: o close de hoje, mas so quando "hoje" e mesmo o dia
+  // corrente em Sao Paulo -- fora do pregao (fim de semana, feriado) a ultima
+  // cotacao buscada pode ser de um dia que ja esta em `barras` com dado oficial,
+  // e ele e quem vale.
+  const agoraDaRegua =
+    hoje && hoje.dia === diaNaB3(new Date()) ? hoje.close : (barras.at(-1)?.close ?? null);
+  const tradeParaRegua = estadoDosTrades.tradeAberto
+    ? {
+        quantidade: estadoDosTrades.tradeAberto.quantidade,
+        precoMedio: estadoDosTrades.tradeAberto.precoMedio,
+        custoComprado: estadoDosTrades.tradeAberto.custoComprado,
+        realizado: estadoDosTrades.tradeAberto.realizado,
+      }
+    : null;
+  const regua =
+    agoraDaRegua !== null
+      ? {
+          agora: agoraDaRegua,
+          trade: tradeParaRegua,
+          podeCriarAlerta: estadoDosAlertas.autenticado === true,
+          criarAlerta: async (preco: number, direcao: Direcao) => {
+            await estadoDosAlertas.criarAlertaEm(preco, direcao);
+          },
+        }
+      : undefined;
+
   const faixa = leituraDaFaixa(evento?.pos252 ?? null);
   const ticket = leituraDoTicket(
     evento?.avgTicket ?? null,
@@ -233,6 +260,7 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
             hoje={hoje}
             operacoes={operacoesDeTrade}
             precoMedio={precoMedioDoTrade}
+            regua={regua}
             classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
           />
 

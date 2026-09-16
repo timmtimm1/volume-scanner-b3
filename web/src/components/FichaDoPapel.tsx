@@ -21,6 +21,7 @@ import {
   proporcao,
   reais,
 } from "@/lib/formato";
+import { marcarAgora } from "@/lib/posicao";
 import type { Barra, Evento } from "@/lib/types";
 import { useAlertasDoPapel } from "@/lib/useAlertasDoPapel";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
@@ -129,8 +130,6 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
       ),
     [estadoDosTrades.trades],
   );
-  const precoMedioDoTrade = estadoDosTrades.tradeAberto?.precoMedio ?? null;
-
   // "Agora" para a regua: o close de hoje, mas so quando "hoje" e mesmo o dia
   // corrente em Sao Paulo -- fora do pregao (fim de semana, feriado) a ultima
   // cotacao buscada pode ser de um dia que ja esta em `barras` com dado oficial,
@@ -156,6 +155,22 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
           },
         }
       : undefined;
+
+  // O resultado do trade aberto marcado ao preco de agora (mesmo "agora" da
+  // regua, ja calculado acima), para a linha tracejada do preco medio no
+  // grafico -- estilo Profit, ela mostra se o trade esta ganhando ou perdendo.
+  // Sem trade aberto ou sem "agora" disponivel, sem linha.
+  const posicaoDoGrafico = useMemo(() => {
+    const aberto = estadoDosTrades.tradeAberto;
+    if (!aberto || agoraDaRegua === null) return null;
+    const marcado = marcarAgora(aberto, agoraDaRegua);
+    return {
+      quantidade: aberto.quantidade,
+      precoMedio: aberto.precoMedio,
+      resultado: marcado.resultado,
+      resultadoPct: marcado.resultadoPct,
+    };
+  }, [estadoDosTrades.tradeAberto, agoraDaRegua]);
 
   const faixa = leituraDaFaixa(evento?.pos252 ?? null);
   const ticket = leituraDoTicket(
@@ -259,7 +274,7 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
             aoEscolherPreco={estadoDosAlertas.escolherNoGrafico}
             hoje={hoje}
             operacoes={operacoesDeTrade}
-            precoMedio={precoMedioDoTrade}
+            posicao={posicaoDoGrafico}
             regua={regua}
             classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
           />

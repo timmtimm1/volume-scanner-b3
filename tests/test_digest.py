@@ -5,6 +5,8 @@ from __future__ import annotations
 import math
 from collections.abc import Iterator, Sequence
 from datetime import date
+from decimal import Decimal
+from typing import Any
 
 import pandas as pd
 import pytest
@@ -16,7 +18,8 @@ from scanner.digest import Resumo, montar_resumo, payload_do_resumo, run_resumo
 from scanner.features import compute_features
 from scanner.metrics import compute_zscores
 from scanner.notify.telegram import LARGURA_DO_CELULAR, ConsoleNotifier, format_resumo
-from scanner.storage.models import DigestSend
+from scanner.storage.engine import session_scope
+from scanner.storage.models import DigestSend, Trade, TradeSnapshot
 from scanner.storage.repository import digest_enviado, marcar_digest_enviado
 
 FIM = date(2026, 6, 30)
@@ -67,6 +70,14 @@ def resumir(b: pd.DataFrame, config: ScannerConfig = CONFIG) -> Resumo:
     metrics = compute_zscores(b, config.alert.windows)
     features = compute_features(b, max(config.alert.windows), metrics)
     return montar_resumo(metrics, b, features, config, FIM)
+
+
+TRADES_COLUNAS = ["ticker", "quantidade", "resultado", "custo_comprado", "encerrado"]
+
+
+def trades_frame(linhas: Sequence[dict[str, Any]]) -> pd.DataFrame:
+    """DataFrame no formato que `trades_do_pregao` devolveria, para os testes de mensagem."""
+    return pd.DataFrame(linhas, columns=TRADES_COLUNAS)
 
 
 def test_ordena_por_desvios_nao_por_volume() -> None:
@@ -180,6 +191,169 @@ def test_payload_usa_nomes_do_dia_a_dia() -> None:
     }
 
 
+# --- Bloco "Seus trades" ------------------------------------------------------
+
+
+def test_payload_sem_trades_nao_ganha_a_chave() -> None:
+    # `trades=None` (o padrao) e a mesma coisa que nao passar nada: o payload
+    # de quem nao sabe da fase 3 continua exatamente igual.
+    resumo = resumir(barras(["AAAA3", "BBBB4"]))
+    assert "trades" not in payload_do_resumo(resumo)
+    assert "trades" not in payload_do_resumo(resumo, trades_frame([]))
+
+
+def test_mensagem_sem_trades_e_identica_a_de_antes() -> None:
+    resumo = resumir(barras(["AAAA3", "BBBB4"]))
+    sem_argumento = format_resumo(payload_do_resumo(resumo))
+    com_lista_vazia = format_resumo(payload_do_resumo(resumo, trades_frame([])))
+
+    assert sem_argumento == com_lista_vazia
+    assert "Seus trades" not in sem_argumento
+
+
+def test_payload_com_trades_traz_resultado_pct() -> None:
+    resumo = resumir(barras(["AAAA3"]))
+    trades = trades_frame(
+        [
+            {
+                "ticker": "PETR4",
+                "quantidade": 70,
+                "resultado": 1022.10,
+                "custo_comprado": 5700.0,
+                "encerrado": False,
+            },
+            # custo zero e degenerado (nao deveria acontecer), mas nao pode
+            # quebrar o payload com uma divisao por zero.
+            {
+                "ticker": "ZERO3",
+                "quantidade": 10,
+                "resultado": 0.0,
+                "custo_comprado": 0.0,
+                "encerrado": False,
+            },
+        ]
+    )
+    payload = payload_do_resumo(resumo, trades)
+
+    petr4 = next(t for t in payload["trades"] if t["ticker"] == "PETR4")
+    assert petr4["quantidade"] == 70
+    assert petr4["resultado"] == pytest.approx(1022.10)
+    assert petr4["resultado_pct"] == pytest.approx(1022.10 / 5700.0)
+    assert petr4["encerrado"] is False
+
+    zero3 = next(t for t in payload["trades"] if t["ticker"] == "ZERO3")
+    assert zero3["resultado_pct"] is None
+
+
+def test_bloco_de_trades_traz_titulo_bolinhas_e_secao_de_encerrados() -> None:
+    resumo = resumir(barras(["AAAA3"]))
+    trades = trades_frame(
+        [
+            {
+                "ticker": "PETR4",
+                "quantidade": 70,
+                "resultado": 1022.10,
+                "custo_comprado": 5700.0,
+                "encerrado": False,
+            },
+            {
+                "ticker": "VALE3",
+                "quantidade": 0,
+                "resultado": -50.0,
+                "custo_comprado": 1000.0,
+                "encerrado": True,
+            },
+            {
+                "ticker": "ITUB4",
+                "quantidade": 10,
+                "resultado": 0.0,
+                "custo_comprado": 300.0,
+                "encerrado": False,
+            },
+        ]
+    )
+    texto = format_resumo(payload_do_resumo(resumo, trades))
+
+    assert "<b>Seus trades</b>" in texto
+    assert "🟢" in texto  # PETR4, resultado positivo
+    assert "🔴" in texto  # VALE3, resultado negativo
+    assert "⚪" in texto  # ITUB4, resultado zero
+    assert "encerrado hoje" in texto
+
+    # abertos antes da secao de encerrados, que vem antes do encerrado em si
+    assert texto.index("PETR4") < texto.index("encerrado hoje") < texto.index("VALE3")
+    # 70 acoes aparece; VALE3 (encerrado) mostra "-" em vez de quantidade
+    assert "70" in texto
+
+
+def test_numeros_do_bloco_de_trades_em_formato_brasileiro() -> None:
+    resumo = resumir(barras(["AAAA3"]))
+    trades = trades_frame(
+        [
+            {
+                "ticker": "PETR4",
+                "quantidade": 70,
+                "resultado": 1022.10,
+                "custo_comprado": 5700.0,
+                "encerrado": False,
+            }
+        ]
+    )
+    texto = format_resumo(payload_do_resumo(resumo, trades))
+
+    assert "1.022,10" in texto
+    assert "+17,9%" in texto  # 1022.10 / 5700 = 17,93...%
+
+
+def test_link_de_trades_so_aparece_com_base_url() -> None:
+    resumo = resumir(barras(["AAAA3"]))
+    trades = trades_frame(
+        [
+            {
+                "ticker": "PETR4",
+                "quantidade": 70,
+                "resultado": 100.0,
+                "custo_comprado": 1000.0,
+                "encerrado": False,
+            }
+        ]
+    )
+    payload = payload_do_resumo(resumo, trades)
+
+    assert "abrir trades" not in format_resumo(payload)
+    com_base = format_resumo(payload, "https://exemplo.app")
+    assert 'href="https://exemplo.app/trades/"' in com_base
+    assert "abrir trades" in com_base
+
+
+def test_bloco_de_trades_nao_estoura_a_largura_do_celular() -> None:
+    resumo = resumir(barras(["AAAA3"]))
+    trades = trades_frame(
+        [
+            {
+                "ticker": "BPAC11",
+                "quantidade": 99_999,
+                "resultado": -99_999.99,
+                "custo_comprado": 100_000.0,
+                "encerrado": False,
+            },
+            {
+                "ticker": "PETR4",
+                "quantidade": 0,
+                "resultado": 12_345.67,
+                "custo_comprado": 50_000.0,
+                "encerrado": True,
+            },
+        ]
+    )
+    texto = format_resumo(payload_do_resumo(resumo, trades), "https://exemplo.app")
+
+    bloco = texto[texto.index("<b>Seus trades</b>") :]
+    tabela = bloco[bloco.index("<pre>") + len("<pre>") : bloco.index("</pre>")]
+    for linha in tabela.splitlines():
+        assert len(linha) <= LARGURA_DO_CELULAR, f"{len(linha)} colunas: {linha}"
+
+
 def test_top_n_invalido_falha_alto() -> None:
     from pydantic import ValidationError
 
@@ -262,3 +436,73 @@ def test_carimbo_e_idempotente(engine: Engine) -> None:
     assert marcar_digest_enviado(engine, FIM) is True
     assert marcar_digest_enviado(engine, FIM) is False, "a segunda chamada nao pode duplicar"
     assert digest_enviado(engine, FIM) is True
+
+
+class NotifierCapturaPayload:
+    """Fake notifier que guarda o payload inteiro, nao so o texto formatado.
+
+    `ConsoleNotifier` guarda a mensagem ja formatada; aqui o teste quer
+    inspecionar o dicionario que `run_resumo` monta antes de formatar, para
+    verificar que a chave `trades` chegou com o conteudo certo.
+    """
+
+    def __init__(self) -> None:
+        self.payloads: list[dict[str, Any]] = []
+
+    def send_resumo(self, payload: dict[str, Any]) -> bool:
+        self.payloads.append(dict(payload))
+        return True
+
+
+@pytest.fixture
+def trade_com_snapshot_no_dia(engine: Engine) -> Iterator[str]:
+    """Um trade aberto de verdade, com snapshot no pregao `FIM`."""
+    ticker = "ZRUM1"
+    with session_scope(engine) as s:
+        s.execute(delete(Trade).where(Trade.ticker == ticker))
+    with session_scope(engine) as s:
+        trade = Trade(ticker=ticker, aberto_em=FIM)
+        s.add(trade)
+        s.flush()
+        s.add(
+            TradeSnapshot(
+                trade_id=trade.id,
+                trade_date=FIM,
+                quantidade=70,
+                preco_medio=Decimal("38.000000"),
+                custo_comprado=Decimal("5700.00"),
+                realizado=Decimal("152.00"),
+                fechamento=Decimal("39.1000"),
+                valor_posicao=Decimal("2737.00"),
+                resultado=Decimal("229.00"),
+            )
+        )
+    yield ticker
+    with session_scope(engine) as s:
+        s.execute(delete(Trade).where(Trade.ticker == ticker))
+
+
+@pytest.mark.db
+@pytest.mark.usefixtures("limpa_digest")
+def test_run_resumo_leva_os_trades_do_pregao_ao_notificador(
+    engine: Engine, trade_com_snapshot_no_dia: str
+) -> None:
+    ticker = trade_com_snapshot_no_dia
+    b = barras(["AAAA3", "BBBB4"])
+    notifier = NotifierCapturaPayload()
+
+    primeiro = run_resumo(engine, CONFIG, FIM, notifier=notifier, bars=b)
+    assert primeiro.repetido is False
+    assert len(notifier.payloads) == 1
+
+    trades_no_payload = notifier.payloads[0]["trades"]
+    assert {t["ticker"] for t in trades_no_payload} == {ticker}
+    linha = trades_no_payload[0]
+    assert linha["quantidade"] == 70
+    assert linha["resultado"] == pytest.approx(229.00)
+    assert linha["encerrado"] is False
+
+    # O resumo repetido continua sem reenviar -- o dedupe da fase 2 nao muda.
+    segundo = run_resumo(engine, CONFIG, FIM, notifier=notifier, bars=b)
+    assert segundo.repetido is True
+    assert len(notifier.payloads) == 1

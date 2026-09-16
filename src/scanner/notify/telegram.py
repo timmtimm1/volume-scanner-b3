@@ -278,6 +278,52 @@ def _linha_do_resumo(
     return f"{br(desvios):>6} {ticker:<6}{pct(variacao):>7}{volume_curto(volume):>11}"
 
 
+CABECALHO_TRADES = f"{'':1}{'Papel':<6} {'Ações':>5} {'R$':>10} {'%':>6}"
+
+
+def _linha_do_trade(linha: Mapping[str, Any]) -> str:
+    """Uma linha do bloco "Seus trades", no mesmo espirito da tabela do resumo.
+
+    O Telegram nao tem cor: a bolinha (verde/vermelha/branca) faz o papel que
+    seria de vermelho/verde no extrato de uma corretora. Quantidade some (vira
+    "-") num trade encerrado hoje -- a posicao ja nao existe mais, so o
+    resultado final importa.
+    """
+    resultado = float(linha.get("resultado") or 0.0)
+    bolinha = "🟢" if resultado > 0 else "🔴" if resultado < 0 else "⚪"
+    encerrado = bool(linha.get("encerrado"))
+    quantidade = "-" if encerrado else str(linha.get("quantidade"))
+    sinal = "+" if resultado >= 0 else "-"
+    valor = f"{sinal}{br(abs(resultado))}"
+    ticker = str(linha["ticker"])
+    return f"{bolinha}{ticker:<6} {quantidade:>5} {valor:>10} {pct(linha.get('resultado_pct')):>6}"
+
+
+def _bloco_de_trades(trades: list[Any], base_url: str | None) -> list[str]:
+    """As partes extras da mensagem quando o pregao tem trades do usuario.
+
+    Abertos primeiro, depois os encerrados hoje sob seu proprio subtitulo --
+    mesma ordem em que `trades_do_pregao` ja devolve as linhas.
+    """
+    abertos = [t for t in trades if not t.get("encerrado")]
+    encerrados = [t for t in trades if t.get("encerrado")]
+
+    linhas_tabela = [_linha_do_trade(t) for t in abertos]
+    if encerrados:
+        linhas_tabela.append("encerrado hoje")
+        linhas_tabela.extend(_linha_do_trade(t) for t in encerrados)
+    corpo = "\n".join(linhas_tabela)
+
+    partes = [
+        "",
+        "<b>Seus trades</b>",
+        f"<pre>{CABECALHO_TRADES}\n{corpo}</pre>",
+    ]
+    if base_url:
+        partes.append(f'<a href="{base_url.rstrip("/")}/trades/">abrir trades</a>')
+    return partes
+
+
 def format_resumo(resumo: Mapping[str, Any], base_url: str | None = None) -> str:
     """Resumo diario: tabela dos papeis que mais se afastaram do proprio normal.
 
@@ -287,6 +333,11 @@ def format_resumo(resumo: Mapping[str, Any], base_url: str | None = None) -> str
     A tabela vai dentro de <pre> porque o Telegram so alinha coluna em
     monoespacado, e cabe em 32 colunas para nao quebrar no celular. O que e
     enfeite -- titulo e link -- fica fora do bloco, onde o negrito funciona.
+
+    Com a chave `trades` (ausente ou vazia na maioria dos pregoes), a mensagem
+    ganha um segundo bloco no mesmo espirito: "Seus trades", a posicao real do
+    usuario naquele pregao. Sem essa chave a mensagem fica identica a de antes
+    desta secao existir.
     """
     dia = resumo["trade_date"].strftime("%d/%m/%Y")
     linhas = list(resumo.get("linhas") or [])
@@ -312,6 +363,11 @@ def format_resumo(resumo: Mapping[str, Any], base_url: str | None = None) -> str
     ]
     if base_url:
         partes.append(f'<a href="{base_url.rstrip("/")}">abrir o scanner</a>')
+
+    trades = list(resumo.get("trades") or [])
+    if trades:
+        partes += _bloco_de_trades(trades, base_url)
+
     return "\n".join(partes)
 
 

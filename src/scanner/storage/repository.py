@@ -618,6 +618,47 @@ _SNAPSHOT_ATUALIZAVEIS = (
 )
 
 
+def trades_do_pregao(engine: Engine, dia: date) -> pd.DataFrame:
+    """Posicao dos trades no pregao, para o bloco "Seus trades" do resumo.
+
+    Uma linha por trade que tem snapshot neste `dia` e ainda "fala" dele: esta
+    aberto, ou foi encerrado exatamente neste pregao. Encerrado antes do dia ja
+    saiu do resumo -- o trade nao diz mais respeito a este pregao. Trade sem
+    snapshot no dia (a marcacao noturna ainda nao rodou, por exemplo) tambem
+    fica de fora: nao ha posicao para mostrar.
+
+    Ordem: abertos primeiro, depois os encerrados neste dia -- cada grupo por
+    ticker. E a mesma ordem em que `format_resumo` monta o bloco.
+    """
+    # IS NOT NULL e nao `encerrado_em = dia`: a comparacao da NULL para trade
+    # aberto, e NULL virando NaN no pandas seria True no astype(bool). Com o
+    # filtro abaixo, "tem data de encerramento" ja significa "encerrou hoje".
+    encerrado = Trade.encerrado_em.is_not(None).label("encerrado")
+    stmt = (
+        select(
+            Trade.ticker,
+            TradeSnapshot.quantidade,
+            TradeSnapshot.resultado,
+            TradeSnapshot.custo_comprado,
+            encerrado,
+        )
+        .join(TradeSnapshot, TradeSnapshot.trade_id == Trade.id)
+        .where(TradeSnapshot.trade_date == dia)
+        .where((Trade.encerrado_em.is_(None)) | (Trade.encerrado_em == dia))
+        # Aberto (encerrado_em nulo) primeiro: `IS NULL` como True vem antes ao
+        # ordenar decrescente. Dentro de cada grupo, por ticker.
+        .order_by(Trade.encerrado_em.is_(None).desc(), Trade.ticker)
+    )
+    with engine.connect() as conn:
+        frame = pd.read_sql(stmt, conn)
+
+    frame["quantidade"] = frame["quantidade"].astype("int64")
+    frame["resultado"] = pd.to_numeric(frame["resultado"], errors="coerce").astype(float)
+    frame["custo_comprado"] = pd.to_numeric(frame["custo_comprado"], errors="coerce").astype(float)
+    frame["encerrado"] = frame["encerrado"].astype(bool)
+    return frame
+
+
 def gravar_snapshots(engine: Engine, frame: pd.DataFrame) -> int:
     """Upsert dos snapshots por (trade_id, trade_date). Devolve linhas enviadas.
 

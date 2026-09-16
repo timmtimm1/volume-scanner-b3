@@ -9,6 +9,7 @@ import {
   OperacaoInvalida,
   aplicarOperacoes,
   marcarAMercado,
+  marcarAgora,
   validarCampos,
 } from "./posicao.ts";
 
@@ -263,5 +264,33 @@ describe("marcarAMercado", () => {
       snaps.map((s) => s.data),
       ["2025-09-03", "2025-09-10"],
     );
+  });
+});
+
+describe("marcarAgora", () => {
+  // Estado final do exemplo de referencia: 70 acoes, PM 38, custo 5700, realizado 152.
+  const abertoParcial = { quantidade: 70, precoMedio: 38, custoComprado: 5700, realizado: 152 };
+  // Estado de um trade encerrado (venda de 100x12 sobre compra de 100x10).
+  const encerrado = { quantidade: 0, precoMedio: 10, custoComprado: 1000, realizado: 200 };
+
+  it("com preco: realizado mais o nao realizado, % sobre o custo, valor da posicao", () => {
+    const m = marcarAgora(abertoParcial, 39.9);
+    assert.equal(m.resultado, 285); // 152 + 70 * (39.9 - 38)
+    assert.equal(m.resultadoPct, 285 / 5700);
+    assert.equal(m.valor, 2793); // 70 * 39.9
+  });
+
+  it("sem preco: resultado e so o realizado, sem valor de posicao", () => {
+    const m = marcarAgora(abertoParcial, null);
+    assert.equal(m.resultado, 152);
+    assert.equal(m.resultadoPct, 152 / 5700);
+    assert.equal(m.valor, null);
+  });
+
+  it("trade encerrado: resultado e o realizado mesmo com preco informado, sem valor", () => {
+    const m = marcarAgora(encerrado, 12.5);
+    assert.equal(m.resultado, 200);
+    assert.equal(m.resultadoPct, 200 / 1000);
+    assert.equal(m.valor, null); // quantidade zerada: nao ha posicao para valer algo
   });
 });

@@ -266,3 +266,33 @@ export function marcarAMercado(entrada: EntradaDaMarcacao): SnapshotCalculado[] 
 
   return saida;
 }
+
+export type MarcacaoDeAgora = {
+  /** `realizado + quantidade * (preco - precoMedio)`, ou so `realizado` sem preco. */
+  resultado: number;
+  /** `resultado / custoComprado`. Null so quando nao ha custo (nunca deveria acontecer). */
+  resultadoPct: number | null;
+  /** `quantidade * preco`. Null sem preco ou com a posicao zerada (trade encerrado). */
+  valor: number | null;
+};
+
+/**
+ * O "resultado de agora" mostrado na ficha, na lista e no detalhe do trade:
+ * o realizado mais o nao realizado ao preco informado.
+ *
+ * `preco` nulo cobre os dois casos em que nao ha preco de agora para marcar --
+ * trade encerrado (a posicao ja esta zerada, entao o termo nao realizado seria
+ * zero de qualquer forma) e o raro caso de papel sem nenhuma cotacao nem
+ * fechamento disponivel. Quem chama decide qual preco usar (candle de hoje ou
+ * o ultimo snapshot); esta funcao so aplica a formula.
+ */
+export function marcarAgora(estado: EstadoDaPosicao, preco: number | null): MarcacaoDeAgora {
+  const { quantidade, precoMedio, custoComprado, realizado } = estado;
+  const resultado =
+    preco === null ? r2(realizado) : r2(realizado + quantidade * (preco - precoMedio));
+  return {
+    resultado,
+    resultadoPct: custoComprado > 0 ? resultado / custoComprado : null,
+    valor: preco !== null && quantidade > 0 ? r2(quantidade * preco) : null,
+  };
+}

@@ -55,58 +55,53 @@ describe("medirNivel", () => {
 });
 
 describe("medirMovimento", () => {
-  const DATAS = [
-    "2026-09-01",
-    "2026-09-02",
-    "2026-09-03",
-    "2026-09-04",
-    "2026-09-07",
-    "2026-09-08",
-  ];
-
-  it("do ponto mais antigo pro mais novo", () => {
+  it("do inicio para a ponta, na ordem do gesto", () => {
     const r = medirMovimento({
-      a: { data: "2026-09-02", preco: 40 },
-      b: { data: "2026-09-07", preco: 44 },
-      datas: DATAS,
+      inicio: { indice: 2, preco: 40 },
+      fim: { indice: 7, preco: 44 },
     });
-    assert.equal(r.de.data, "2026-09-02");
-    assert.equal(r.ate.data, "2026-09-07");
     perto(r.porAcao, 4);
     perto(r.variacaoPct, 0.1);
+    assert.equal(r.candles, 5);
   });
 
-  it("em ordem invertida (b tocado antes de a, mas mais novo): mesmo resultado", () => {
+  it("arrastar para a esquerda tambem vale: a ponta fica com indice menor que o inicio", () => {
     const r = medirMovimento({
-      a: { data: "2026-09-07", preco: 44 },
-      b: { data: "2026-09-02", preco: 40 },
-      datas: DATAS,
+      inicio: { indice: 7, preco: 44 },
+      fim: { indice: 2, preco: 40 },
     });
-    assert.equal(r.de.data, "2026-09-02");
-    assert.equal(r.de.preco, 40);
-    assert.equal(r.ate.data, "2026-09-07");
-    assert.equal(r.ate.preco, 44);
-    perto(r.porAcao, 4);
+    perto(r.porAcao, -4);
+    perto(r.variacaoPct, -4 / 44);
+    assert.equal(r.candles, 5);
   });
 
-  it("mesma data: a ordem fica a dos toques, nao inverte", () => {
+  it("nao reordena por indice -- o inicio e sempre o primeiro tocado, mesmo se a ponta ficou 'antes'", () => {
+    // Mesmo par de precos do teste anterior, mas com o gesto na outra ordem:
+    // a variacao inverte, porque agora e do preco 40 para o 44.
     const r = medirMovimento({
-      a: { data: "2026-09-04", preco: 41 },
-      b: { data: "2026-09-04", preco: 43 },
-      datas: DATAS,
+      inicio: { indice: 2, preco: 44 },
+      fim: { indice: 7, preco: 40 },
     });
-    assert.equal(r.de.preco, 41);
-    assert.equal(r.ate.preco, 43);
-    assert.equal(r.pregoes, 0); // (04, 04] nao tem nenhuma data estritamente depois de 04 e <= 04
+    perto(r.porAcao, -4);
+    perto(r.variacaoPct, -4 / 44);
   });
 
-  it("conta os pregoes em (de, ate], nao em [de, ate]", () => {
+  it("mesmo indice (gesto sem se mover no eixo do tempo): 0 candles", () => {
     const r = medirMovimento({
-      a: { data: "2026-09-02", preco: 40 },
-      b: { data: "2026-09-08", preco: 44 },
-      datas: DATAS,
+      inicio: { indice: 4, preco: 41 },
+      fim: { indice: 4, preco: 43 },
     });
-    // datas depois de 02 e ate 08: 03, 04, 07, 08 -> 4 pregoes.
-    assert.equal(r.pregoes, 4);
+    perto(r.porAcao, 2);
+    assert.equal(r.candles, 0);
+  });
+
+  it("inicio e fim iguais: variacao zero", () => {
+    const r = medirMovimento({
+      inicio: { indice: 4, preco: 41 },
+      fim: { indice: 4, preco: 41 },
+    });
+    perto(r.porAcao, 0);
+    perto(r.variacaoPct, 0);
+    assert.equal(r.candles, 0);
   });
 });

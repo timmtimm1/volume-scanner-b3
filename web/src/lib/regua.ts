@@ -1,6 +1,8 @@
 /**
- * A regua do grafico: medir um nivel a partir de agora, ou o movimento entre
- * dois pontos tocados no candle. O calculo puro, sem React nem lightweight-charts.
+ * A regua do grafico, estilo Profit: medir o preco de um nivel a partir de
+ * agora, ou o movimento entre o inicio e a ponta de um gesto (clique + clique
+ * no mouse, toque + arraste no touch). O calculo puro, sem React nem
+ * lightweight-charts.
  *
  * Modulo puro de proposito: sem import de runtime (so `import type`), porque e
  * testado com `node --experimental-strip-types`, sem bundler nenhum no meio
@@ -42,10 +44,11 @@ export type ResultadoDoNivel = {
 };
 
 /**
- * Mede a distancia de "agora" ate um nivel tocado no grafico. `trade`, quando
- * presente e com quantidade positiva, tambem mede o efeito no trade aberto do
- * papel -- mesma formula de `marcarAgora` em `posicao.ts`, aplicada ao preco
- * do nivel em vez do preco de agora.
+ * Mede a distancia de "agora" ate um nivel -- o preco do ponto final de uma
+ * medicao fixada, no painel da regua. `trade`, quando presente e com
+ * quantidade positiva, tambem mede o efeito no trade aberto do papel -- mesma
+ * formula de `marcarAgora` em `posicao.ts`, aplicada ao preco do nivel em vez
+ * do preco de agora.
  */
 export function medirNivel(entrada: {
   agora: number;
@@ -73,34 +76,32 @@ export function medirNivel(entrada: {
   return { agora, nivel, variacaoPct, porAcao, direcao, trade: resultadoDoTrade };
 }
 
-export type PontoDaRegua = { data: string; preco: number };
+/**
+ * Um ponto da regua: o indice logico da barra tocada (nao a data -- o mesmo
+ * indice que `timeScale().coordinateToLogical` devolve) e o preco tocado.
+ */
+export type PontoDaRegua = { indice: number; preco: number };
 
 export type ResultadoDoMovimento = {
-  /** Sempre o ponto mais antigo -- em data igual, o primeiro tocado. */
-  de: PontoDaRegua;
-  /** Sempre o ponto mais novo -- em data igual, o segundo tocado. */
-  ate: PontoDaRegua;
   variacaoPct: number;
   porAcao: number;
-  /** Quantidade de datas de `datas` em `(de, ate]`. */
-  pregoes: number;
+  /** `|fim.indice - inicio.indice|` -- quantas barras entre os dois pontos. */
+  candles: number;
 };
 
 /**
- * Mede o movimento entre dois pontos tocados no grafico, sempre do mais
- * antigo para o mais novo. Em data igual (dois toques no mesmo pregao), a
- * ordem fica a dos toques -- `a` e sempre o primeiro toque, `b` o segundo.
+ * Mede o movimento de um gesto da regua, sempre do inicio para a ponta --
+ * nunca reordenado por data ou indice, diferente da regua antiga. Arrastar
+ * para a esquerda (ponta com indice menor que o inicio) vale igual: e a
+ * mesma leitura do Profit, onde a regua mede o gesto, nao o tempo.
  */
 export function medirMovimento(entrada: {
-  a: PontoDaRegua;
-  b: PontoDaRegua;
-  /** Pregoes conhecidos do grafico, em qualquer ordem -- so para contar. */
-  datas: string[];
+  inicio: PontoDaRegua;
+  fim: PontoDaRegua;
 }): ResultadoDoMovimento {
-  const { a, b, datas } = entrada;
-  const [de, ate] = a.data <= b.data ? [a, b] : [b, a];
-  const pregoes = datas.filter((d) => d > de.data && d <= ate.data).length;
-  const porAcao = ate.preco - de.preco;
-  const variacaoPct = de.preco !== 0 ? porAcao / de.preco : 0;
-  return { de, ate, variacaoPct, porAcao, pregoes };
+  const { inicio, fim } = entrada;
+  const porAcao = fim.preco - inicio.preco;
+  const variacaoPct = inicio.preco !== 0 ? porAcao / inicio.preco : 0;
+  const candles = Math.abs(fim.indice - inicio.indice);
+  return { variacaoPct, porAcao, candles };
 }

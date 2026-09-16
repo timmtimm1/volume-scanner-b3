@@ -16,6 +16,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    ForeignKey,
     Index,
     Integer,
     MetaData,
@@ -180,3 +181,103 @@ class PriceAlert(Base):
     # De qual fornecedor veio a cotacao que disparou. Quando um alerta parecer
     # errado, a primeira pergunta e "que dado o sistema viu?".
     fonte_disparo: Mapped[str | None] = mapped_column(Text)
+
+
+class Trade(Base):
+    """Um trade real: compras e vendas parciais de um papel, do usuario.
+
+    So existe um trade aberto por ticker (`ux_trades_um_aberto_por_ticker`,
+    indice unico parcial em `encerrado_em IS NULL`) -- historico de trades
+    encerrados do mesmo papel convive sem problema, so nao dois em aberto.
+    """
+
+    __tablename__ = "trades"
+    __table_args__ = (
+        CheckConstraint(
+            "encerrado_em IS NULL OR encerrado_em >= aberto_em",
+            name="ck_trades_encerra_depois_de_abrir",
+        ),
+        Index(
+            "ux_trades_um_aberto_por_ticker",
+            "ticker",
+            unique=True,
+            postgresql_where=text("encerrado_em IS NULL"),
+        ),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(Text, nullable=False)
+    aberto_em: Mapped[date] = mapped_column(Date, nullable=False)
+    encerrado_em: Mapped[date | None] = mapped_column(Date)
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TradeOperacao(Base):
+    """Uma compra ou venda dentro de um trade, com o estado da posicao apos ela.
+
+    Quem grava a operacao (o site, na fase 2) ja calculou preco medio, custo
+    comprado e realizado e gravou nas colunas `*_apos` desta propria linha. O
+    scanner NAO recalcula media: so le o estado da ultima operacao ate cada
+    pregao para marcar a mercado. `ON DELETE CASCADE` porque uma operacao sem
+    o trade que a contem nao tem sentido nenhum.
+    """
+
+    __tablename__ = "trade_operacoes"
+    __table_args__ = (
+        CheckConstraint("tipo IN ('compra', 'venda')", name="ck_trade_operacoes_tipo"),
+        CheckConstraint("quantidade > 0", name="ck_trade_operacoes_quantidade_positiva"),
+        CheckConstraint("preco > 0", name="ck_trade_operacoes_preco_positivo"),
+        CheckConstraint(
+            "quantidade_apos >= 0", name="ck_trade_operacoes_quantidade_apos_nao_negativa"
+        ),
+        Index("ix_trade_operacoes_trade_data", "trade_id", "data"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    trade_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey(f"{SCHEMA}.trades.id", ondelete="CASCADE"), nullable=False
+    )
+    tipo: Mapped[str] = mapped_column(Text, nullable=False)
+    data: Mapped[date] = mapped_column(Date, nullable=False)
+    quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
+    preco: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    quantidade_apos: Mapped[int] = mapped_column(Integer, nullable=False)
+    preco_medio_apos: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    custo_comprado_apos: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    realizado_apos: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class TradeSnapshot(Base):
+    """Marcacao a mercado diaria de um trade -- a etapa noturna grava uma por pregao.
+
+    Fica de fora da poda de `prune_bars`: e a razao desta tabela existir.
+    `daily_bars` guarda so os ultimos 400 pregoes, e sem o snapshot a marcacao
+    a mercado de um trade mais antigo desapareceria junto com as barras podadas.
+    """
+
+    __tablename__ = "trade_snapshots"
+    __table_args__ = (
+        CheckConstraint("quantidade >= 0", name="ck_trade_snapshots_quantidade_nao_negativa"),
+    )
+
+    trade_id: Mapped[int] = mapped_column(
+        BigInteger, ForeignKey(f"{SCHEMA}.trades.id", ondelete="CASCADE"), primary_key=True
+    )
+    trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
+    quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
+    preco_medio: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    custo_comprado: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    realizado: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    # Mesma precisao de DailyBar.close: e de onde este valor vem.
+    fechamento: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    valor_posicao: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    resultado: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    sem_negocio: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
+    gravado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

@@ -350,8 +350,10 @@ papel de R$ 20 a folga é de 0,05%.
 ## Banco de dados
 
 Postgres, schema `volume_scanner` (isolado do `public`, para não colidir com outro
-projeto no mesmo banco). Sem chaves estrangeiras entre as tabelas — a ligação é por
-`(ticker, trade_date)`, não por relação declarada no banco.
+projeto no mesmo banco). Sem chaves estrangeiras entre as tabelas de mercado — a ligação é por
+`(ticker, trade_date)`, não por relação declarada no banco, porque a poda apaga barras
+antigas e os eventos ficam. A exceção são os trades: operação e snapshot não existem
+sem o trade, e apagar o trade apaga os dois.
 
 ```mermaid
 erDiagram
@@ -393,11 +395,36 @@ erDiagram
         numeric preco
         text direcao
     }
+    trades {
+        bigint id PK
+        text ticker
+        date aberto_em
+        date encerrado_em
+    }
+    trade_operacoes {
+        bigint id PK
+        bigint trade_id FK
+        text tipo
+        date data
+        int quantidade
+        numeric preco
+        numeric preco_medio_apos
+        numeric realizado_apos
+    }
+    trade_snapshots {
+        bigint trade_id PK, FK
+        date trade_date PK
+        int quantidade
+        numeric fechamento
+        numeric resultado
+    }
 
     daily_bars ||--o{ volume_metrics : "ticker + trade_date"
     daily_bars ||--o{ daily_features : "ticker + trade_date"
     daily_bars ||--o{ events : "ticker + trade_date"
     daily_bars ||--o{ price_alerts : "originou"
+    trades ||--o{ trade_operacoes : "compras e vendas"
+    trades ||--o{ trade_snapshots : "um por pregão"
 ```
 
 | Tabela | Guarda |
@@ -408,6 +435,9 @@ erDiagram
 | `events` | Só o que cruzou o limiar. Dedupe por `(ticker, trade_date)` |
 | `digest_sends` | Carimbo de que o resumo diário já saiu, para não reenviar |
 | `price_alerts` | Alertas de rompimento de preço, criados na ficha do papel |
+| `trades` | Um trade real por papel: aberto na primeira compra, encerrado quando a quantidade zera |
+| `trade_operacoes` | Cada compra e venda, com a posição depois dela (quantidade, preço médio, realizado) |
+| `trade_snapshots` | O trade marcado a mercado no fechamento de cada pregão. **Fica fora da poda**: as barras de 400 pregões atrás somem, o resultado daquele dia não |
 
 Migrations via Alembic, em `src/scanner/storage/migrations/versions/` — nunca schema por SQL solto.
 `scanner db status` mostra pregões, linhas e tamanho de cada tabela no banco atual.
@@ -467,7 +497,7 @@ Em **Settings → Secrets and variables → Actions**:
 ### 4. O job diário
 
 `.github/workflows/daily.yml` faz: migrations → carga do pregão → métricas →
-scan → resumo → retenção → rebuild na Vercel.
+scan → snapshot dos trades → resumo → retenção → rebuild na Vercel.
 
 Quem dispara é um cron externo ([cron-job.org](https://cron-job.org)), via
 `workflow_dispatch`: o agendador nativo do GitHub, em repositório público

@@ -408,7 +408,7 @@ erDiagram
 | `digest_sends` | Carimbo de que o resumo diário já saiu, para não reenviar |
 | `price_alerts` | Alertas de rompimento de preço, criados na ficha do papel |
 
-Migrations via Alembic, em `alembic/versions/` — nunca schema por SQL solto.
+Migrations via Alembic, em `src/scanner/storage/migrations/versions/` — nunca schema por SQL solto.
 `scanner db status` mostra pregões, linhas e tamanho de cada tabela no banco atual.
 
 ## Deploy

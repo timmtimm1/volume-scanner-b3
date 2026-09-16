@@ -30,6 +30,7 @@ O sistema **detecta e apresenta**.
 - [Duas coisas que o layout da B3 esconde](#duas-coisas-que-o-layout-da-b3-esconde)
 - [Banco de dados](#banco-de-dados)
 - [Deploy](#deploy)
+- [Recriar do zero](#recriar-do-zero)
 - [Dificuldades conhecidas](#dificuldades-conhecidas)
 - [Desempenho](#desempenho)
 - [Segredos](#segredos)
@@ -492,6 +493,99 @@ um pregão específico — é assim que se testa antes de esperar o cron.
 > às 21:08 em 08/09/2026, mas em 11/09 às 21:59 ainda dava 404, e às 02:42 a B3
 > respondeu 403. O download tenta de novo em 404, 403, 429 e 5xx, com espera
 > entre as tentativas. Se mesmo assim não sair à noite, a manhã cobre.
+
+## Recriar do zero
+
+Roteiro para subir uma cópia própria do projeto — repositório, banco, bot, site e
+agendamento — com as suas contas. Cada peça já está explicada nas seções acima;
+aqui fica a **ordem**, que importa, e o que não está escrito em outro lugar.
+
+Não é preciso copiar o banco de ninguém: os dados de mercado vêm dos arquivos
+públicos da B3 e são carregados do zero.
+
+**Contas**, todas no plano gratuito: GitHub, [Neon](https://neon.tech),
+[Vercel](https://vercel.com), [cron-job.org](https://cron-job.org) e Telegram.
+**Na máquina:** o que está em [Requisitos](#requisitos).
+
+### 1. Repositório
+
+1. Faça fork, ou clone e suba num repositório novo seu.
+2. Num fork, a aba **Actions** vem desligada: ative. Secrets não acompanham o fork.
+3. Quando o seu site existir, troque os badges do topo e o link "Ao vivo" para ele.
+
+### 2. Local, para ver funcionando
+
+Siga [Desenvolvimento](#desenvolvimento), incluindo a carga do histórico, e depois
+[A interface](#a-interface). Se o scanner abre em `localhost:3000` com dado, o
+código está certo e o resto é configuração.
+
+### 3. Banco
+
+[Banco no Neon](#1-banco-no-neon), passos 1 a 5. Vem antes do site porque o build
+da Vercel lê o banco.
+
+### 4. Bot
+
+[Bot do Telegram](#2-bot-do-telegram).
+
+### 5. Site
+
+1. Faça o [Deploy na Vercel](#deploy-na-vercel), de início só com
+   `SCANNER_DATABASE_URL`. O primeiro deploy dá a URL do site, que os passos
+   seguintes usam.
+2. Crie um OAuth App no GitHub, em **Settings → Developer settings → OAuth Apps**:
+   - Homepage URL: `https://SEU-SITE.vercel.app`
+   - Authorization callback URL: `https://SEU-SITE.vercel.app/api/auth/callback/github`
+3. Complete as variáveis da Vercel: `AUTH_SECRET`, `AUTH_GITHUB_ID`,
+   `AUTH_GITHUB_SECRET` e `AUTH_GITHUB_LOGIN` — **o seu login do GitHub**. Sem ela
+   o site recusa todo login, inclusive o seu.
+4. Faça um redeploy para as variáveis valerem e copie o **Deploy Hook**
+   (**Settings → Git → Deploy Hooks**).
+
+### 6. Secrets no GitHub
+
+[Secrets no GitHub](#3-secrets-no-github), com o Deploy Hook em
+`VERCEL_DEPLOY_HOOK` e a URL do site em `SCANNER_WEB_BASE_URL` — é ela que monta o
+link que chega no Telegram.
+
+### 7. Primeiro teste
+
+Em **Actions → daily → Run workflow**, com `ultimo`. O resumo do pregão deve
+chegar no Telegram e a Vercel deve reconstruir o site.
+
+Para rodar de novo com código novo, use sempre **Run workflow**. O **Re-run** de
+uma execução antiga roda no commit daquela execução, não no `main` atual.
+
+### 8. Agendamento
+
+Quem dispara os workflows é o cron-job.org, não o agendador do GitHub
+([por quê](#4-o-job-diário)).
+
+1. Crie um token em **Settings → Developer settings → Personal access tokens →
+   Fine-grained tokens**, com acesso só a este repositório e permissão
+   **Actions: Read and write**.
+2. No cron-job.org, crie um job para cada entrada de
+   [`.github/cron-externo.yml`](.github/cron-externo.yml) — `daily-noite`,
+   `daily-manha` e `rompimentos` —, no fuso **America/Sao_Paulo**, com o `cron`
+   de lá:
+   - URL: `https://api.github.com/repos/SEU-USUARIO/SEU-REPO/actions/workflows/ARQUIVO.yml/dispatches`,
+     com o `workflow` da entrada no lugar de `ARQUIVO.yml`
+   - Método `POST`, corpo `{"ref":"main"}`
+   - Headers: `Authorization: Bearer SEU-TOKEN`, `Accept: application/vnd.github+json`
+     e `Content-Type: application/json`
+3. Sucesso é **204, sem corpo**. Se o painel validar a resposta, a validação
+   precisa aceitar isso.
+
+### Com Claude Code
+
+O repositório tem `CLAUDE.md`, então dá para pedir *"siga a seção Recriar do zero
+do README"*. Criar as contas, falar com o BotFather, criar o OAuth App e o token
+e montar os jobs no cron-job.org continuam sendo à mão: são logins e telas de
+site.
+
+Não cole connection string nem token na conversa — o que passa por ela fica no
+histórico da sessão. O que leva segredo (a carga no Neon, `gh secret set`, as
+variáveis da Vercel) rode num terminal seu, fora do Claude Code.
 
 ## Dificuldades conhecidas
 

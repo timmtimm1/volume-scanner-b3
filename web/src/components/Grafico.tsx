@@ -17,12 +17,15 @@ import {
   CandlestickSeries,
   ColorType,
   createChart,
+  createSeriesMarkers,
   HistogramSeries,
   LineSeries,
   LineStyle,
   type IChartApi,
   type IPriceLine,
   type ISeriesApi,
+  type ISeriesMarkersPluginApi,
+  type SeriesMarker,
   type Time,
 } from "lightweight-charts";
 import { useEffect, useId, useMemo, useRef, useState } from "react";
@@ -53,6 +56,11 @@ const SERIE = {
   bandaMedia: "#B9B4F6",
   alerta: "#6D63F0",
   alertaDisparado: "#8C8EAD",
+  // Marcadores de trade: cores proprias, de proposito diferentes de alta/baixa
+  // -- aqui nao e direcao de preco, e compra/venda de verdade.
+  compra: "#2F6FED",
+  venda: "#B45FE0",
+  pm: "#64748B",
 };
 
 type Props = {
@@ -76,6 +84,10 @@ type Props = {
    * se for de um pregao que o COTAHIST ainda nao trouxe.
    */
   hoje?: CandleDeHoje | null;
+  /** Compras e vendas de TODOS os trades do papel, para os marcadores no candle. */
+  operacoes?: { data: string; tipo: "compra" | "venda"; quantidade: number }[];
+  /** Preco medio do trade aberto, para a linha tracejada "PM". Null sem trade aberto. */
+  precoMedio?: number | null;
 };
 
 function coresDaSuperficie() {
@@ -114,6 +126,8 @@ export function Grafico({
   escolhendoPreco = false,
   aoEscolherPreco,
   hoje = null,
+  operacoes = [],
+  precoMedio = null,
 }: Props) {
   const idBase = useId();
   const { tema } = useTema();
@@ -134,6 +148,8 @@ export function Grafico({
   const linhasDeAlerta = useRef<IPriceLine[]>([]);
   const linhasDeMedia = useRef(new Map<string, ISeriesApi<"Line">>());
   const linhaDoParcial = useRef<IPriceLine | null>(null);
+  const marcadoresDeTrade = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const linhaDoPM = useRef<IPriceLine | null>(null);
 
   // Guardados em ref para o clique nao precisar deles nas dependencias -- se
   // precisasse, cada render do pai reassinaria o evento e remontaria o grafico.
@@ -290,6 +306,11 @@ export function Grafico({
       // efeitos de alerta e de media mexam num grafico que nao existe mais.
       linhasDeAlerta.current = [];
       linhaDoParcial.current = null;
+      // Os marcadores e a linha do PM morrem com o grafico (chart.remove()
+      // desfaz os primitivos da serie); so zerar as refs evita usa-las presas
+      // a um grafico que ja sumiu.
+      marcadoresDeTrade.current = null;
+      linhaDoPM.current = null;
       mapaDeMedias.clear();
     };
   }, [barras, eventos, destaque]);
@@ -418,6 +439,48 @@ export function Grafico({
       }),
     );
   }, [alertas, barras, eventos, destaque]);
+
+  /**
+   * Os marcadores de compra/venda e a linha do preco medio, redesenhados quando
+   * o trade muda. Efeito separado do que monta o grafico, igual ao das linhas
+   * de alerta: registrar uma operacao nova nao pode reconstruir candles e
+   * bandas.
+   */
+  useEffect(() => {
+    const s = serie.current;
+    if (!s) return;
+
+    marcadoresDeTrade.current?.detach();
+    // So operacoes em dia que o grafico tem candle: a de hoje ainda nao tem
+    // barra (o COTAHIST chega a noite) e uma antiga pode estar fora da janela
+    // carregada. Marcador em data sem candle nao tem onde ancorar.
+    const diasDoGrafico = new Set(barras.map((b) => b.tradeDate));
+    const marcadores: SeriesMarker<Time>[] = operacoes
+      .filter((o) => diasDoGrafico.has(o.data))
+      .map((o) => ({
+      time: o.data as Time,
+      position: o.tipo === "compra" ? "belowBar" : "aboveBar",
+      shape: o.tipo === "compra" ? "arrowUp" : "arrowDown",
+      color: o.tipo === "compra" ? SERIE.compra : SERIE.venda,
+      text: `${o.tipo === "compra" ? "C" : "V"} ${o.quantidade}`,
+    }));
+    marcadoresDeTrade.current = createSeriesMarkers(s, marcadores);
+
+    if (linhaDoPM.current) {
+      s.removePriceLine(linhaDoPM.current);
+      linhaDoPM.current = null;
+    }
+    if (precoMedio !== null) {
+      linhaDoPM.current = s.createPriceLine({
+        price: precoMedio,
+        color: SERIE.pm,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: "PM",
+      });
+    }
+  }, [operacoes, precoMedio, barras, eventos, destaque]);
 
   if (barras.length === 0) {
     return (

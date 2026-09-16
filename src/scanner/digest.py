@@ -202,10 +202,8 @@ def run_resumo(
         notifier.send_resumo(payload_do_resumo(resumo))
         return resumo
 
-    # TEMP: dedupe desligado para reenviar manualmente o resumo de hoje
-    # (mensagem anterior foi apagada no Telegram). Reverter apos o reenvio.
-    # if digest_enviado(engine, trade_date):
-    #     return replace(resumo, repetido=True)
+    if digest_enviado(engine, trade_date):
+        return replace(resumo, repetido=True)
 
     if notifier.send_resumo(payload_do_resumo(resumo)):
         marcar_digest_enviado(engine, trade_date)

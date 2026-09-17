@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import math
+import os
 import re
+import subprocess
 from collections.abc import Iterator
 from datetime import date
 from pathlib import Path
@@ -433,6 +435,71 @@ def test_um_pregao_por_vez_venha_da_agenda_ou_da_mao(workflow: dict[Any, Any]) -
 def test_agenda_pede_sempre_o_ultimo_pregao() -> None:
     (job,) = _carregar(DAILY)["jobs"].values()
     assert job["with"]["trade_date"] == "ultimo"
+
+
+def test_guarda_e_o_primeiro_passo(workflow: dict[Any, Any]) -> None:
+    # Antes do checkout: o Re-run barrado nao instala nada nem abre o banco.
+    assert _passos_do_job(workflow)[0].get("id") == "guarda"
+
+
+def test_rerun_barrado_nao_avisa_falha_no_telegram(workflow: dict[Any, Any]) -> None:
+    # Nada rodou, e quem clicou ja esta olhando a tela do Actions.
+    ultimo = _passos_do_job(workflow)[-1]
+    assert "steps.guarda.outcome != 'failure'" in str(ultimo["if"])
+
+
+def _rodar_guarda(
+    tmp_path: Path, tentativa: str, commit: str, main_atual: str | None
+) -> subprocess.CompletedProcess[str]:
+    """Executa o script da guarda com um `gh` falso que responde o main atual."""
+    (guarda,) = [p for p in _passos_do_job(_carregar(WORKFLOW)) if p.get("id") == "guarda"]
+    gh = tmp_path / "gh"
+    resposta = f"echo {main_atual}" if main_atual else "exit 1"
+    gh.write_text(f"#!/bin/sh\n{resposta}\n", encoding="utf-8")
+    gh.chmod(0o755)
+    env = {
+        **os.environ,
+        "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+        "TENTATIVA": tentativa,
+        "COMMIT": commit,
+        "PREGAO": "2026-09-15",
+        "GITHUB_REPOSITORY": "dono/repo",
+    }
+    # As mesmas opcoes que o Actions usa para `shell: bash`.
+    return subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", str(guarda["run"])],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+
+
+ANTIGO = "a" * 40
+ATUAL = "b" * 40
+
+
+@pytest.mark.parametrize(
+    ("tentativa", "commit", "main_atual", "passa"),
+    [
+        pytest.param("1", ANTIGO, None, True, id="primeira-tentativa-nem-consulta-o-main"),
+        pytest.param("2", ATUAL, ATUAL, True, id="rerun-no-main-atual"),
+        pytest.param("3", ANTIGO, ATUAL, False, id="rerun-de-commit-antigo"),
+        pytest.param("2", ATUAL, None, False, id="rerun-sem-conseguir-ler-o-main"),
+    ],
+)
+def test_guarda_so_barra_rerun_fora_do_main_atual(
+    tmp_path: Path, tentativa: str, commit: str, main_atual: str | None, passa: bool
+) -> None:
+    """Em 16/09/2026 um Re-run reprocessou a vespera num commit temporario.
+
+    Repetir no main atual continua valendo: e o que se faz quando a B3 caiu.
+    """
+    saida = _rodar_guarda(tmp_path, tentativa, commit, main_atual)
+    assert (saida.returncode == 0) is passa, saida.stdout + saida.stderr
+    if not passa:
+        assert "::error" in saida.stdout
+        assert "pregao manual" in saida.stdout, "a mensagem tem de dizer o que fazer"
 
 
 def test_rompimentos_em_feriado_nao_instala_nem_conecta() -> None:

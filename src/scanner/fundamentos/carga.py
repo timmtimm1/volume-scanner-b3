@@ -37,6 +37,7 @@ from scanner.fundamentos.cvm import (
     ler_cadastro,
     ler_valores_mobiliarios,
 )
+from scanner.fundamentos.indicadores import trimestres
 from scanner.fundamentos.proventos import (
     Linha,
     classe_do_isin,
@@ -441,11 +442,27 @@ def atualizar_fundamentos(
     if forcar:
         corte_semana = corte_dia = momento
 
+    _recalcular_trimestres(engine, relatorio)
+
     _detalhar_empresas(engine, momento, corte_semana, pausa=pausa_b3, relatorio=relatorio)
     _proventos_recentes(engine, momento, corte_dia, pausa=pausa_b3, relatorio=relatorio)
     _proventos_historicos(engine, momento, corte_semana, pausa=pausa_b3, relatorio=relatorio)
 
     return relatorio
+
+
+def _recalcular_trimestres(engine: Engine, relatorio: RelatorioFundamentos) -> None:
+    """Refaz a tabela de trimestres a partir do dado bruto da CVM.
+
+    Roda sempre: e barato (alguns milhares de linhas) e evita a pergunta
+    "sera que este trimestre ja foi recalculado depois daquela reapresentacao?".
+    """
+    resultados, balancos, documentos = repository.dado_bruto_da_cvm(engine)
+    calculados = trimestres(resultados, balancos, documentos)
+    gravados = repository.gravar_trimestres(engine, calculados)
+    if gravados:
+        empresas = int(calculados["cd_cvm"].nunique())
+        relatorio.arquivos.append(f"trimestres: {gravados} de {empresas} empresas")
 
 
 def _detalhar_empresas(

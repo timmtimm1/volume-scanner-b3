@@ -328,3 +328,84 @@ def test_b3_fora_do_ar_nao_apaga_o_que_ja_existe(
 
     assert _proventos(engine) == antes
     assert any("fora do ar" in aviso for aviso in relatorio.avisos)
+
+
+def test_recalculo_troca_a_tabela_de_trimestres(engine: Engine, empresa: None) -> None:
+    """A tabela de trimestres e derivada: cada recalculo a refaz por inteiro.
+
+    Sem isso, um documento reapresentado deixaria para tras o trimestre antigo,
+    com os numeros que a empresa ja corrigiu.
+    """
+    from scanner.storage.models import CvmBalanco, CvmDocumento, CvmResultado, FundamentoTrimestre
+
+    def gravar_trimestre(receita: Decimal) -> None:
+        with engine.begin() as conn:
+            conn.execute(
+                delete(CvmDocumento).where(CvmDocumento.cd_cvm == UNIPAR),
+            )
+            conn.execute(
+                insert(CvmDocumento).values(
+                    cd_cvm=UNIPAR,
+                    tipo="ITR",
+                    dt_refer=date(2026, 6, 30),
+                    versao=1,
+                    recebido_original=date(2026, 8, 6),
+                    recebido_ultima=date(2026, 8, 6),
+                    escopo="con",
+                    layout="geral",
+                )
+            )
+            conn.execute(
+                insert(CvmResultado).values(
+                    [
+                        {
+                            "cd_cvm": UNIPAR,
+                            "tipo": "ITR",
+                            "dt_refer": date(2026, 6, 30),
+                            "dt_ini": dt_ini,
+                            "dt_fim": date(2026, 6, 30),
+                            "receita": valor,
+                            "lucro_controladores": Decimal("1000"),
+                        }
+                        for dt_ini, valor in (
+                            (date(2026, 1, 1), receita * 2),
+                            (date(2026, 4, 1), receita),
+                        )
+                    ]
+                )
+            )
+            conn.execute(
+                insert(CvmBalanco).values(
+                    cd_cvm=UNIPAR,
+                    tipo="ITR",
+                    dt_refer=date(2026, 6, 30),
+                    patrimonio_liquido=Decimal("5000"),
+                )
+            )
+
+    gravar_trimestre(Decimal("1000"))
+    relatorio = carga_mod.RelatorioFundamentos()
+    carga_mod._recalcular_trimestres(engine, relatorio)
+
+    with engine.connect() as conn:
+        antes = conn.execute(
+            select(FundamentoTrimestre.receita_tri).where(FundamentoTrimestre.cd_cvm == UNIPAR)
+        ).scalar_one()
+    assert antes == Decimal("1000.00")
+
+    # A empresa reapresenta o trimestre com outro numero.
+    gravar_trimestre(Decimal("1250"))
+    carga_mod._recalcular_trimestres(engine, carga_mod.RelatorioFundamentos())
+
+    with engine.connect() as conn:
+        linhas = (
+            conn.execute(
+                select(FundamentoTrimestre.receita_tri).where(FundamentoTrimestre.cd_cvm == UNIPAR)
+            )
+            .scalars()
+            .all()
+        )
+    assert linhas == [Decimal("1250.00")], "o trimestre antigo nao pode sobrar"
+
+    with engine.begin() as conn:
+        conn.execute(delete(CvmDocumento).where(CvmDocumento.cd_cvm == UNIPAR))

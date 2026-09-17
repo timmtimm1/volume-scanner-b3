@@ -10,7 +10,7 @@ from __future__ import annotations
 import csv
 import io
 import json
-from collections.abc import Iterable, Sequence
+from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, NamedTuple
@@ -40,6 +40,9 @@ from scanner.storage.models import (
     TradeOperacao,
     TradeSnapshot,
     VolumeMetric,
+)
+from scanner.storage.models import (
+    Provento as ProventoModel,
 )
 
 # Colunas reescritas quando a linha ja existe. `ingested_at` fica de fora.
@@ -826,6 +829,178 @@ def upsert_empresa_tickers(
     with engine.begin() as conn:
         conn.execute(statement, rows)
     return len(rows)
+
+
+# --- Proventos (fundamentos fase 2) ------------------------------------------
+
+
+def empresas_para_consultar(engine: Engine, campo: str, corte: datetime) -> list[dict[str, Any]]:
+    """Empresas cuja consulta `campo` nunca foi feita ou ja passou da validade.
+
+    `campo` e uma das colunas de carimbo: `detalhe_em`, `proventos_em` ou
+    `historico_em`. Sem isso, cada execucao repetiria as tres perguntas para
+    todas as empresas ligadas.
+    """
+    coluna = getattr(Empresa, campo)
+    stmt = (
+        select(Empresa.cd_cvm, Empresa.nome, Empresa.emissor_b3, Empresa.nome_pregao)
+        .where((coluna.is_(None)) | (coluna < corte))
+        .order_by(Empresa.cd_cvm)
+    )
+    with engine.connect() as conn:
+        return [linha._asdict() for linha in conn.execute(stmt)]
+
+
+def marcar_consulta(engine: Engine, cd_cvm: int, campo: str, momento: datetime) -> None:
+    """Carimba que a consulta `campo` foi feita agora para esta empresa."""
+    stmt = update(Empresa).where(Empresa.cd_cvm == cd_cvm).values({campo: momento})
+    with engine.begin() as conn:
+        conn.execute(stmt)
+
+
+def gravar_detalhe_b3(
+    engine: Engine,
+    cd_cvm: int,
+    *,
+    emissor: str | None,
+    nome_pregao: str | None,
+    papeis: Mapping[str, tuple[str, str | None]],
+    momento: datetime,
+) -> int:
+    """Guarda como a B3 chama a empresa e o ISIN/classe de cada papel dela.
+
+    `papeis` e {ticker: (isin, classe)}. So toca em ticker que ja esta ligado a
+    ESTA empresa: a B3 lista papeis que podem nem estar no nosso banco, e um
+    ticker de outra empresa jamais e reescrito aqui.
+    """
+    with engine.begin() as conn:
+        conn.execute(
+            update(Empresa)
+            .where(Empresa.cd_cvm == cd_cvm)
+            .values(emissor_b3=emissor, nome_pregao=nome_pregao, detalhe_em=momento)
+        )
+        tocados = 0
+        for ticker, (isin, classe) in papeis.items():
+            resultado = conn.execute(
+                update(EmpresaTicker)
+                .where(EmpresaTicker.ticker == ticker, EmpresaTicker.cd_cvm == cd_cvm)
+                .values(isin=isin, classe=classe)
+            )
+            tocados += resultado.rowcount
+    return tocados
+
+
+def papeis_da_empresa(engine: Engine, cd_cvm: int) -> list[dict[str, Any]]:
+    """Os papeis ligados a empresa, com ISIN e classe quando ja conhecidos."""
+    stmt = (
+        select(EmpresaTicker.ticker, EmpresaTicker.isin, EmpresaTicker.classe)
+        .where(EmpresaTicker.cd_cvm == cd_cvm)
+        .order_by(EmpresaTicker.ticker)
+    )
+    with engine.connect() as conn:
+        return [linha._asdict() for linha in conn.execute(stmt)]
+
+
+def fechamentos_dos_papeis(
+    engine: Engine, tickers: Sequence[str], datas: Sequence[date]
+) -> dict[tuple[str, date], Decimal]:
+    """Fechamentos do COTAHIST para conferir os precos que a B3 informa."""
+    if not tickers or not datas:
+        return {}
+    stmt = select(DailyBar.ticker, DailyBar.trade_date, DailyBar.close).where(
+        DailyBar.ticker.in_(list(tickers)), DailyBar.trade_date.in_(list(datas))
+    )
+    with engine.connect() as conn:
+        return {(str(t), d): Decimal(str(c)) for t, d, c in conn.execute(stmt)}
+
+
+def gravar_proventos(
+    engine: Engine,
+    linhas: Sequence[Mapping[str, Any]],
+    *,
+    tickers: Sequence[str],
+    fonte: str,
+    desde: date | None,
+    ate: date | None,
+) -> int:
+    """Troca a janela de datas inteira destes papeis por `linhas`.
+
+    Nao ha upsert linha a linha porque nao existe chave unica: um provento pago
+    em parcelas aparece uma vez por parcela, com a mesma data com e o mesmo
+    valor. Apagar a janela que a B3 acabou de responder e gravar o que veio e o
+    que mantem a carga idempotente sem inventar chave.
+    """
+    if not tickers:
+        return 0
+
+    alvo = delete(ProventoModel).where(
+        ProventoModel.ticker.in_(list(tickers)), ProventoModel.fonte == fonte
+    )
+    if desde is not None:
+        alvo = alvo.where(ProventoModel.data_com >= desde)
+    if ate is not None:
+        alvo = alvo.where(ProventoModel.data_com < ate)
+
+    with engine.begin() as conn:
+        conn.execute(alvo)
+        if linhas:
+            conn.execute(insert(ProventoModel), [dict(linha) for linha in linhas])
+    return len(linhas)
+
+
+def primeiro_provento_recente(engine: Engine, tickers: Sequence[str]) -> date | None:
+    """A data com mais antiga que a consulta dos recentes cobre nestes papeis.
+
+    E a fronteira entre as duas consultas: dali para tras vale o historico,
+    dali para frente vale o que veio com ISIN, que identifica o papel sem
+    depender de nome nenhum.
+    """
+    if not tickers:
+        return None
+    stmt = select(func.min(ProventoModel.data_com)).where(
+        ProventoModel.ticker.in_(list(tickers)), ProventoModel.fonte == "recente"
+    )
+    with engine.connect() as conn:
+        return conn.execute(stmt).scalar_one()
+
+
+def proventos_recentes_dos_papeis(
+    engine: Engine, tickers: Sequence[str]
+) -> list[tuple[str, date, Decimal]]:
+    """Os proventos ja identificados pelo ISIN, para conferir o historico."""
+    if not tickers:
+        return []
+    stmt = select(ProventoModel.ticker, ProventoModel.data_com, ProventoModel.valor).where(
+        ProventoModel.ticker.in_(list(tickers)), ProventoModel.fonte == "recente"
+    )
+    with engine.connect() as conn:
+        return [(str(t), d, Decimal(str(v))) for t, d, v in conn.execute(stmt)]
+
+
+def contar_proventos(engine: Engine) -> tuple[int, int]:
+    """Quantos proventos estao guardados, e de quantos papeis."""
+    stmt = select(func.count(), func.count(func.distinct(ProventoModel.ticker)))
+    with engine.connect() as conn:
+        total, papeis = conn.execute(stmt).one()
+    return int(total), int(papeis)
+
+
+def proventos_do_papel(engine: Engine, ticker: str, limite: int = 12) -> pd.DataFrame:
+    """Os proventos mais recentes de um papel -- ferramenta de conferencia."""
+    stmt = (
+        select(
+            ProventoModel.data_com,
+            ProventoModel.tipo,
+            ProventoModel.valor,
+            ProventoModel.data_pagamento,
+            ProventoModel.fonte,
+        )
+        .where(ProventoModel.ticker == ticker.upper())
+        .order_by(ProventoModel.data_com.desc())
+        .limit(limite)
+    )
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)
 
 
 def buscar_arquivo_externo(engine: Engine, url: str) -> dict[str, Any] | None:

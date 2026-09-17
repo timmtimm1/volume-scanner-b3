@@ -658,6 +658,7 @@ def fundamentos_status() -> None:
         contagem_do_mapeamento,
         contar_empresas,
         contar_proventos,
+        contar_trimestres,
         datas_dos_arquivos_externos,
         documentos_por_tipo_e_ano,
         tickers_sem_empresa,
@@ -666,9 +667,11 @@ def fundamentos_status() -> None:
     engine = build_engine()
     ligados, sem_empresa = contagem_do_mapeamento(engine)
     proventos, papeis_com_provento = contar_proventos(engine)
+    trimestres, empresas_com_trimestre = contar_trimestres(engine)
     typer.echo(f"empresas: {contar_empresas(engine):>6,}")
     typer.echo(f"tickers ligados: {ligados:>6,}")
     typer.echo(f"proventos: {proventos:>6,} em {papeis_com_provento} papeis")
+    typer.echo(f"trimestres: {trimestres:>5,} em {empresas_com_trimestre} empresas")
 
     docs = documentos_por_tipo_e_ano(engine)
     if docs.empty:
@@ -749,6 +752,35 @@ def fundamentos_empresa(
                 f"  ativo_total {b['ativo_total']}, patrimonio_liquido {b['patrimonio_liquido']}, "
                 f"passivo_circulante {b['passivo_circulante']}, caixa {b['caixa']}"
             )
+
+
+@fundamentos_app.command("indicadores")
+def fundamentos_indicadores(
+    ticker: Annotated[str, typer.Argument(help="Papel, ex.: UNIP6.")],
+) -> None:
+    """Os trimestres calculados da empresa do papel, em milhoes de reais."""
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import trimestres_do_ticker
+
+    linhas = trimestres_do_ticker(build_engine(), ticker)
+    if linhas.empty:
+        typer.secho(f"[vazio] nenhum trimestre de {ticker.upper()}", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
+    def milhoes(valor: Any) -> str:
+        return "-" if pd.isna(valor) else f"{float(valor) / 1_000_000:,.1f}"
+
+    typer.echo(f"{ticker.upper()} - {len(linhas)} trimestres, em R$ milhoes")
+    cabecalho = f"{'tri':<6}{'publicado':<12}{'receita':>10}{'EBITDA':>10}{'lucro':>10}"
+    typer.echo(cabecalho + f"{'rec 12m':>12}{'lucro 12m':>12}{'PL':>12}{'div.liq':>12}  origem")
+    for _, linha in linhas.iterrows():
+        typer.echo(
+            f"{linha['rotulo']:<6}{linha['publicado_em']!s:<12}"
+            f"{milhoes(linha['receita_tri']):>10}{milhoes(linha['ebitda_tri']):>10}"
+            f"{milhoes(linha['lucro_tri']):>10}{milhoes(linha['receita_12m']):>12}"
+            f"{milhoes(linha['lucro_12m']):>12}{milhoes(linha['patrimonio_liquido']):>12}"
+            f"{milhoes(linha['divida_liquida']):>12}  {linha['origem']}"
+        )
 
 
 @fundamentos_app.command("proventos")

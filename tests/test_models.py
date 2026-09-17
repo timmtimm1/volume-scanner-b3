@@ -38,6 +38,8 @@ def test_nomes_das_tabelas() -> None:
     # fundamentos: o dado bruto de balanco da CVM, carregado e guardado, sem
     # indicador calculado. `proventos` (migration 0008) guarda os proventos em
     # dinheiro por papel, que e de onde sai o dividend yield.
+    # `fundamentos_trimestre` (migration 0009) e derivada: o trimestre ja
+    # calculado que a ficha le, refeito a partir das tabelas acima.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -55,6 +57,7 @@ def test_nomes_das_tabelas() -> None:
         "cvm_balancos",
         "arquivos_externos",
         "proventos",
+        "fundamentos_trimestre",
     }
 
 
@@ -78,6 +81,7 @@ def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
         ("empresas", ["cd_cvm"]),
         ("empresa_tickers", ["ticker"]),
         ("proventos", ["id"]),
+        ("fundamentos_trimestre", ["cd_cvm", "dt_fim"]),
         ("cvm_documentos", ["cd_cvm", "tipo", "dt_refer"]),
         ("cvm_resultados", ["cd_cvm", "tipo", "dt_refer", "dt_ini", "dt_fim"]),
         ("cvm_balancos", ["cd_cvm", "tipo", "dt_refer"]),

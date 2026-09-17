@@ -305,6 +305,16 @@ class Empresa(Base):
     nome_comercial: Mapped[str | None] = mapped_column(Text)
     setor_cvm: Mapped[str | None] = mapped_column(Text)
     situacao: Mapped[str | None] = mapped_column(Text)
+    # Como a B3 chama a empresa nos endpoints dela (fundamentos fase 2). Vem do
+    # detalhe da propria B3, nunca deduzido do ticker: a consulta de proventos
+    # recentes so aceita `emissor_b3`, e a do historico so aceita `nome_pregao`.
+    emissor_b3: Mapped[str | None] = mapped_column(Text)
+    nome_pregao: Mapped[str | None] = mapped_column(Text)
+    # Quando cada consulta a B3 foi feita, para nao repetir a mesma pergunta
+    # todo dia: o detalhe e o historico mudam pouco, os recentes mudam sempre.
+    detalhe_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    proventos_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    historico_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     atualizado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
@@ -338,7 +348,53 @@ class EmpresaTicker(Base):
         Integer, ForeignKey(f"{SCHEMA}.empresas.cd_cvm", ondelete="CASCADE")
     )
     fonte: Mapped[str | None] = mapped_column(Text)
+    # ISIN e classe (ON, PN, PNA, UNT...) que a B3 declara para o papel. E o
+    # que liga um provento ao ticker certo: a consulta de proventos recentes
+    # identifica a acao pelo ISIN, e a do historico pela classe.
+    isin: Mapped[str | None] = mapped_column(Text)
+    classe: Mapped[str | None] = mapped_column(Text)
     verificado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class Provento(Base):
+    """Um provento em dinheiro de um papel: dividendo, JCP ou rendimento.
+
+    Uma linha por provento POR PAPEL, porque o valor por acao e diferente em
+    cada classe: em 05/12/2025 a Unipar pagou R$ 5,48 na ON e R$ 6,03 nas PN.
+
+    Nao ha chave unica natural: um provento pago em parcelas aparece uma vez
+    por parcela, com a mesma data com e o mesmo valor (visto na Iguatemi). A
+    carga troca a janela inteira de datas que a B3 devolveu, em vez de tentar
+    casar linha a linha.
+
+    `fonte` diz de qual consulta a linha veio: 'recente' (ultimos ~12 meses,
+    com data de pagamento) ou 'historico' (o resto, sem data de pagamento).
+    """
+
+    __tablename__ = "proventos"
+    __table_args__ = (
+        CheckConstraint("valor > 0", name="ck_proventos_valor_positivo"),
+        CheckConstraint("fonte IN ('recente', 'historico')", name="ck_proventos_fonte"),
+        Index("ix_proventos_ticker_data", "ticker", "data_com"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(
+        Text, ForeignKey(f"{SCHEMA}.empresa_tickers.ticker", ondelete="CASCADE"), nullable=False
+    )
+    tipo: Mapped[str] = mapped_column(Text, nullable=False)
+    # Onze casas: a B3 publica o valor por acao com essa precisao, e truncar
+    # mudaria o dividend yield de quem paga centavos por acao todo mes.
+    valor: Mapped[Decimal] = mapped_column(Numeric(20, 11), nullable=False)
+    # A data com e o que decide se o provento conta para quem tinha o papel:
+    # e por ela que o yield de 12 meses e somado, nao pela data de pagamento.
+    data_com: Mapped[date] = mapped_column(Date, nullable=False)
+    data_aprovacao: Mapped[date | None] = mapped_column(Date)
+    data_pagamento: Mapped[date | None] = mapped_column(Date)
+    fonte: Mapped[str] = mapped_column(Text, nullable=False)
+    carregado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
 
 
 class CvmDocumento(Base):

@@ -44,3 +44,7 @@ fundamentos:
   # Ticker procurado e nao encontrado (um ETF, por exemplo) so e procurado de
   # novo depois deste intervalo, em dias.
   dias_para_rechecar_ticker: 7
+  # Cadastro da empresa na B3 e historico de proventos: uma vez por semana.
+  dias_para_rechecar_empresa: 7
+  # Proventos recentes: uma vez por dia.
+  horas_para_rechecar_proventos: 20

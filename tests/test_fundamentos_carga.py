@@ -174,6 +174,12 @@ def b3(monkeypatch: pytest.MonkeyPatch) -> B3Falsa:
     monkeypatch.setattr(carga_mod, "novo_cliente", lambda: _ClienteDescartavel())
     monkeypatch.setattr(carga_mod, "buscar_candidatos", falsa.buscar)
     monkeypatch.setattr(carga_mod, "codigos_da_empresa", falsa.codigos)
+    # As etapas de proventos (fase 2) rodam no mesmo comando; aqui elas nao sao
+    # o assunto, e a B3 nao pode ser chamada de verdade. Os testes delas vivem
+    # em `test_fundamentos_proventos_carga.py`.
+    monkeypatch.setattr(carga_mod, "detalhe_da_empresa", lambda *_a, **_k: None)
+    monkeypatch.setattr(carga_mod, "proventos_recentes", lambda *_a, **_k: [])
+    monkeypatch.setattr(carga_mod, "proventos_historicos", lambda *_a, **_k: [])
     return falsa
 
 

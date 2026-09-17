@@ -9,19 +9,26 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
+from collections.abc import Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
+from typing import Any
 
+import httpx
 import pandas as pd
 from sqlalchemy import Engine
 
 from scanner.config import FundamentosConfig
 from scanner.fundamentos.b3 import (
     B3IndisponivelError,
+    Provento,
     buscar_candidatos,
     codigos_da_empresa,
+    detalhe_da_empresa,
     novo_cliente,
+    proventos_historicos,
+    proventos_recentes,
 )
 from scanner.fundamentos.cvm import (
     CvmIndisponivelError,
@@ -29,6 +36,14 @@ from scanner.fundamentos.cvm import (
     extrair_documentos,
     ler_cadastro,
     ler_valores_mobiliarios,
+)
+from scanner.fundamentos.proventos import (
+    Linha,
+    classe_do_isin,
+    conferir_com_recentes,
+    conferir_precos,
+    ligar_historicos,
+    ligar_recentes,
 )
 from scanner.storage import repository
 
@@ -72,6 +87,7 @@ class RelatorioFundamentos:
     mapeamento: str = ""
     avisos: list[str] = field(default_factory=list)
     arquivos: list[str] = field(default_factory=list)
+    proventos: list[str] = field(default_factory=list)
     falhas: list[str] = field(default_factory=list)
 
     @property
@@ -85,6 +101,7 @@ class RelatorioFundamentos:
         ]
         saida.extend(self.avisos)
         saida.extend(self.arquivos)
+        saida.extend(self.proventos)
         saida.extend(f"falhou {f}" for f in self.falhas)
         return saida
 
@@ -417,4 +434,236 @@ def atualizar_fundamentos(
                 relatorio=relatorio,
             )
 
+    # Proventos vem da B3, nao da CVM: entram depois dos balancos e nunca
+    # impedem que eles sejam gravados.
+    corte_semana = momento - timedelta(days=config.dias_para_rechecar_empresa)
+    corte_dia = momento - timedelta(hours=config.horas_para_rechecar_proventos)
+    if forcar:
+        corte_semana = corte_dia = momento
+
+    _detalhar_empresas(engine, momento, corte_semana, pausa=pausa_b3, relatorio=relatorio)
+    _proventos_recentes(engine, momento, corte_dia, pausa=pausa_b3, relatorio=relatorio)
+    _proventos_historicos(engine, momento, corte_semana, pausa=pausa_b3, relatorio=relatorio)
+
     return relatorio
+
+
+def _detalhar_empresas(
+    engine: Engine,
+    momento: datetime,
+    corte: datetime,
+    *,
+    pausa: float,
+    relatorio: RelatorioFundamentos,
+) -> None:
+    """Pergunta a B3 como ela chama cada empresa, e o ISIN de cada papel.
+
+    E o que torna as duas consultas de proventos possiveis sem adivinhar nada:
+    a dos recentes exige o codigo de emissor, a do historico exige o nome de
+    pregao, e os dois saem daqui.
+    """
+    pendentes = repository.empresas_para_consultar(engine, "detalhe_em", corte)
+    if not pendentes:
+        return
+
+    cliente = novo_cliente()
+    atualizadas = 0
+    try:
+        for empresa in pendentes:
+            cd_cvm = int(empresa["cd_cvm"])
+            try:
+                detalhe = detalhe_da_empresa(cliente, cd_cvm)
+            except B3IndisponivelError as exc:
+                relatorio.avisos.append(f"detalhe: B3 fora do ar em {empresa['nome']}: {exc}")
+                break
+            if detalhe is None:
+                repository.marcar_consulta(engine, cd_cvm, "detalhe_em", momento)
+                continue
+
+            nossos = {p["ticker"] for p in repository.papeis_da_empresa(engine, cd_cvm)}
+            papeis = {
+                papel.ticker: (papel.isin, classe_do_isin(papel.isin))
+                for papel in detalhe.papeis
+                if papel.ticker in nossos
+            }
+            repository.gravar_detalhe_b3(
+                engine,
+                cd_cvm,
+                emissor=detalhe.emissor,
+                nome_pregao=detalhe.nome_pregao,
+                papeis=papeis,
+                momento=momento,
+            )
+            atualizadas += 1
+            time.sleep(pausa)
+    finally:
+        cliente.close()
+
+    if atualizadas:
+        relatorio.proventos.append(f"detalhe da B3: {atualizadas} empresas")
+
+
+def _proventos_recentes(
+    engine: Engine,
+    momento: datetime,
+    corte: datetime,
+    *,
+    pausa: float,
+    relatorio: RelatorioFundamentos,
+) -> None:
+    """Os proventos dos ultimos ~12 meses, ligados ao papel pelo ISIN."""
+    pendentes = [
+        e
+        for e in repository.empresas_para_consultar(engine, "proventos_em", corte)
+        if e["emissor_b3"]
+    ]
+    if not pendentes:
+        return
+
+    cliente = novo_cliente()
+    gravados = 0
+    empresas_com_provento = 0
+    try:
+        for empresa in pendentes:
+            cd_cvm = int(empresa["cd_cvm"])
+            papeis = repository.papeis_da_empresa(engine, cd_cvm)
+            por_isin = {p["isin"]: p["ticker"] for p in papeis if p["isin"]}
+            tickers = [p["ticker"] for p in papeis]
+            if not por_isin:
+                continue
+            try:
+                brutos = proventos_recentes(cliente, str(empresa["emissor_b3"]))
+            except B3IndisponivelError as exc:
+                relatorio.avisos.append(f"proventos: B3 fora do ar em {empresa['nome']}: {exc}")
+                break
+
+            linhas = ligar_recentes(brutos, por_isin)
+            # A janela trocada e a que a B3 respondeu. Sem provento nenhum, a
+            # janela e vazia e nada e apagado: "a B3 nao respondeu proventos"
+            # nao e o mesmo que "esta empresa nao pagou nada".
+            desde = min((linha.data_com for linha in linhas), default=None)
+            repository.gravar_proventos(
+                engine,
+                [_linha_para_banco(linha) for linha in linhas],
+                tickers=tickers,
+                fonte="recente",
+                desde=desde,
+                ate=None,
+            )
+            repository.marcar_consulta(engine, cd_cvm, "proventos_em", momento)
+            gravados += len(linhas)
+            empresas_com_provento += 1 if linhas else 0
+            time.sleep(pausa)
+    finally:
+        cliente.close()
+
+    relatorio.proventos.append(
+        f"proventos recentes: {gravados} de {empresas_com_provento} empresas"
+    )
+
+
+def _proventos_historicos(
+    engine: Engine,
+    momento: datetime,
+    corte: datetime,
+    *,
+    pausa: float,
+    relatorio: RelatorioFundamentos,
+) -> None:
+    """O historico antigo, gravado so depois de conferido contra o COTAHIST."""
+    pendentes = [
+        e
+        for e in repository.empresas_para_consultar(engine, "historico_em", corte)
+        if e["nome_pregao"] or e["nome"]
+    ]
+    if not pendentes:
+        return
+
+    cliente = novo_cliente()
+    gravados = 0
+    reprovados: list[str] = []
+    try:
+        for empresa in pendentes:
+            cd_cvm = int(empresa["cd_cvm"])
+            papeis = repository.papeis_da_empresa(engine, cd_cvm)
+            por_classe = {p["classe"]: p["ticker"] for p in papeis if p["classe"]}
+            tickers = [p["ticker"] for p in papeis]
+            if not por_classe:
+                continue
+            try:
+                brutos = _historico_por_nome(cliente, empresa)
+            except B3IndisponivelError as exc:
+                relatorio.avisos.append(f"historico: B3 fora do ar em {empresa['nome']}: {exc}")
+                break
+
+            repository.marcar_consulta(engine, cd_cvm, "historico_em", momento)
+            if not brutos:
+                continue
+
+            datas = [p.data_com for p in brutos]
+            fechamentos = repository.fechamentos_dos_papeis(engine, tickers, datas)
+            conferencia = conferir_precos(brutos, por_classe, fechamentos)
+            if not conferencia.aprovado:
+                # Segunda prova, para quem a primeira nao alcanca: bater o
+                # historico contra os proventos que ja vieram com ISIN.
+                ja_conhecidos = repository.proventos_recentes_dos_papeis(engine, tickers)
+                conferencia = conferir_com_recentes(brutos, por_classe, ja_conhecidos)
+            if not conferencia.aprovado:
+                # Nome de pregao e chave fraca: sem prova de que o historico e
+                # desta empresa, ele nao entra. Ficar sem yield antigo e melhor
+                # do que somar o provento de outra companhia.
+                reprovados.append(f"{empresa['nome']} ({conferencia.resumo()})")
+                continue
+
+            fronteira = repository.primeiro_provento_recente(engine, tickers)
+            linhas = ligar_historicos(brutos, por_classe, antes_de=fronteira)
+            repository.gravar_proventos(
+                engine,
+                [_linha_para_banco(linha) for linha in linhas],
+                tickers=tickers,
+                fonte="historico",
+                desde=None,
+                ate=fronteira,
+            )
+            gravados += len(linhas)
+            time.sleep(pausa)
+    finally:
+        cliente.close()
+
+    relatorio.proventos.append(f"historico de proventos: {gravados} linhas")
+    if reprovados:
+        relatorio.proventos.append(
+            f"historico reprovado na conferencia de preco em {len(reprovados)}: "
+            + "; ".join(reprovados[:3])
+        )
+
+
+def _historico_por_nome(cliente: httpx.Client, empresa: Mapping[str, Any]) -> list[Provento]:
+    """Procura o historico pelo nome de pregao e, se vier vazio, pelo da CVM.
+
+    A consulta casa o nome exato, e a B3 nao acha o nome que ela mesma publica
+    quando ele tem barra: "AMBEV S/A" devolve zero e "AMBEV S.A." devolve 39.
+    O mesmo vale para a Klabin. Nos dois casos e a mesma empresa -- e a
+    conferencia depois nao deixa passar se nao for.
+    """
+    nome_pregao = empresa.get("nome_pregao")
+    if nome_pregao:
+        achados = proventos_historicos(cliente, str(nome_pregao))
+        if achados:
+            return achados
+    nome_cvm = empresa.get("nome")
+    if nome_cvm and nome_cvm != nome_pregao:
+        return proventos_historicos(cliente, str(nome_cvm))
+    return []
+
+
+def _linha_para_banco(linha: Linha) -> dict[str, object]:
+    return {
+        "ticker": linha.ticker,
+        "tipo": linha.tipo,
+        "valor": linha.valor,
+        "data_com": linha.data_com,
+        "data_aprovacao": linha.data_aprovacao,
+        "data_pagamento": linha.data_pagamento,
+        "fonte": linha.fonte,
+    }

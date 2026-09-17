@@ -657,6 +657,7 @@ def fundamentos_status() -> None:
     from scanner.storage.repository import (
         contagem_do_mapeamento,
         contar_empresas,
+        contar_proventos,
         datas_dos_arquivos_externos,
         documentos_por_tipo_e_ano,
         tickers_sem_empresa,
@@ -664,8 +665,10 @@ def fundamentos_status() -> None:
 
     engine = build_engine()
     ligados, sem_empresa = contagem_do_mapeamento(engine)
+    proventos, papeis_com_provento = contar_proventos(engine)
     typer.echo(f"empresas: {contar_empresas(engine):>6,}")
     typer.echo(f"tickers ligados: {ligados:>6,}")
+    typer.echo(f"proventos: {proventos:>6,} em {papeis_com_provento} papeis")
 
     docs = documentos_por_tipo_e_ano(engine)
     if docs.empty:
@@ -746,6 +749,30 @@ def fundamentos_empresa(
                 f"  ativo_total {b['ativo_total']}, patrimonio_liquido {b['patrimonio_liquido']}, "
                 f"passivo_circulante {b['passivo_circulante']}, caixa {b['caixa']}"
             )
+
+
+@fundamentos_app.command("proventos")
+def fundamentos_proventos(
+    ticker: Annotated[str, typer.Argument(help="Papel, ex.: UNIP6.")],
+) -> None:
+    """Os proventos guardados de um papel, do mais novo para o mais antigo."""
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import proventos_do_papel
+
+    linhas = proventos_do_papel(build_engine(), ticker)
+    if linhas.empty:
+        typer.secho(f"[vazio] nenhum provento de {ticker.upper()}", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=1)
+
+    typer.echo(f"{ticker.upper()} - {len(linhas)} proventos mais recentes")
+    typer.echo(f"{'data com':<12}{'tipo':<18}{'R$/acao':>14}{'pagamento':>13}  fonte")
+    for _, linha in linhas.iterrows():
+        pagamento = linha["data_pagamento"]
+        pago = "-" if pd.isna(pagamento) else str(pagamento)
+        typer.echo(
+            f"{linha['data_com']!s:<12}{linha['tipo'][:17]:<18}"
+            f"{float(linha['valor']):>14.8f}{pago:>13}  {linha['fonte']}"
+        )
 
 
 if __name__ == "__main__":  # pragma: no cover

@@ -36,7 +36,8 @@ def test_nomes_das_tabelas() -> None:
     # `empresas`, `empresa_tickers`, `cvm_documentos`, `cvm_resultados`,
     # `cvm_balancos` e `arquivos_externos` (migration 0007) sao a fase 1 de
     # fundamentos: o dado bruto de balanco da CVM, carregado e guardado, sem
-    # indicador calculado.
+    # indicador calculado. `proventos` (migration 0008) guarda os proventos em
+    # dinheiro por papel, que e de onde sai o dividend yield.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -53,6 +54,7 @@ def test_nomes_das_tabelas() -> None:
         "cvm_resultados",
         "cvm_balancos",
         "arquivos_externos",
+        "proventos",
     }
 
 
@@ -75,6 +77,7 @@ def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
         ("trade_snapshots", ["trade_id", "trade_date"]),
         ("empresas", ["cd_cvm"]),
         ("empresa_tickers", ["ticker"]),
+        ("proventos", ["id"]),
         ("cvm_documentos", ["cd_cvm", "tipo", "dt_refer"]),
         ("cvm_resultados", ["cd_cvm", "tipo", "dt_refer", "dt_ini", "dt_fim"]),
         ("cvm_balancos", ["cd_cvm", "tipo", "dt_refer"]),
@@ -93,7 +96,7 @@ def test_ticker_aponta_para_empresa_e_nunca_para_prefixo() -> None:
     deduzir por prefixo colaria o balanco de uma empresa em outra.
     """
     colunas = {c.name for c in table("empresa_tickers").columns}
-    assert colunas == {"ticker", "cd_cvm", "fonte", "verificado_em"}
+    assert colunas == {"ticker", "cd_cvm", "fonte", "isin", "classe", "verificado_em"}
     assert "emissor" not in {c.name for c in table("empresas").columns}
 
     fks = table("empresa_tickers").foreign_keys

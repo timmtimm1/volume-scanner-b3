@@ -1,0 +1,27 @@
+name: pregao manual
+
+# O botao para rodar o pregao a mao: Actions -> pregao manual -> Run workflow.
+# E opcional. Se ninguem rodar, o daily.yml agendado faz o servico a noite e de
+# manha. Os dois executam o mesmo pregao.yml, e carga, alerta e resumo sao
+# idempotentes: rodar aqui e depois a agenda rodar de novo nao duplica nada.
+#
+# Para repetir, clique de novo em Run workflow. Nunca use Re-run numa execucao
+# antiga: ele repete a data e o commit daquela execucao, e se o main ja mudou a
+# guarda do pregao.yml barra antes de tocar no banco.
+on:
+  workflow_dispatch:
+    inputs:
+      trade_date:
+        description: "Pregao: 'ultimo' (o mais recente ja encerrado) ou uma data AAAA-MM-DD"
+        required: false
+        default: "ultimo"
+
+permissions:
+  contents: read
+
+jobs:
+  pregao:
+    uses: ./.github/workflows/pregao.yml
+    with:
+      trade_date: ${{ inputs.trade_date }}
+    secrets: inherit

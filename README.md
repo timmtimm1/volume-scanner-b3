@@ -172,7 +172,7 @@ GitHub Actions o Neon — se o seu PC estiver desligado, ele funciona igual.
 ## Comandos
 
 Os comandos abaixo rodam o código e carregam os dados
-(`.github/workflows/daily.yml`): carga, métricas, alerta, resumo e poda, na ordem certa,
+(`.github/workflows/pregao.yml`): carga, métricas, alerta, resumo e poda, na ordem certa,
 lendo o banco uma vez só.
 
 ```bash
@@ -300,7 +300,7 @@ A ficha também funciona em 390px de largura — é o link que chega pelo alerta
 | `SCANNER_BRAPI_TOKEN` | opcional; sem ele o candle de hoje usa só o Yahoo | Production |
 
 3. Copie o **Deploy Hook** e cadastre como secret `VERCEL_DEPLOY_HOOK` no GitHub —
-   é o que faz o `daily.yml` reconstruir o site depois de cada pregão
+   é o que faz o `pregao.yml` reconstruir o site depois de cada pregão
 
 ## Calendário da B3
 
@@ -509,8 +509,18 @@ Em **Settings → Secrets and variables → Actions**:
 
 ### 4. O job diário
 
-`.github/workflows/daily.yml` faz: migrations → carga do pregão → métricas →
+`.github/workflows/pregao.yml` faz: migrations → carga do pregão → métricas →
 scan → snapshot dos trades → resumo → retenção → rebuild na Vercel.
+
+Ele não roda sozinho. Dois workflows o chamam, e os dois executam exatamente as
+mesmas etapas:
+
+| Workflow | Quem dispara | Pregão |
+|---|---|---|
+| `daily.yml` — **daily (agendado)** | o cron externo, nos horários abaixo | sempre `ultimo` |
+| `pregao-manual.yml` — **pregao manual** | você, se quiser | `ultimo` ou uma data |
+
+O manual é opcional: se ninguém rodar, a agenda faz o serviço.
 
 Quem dispara é um cron externo ([cron-job.org](https://cron-job.org)), via
 `workflow_dispatch`: o agendador nativo do GitHub, em repositório público
@@ -529,8 +539,20 @@ manda mensagem duplicada.
 Feriado da B3 não precisa de exceção: `scanner ingest daily` conhece o calendário
 e sai sem erro quando não houve pregão.
 
-Dá para disparar à mão em **Actions → daily → Run workflow**, inclusive apontando
-um pregão específico — é assim que se testa antes de esperar o cron.
+Para rodar à mão: **Actions → pregao manual → Run workflow**, com `ultimo` ou uma
+data. Pelo terminal:
+
+```bash
+gh workflow run pregao-manual.yml -f trade_date=ultimo
+```
+
+> **Nunca use Re-run numa execução antiga.** O Re-run do GitHub repete a execução
+> inteira: a data que ela pediu e o commit daquele dia. Em 16/09/2026 um Re-run
+> reprocessou o pregão da véspera num commit temporário e reenviou o resumo no
+> Telegram. Por isso o primeiro passo do `pregao.yml` é uma guarda: se a execução
+> é uma repetição e o `main` já mudou, ela para antes de tocar no banco, sem aviso
+> de falha no Telegram, e diz na tela do Actions para usar o manual. Repetir no
+> `main` atual continua valendo — é o que se faz quando a B3 saiu do ar.
 
 > **Por que dois horários.** A B3 publica o arquivo do dia com atraso variável:
 > às 21:08 em 08/09/2026, mas em 11/09 às 21:59 ainda dava 404, e às 02:42 a B3
@@ -593,11 +615,11 @@ link que chega no Telegram.
 
 ### 7. Primeiro teste
 
-Em **Actions → daily → Run workflow**, com `ultimo`. O resumo do pregão deve
-chegar no Telegram e a Vercel deve reconstruir o site.
+Em **Actions → pregao manual → Run workflow**, com `ultimo`. O resumo do pregão
+deve chegar no Telegram e a Vercel deve reconstruir o site.
 
-Para rodar de novo com código novo, use sempre **Run workflow**. O **Re-run** de
-uma execução antiga roda no commit daquela execução, não no `main` atual.
+Para rodar de novo, use sempre **Run workflow**, nunca **Re-run**
+([por quê](#4-o-job-diário)).
 
 ### 8. Agendamento
 

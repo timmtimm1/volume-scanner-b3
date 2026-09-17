@@ -1,8 +1,9 @@
-name: daily
+name: daily (agendado)
 
 # Disparado por um cron externo (cron-job.org) via workflow_dispatch, não pelo
 # agendador nativo do GitHub: em repositório público gratuito ele atrasa e falha
-# demais para um job que só tem uma janela por dia.
+# demais para um job que só tem uma janela por dia. O cron chama este arquivo
+# pelo nome: renomear daily.yml quebra a agenda.
 #
 # Agenda no cron externo (fuso America/Sao_Paulo), dois disparos com o mesmo
 # corpo -- a agenda completa esta em .github/cron-externo.yml:
@@ -12,119 +13,17 @@ name: daily
 # - 07:40, terca a sabado: reserva. Processa o pregao da vespera. Se a noite ja
 #   processou, nada se repete: evento, resumo e carga sao idempotentes.
 # Os dois pedem `ultimo`, que e o pregao encerrado mais recente em Sao Paulo.
+#
+# As etapas vivem em pregao.yml. Para rodar a mao, use pregao-manual.yml.
 on:
   workflow_dispatch:
-    inputs:
-      trade_date:
-        description: "Pregao a processar (AAAA-MM-DD, 'ultimo' ou 'today')"
-        required: false
-        default: "ultimo"
-
-concurrency:
-  group: daily
-  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  scan:
-    runs-on: ubuntu-latest
-    timeout-minutes: 30
-    env:
-      SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
-      SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
-      SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
-      SCANNER_WEB_BASE_URL: ${{ vars.SCANNER_WEB_BASE_URL }}
-      PREGAO: ${{ inputs.trade_date || 'ultimo' }}
-      VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - uses: astral-sh/setup-uv@v7
-        with:
-          python-version: "3.12"
-          enable-cache: true
-
-      - name: Instalar dependencias
-        id: deps
-        run: uv sync --locked --no-dev
-
-      - name: Conferir os segredos
-        id: segredos
-        run: |
-          test -n "$SCANNER_DATABASE_URL" || { echo "::error::SCANNER_DATABASE_URL ausente"; exit 1; }
-          if [ -z "$SCANNER_TELEGRAM_BOT_TOKEN" ] || [ -z "$SCANNER_TELEGRAM_CHAT_ID" ]; then
-            echo "::warning::Configuracao do Telegram incompleta; alertas nao serao enviados"
-          fi
-
-      - name: Migrations
-        id: migrations
-        # --no-sync: sem ele o `uv run` ressincroniza com o grupo dev e baixa
-        # mypy, ruff e pytest a cada execucao, depois do `--no-dev` acima.
-        run: uv run --no-sync alembic upgrade head
-
-      - name: Pregao do dia
-        id: pregao
-        shell: bash
-        run: |
-          set -o pipefail
-          set +e
-          uv run --no-sync scanner daily --date "$PREGAO" 2>&1 | tee /tmp/daily.log
-          codigo=$?
-          set -e
-          # 75 = o arquivo do pregao de hoje ainda nao saiu da B3. Nao e falha:
-          # a passada das 07:40 processa. Marca o passo para pular o rebuild.
-          if [ "$codigo" -eq 75 ]; then
-            echo "adiado=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::B3 ainda nao publicou o pregao de hoje; a passada das 07:40 processa"
-            exit 0
-          fi
-          exit "$codigo"
-
-      - name: Disparar rebuild na Vercel
-        id: vercel
-        # Adiado nao gravou nada: reconstruir o site so gastaria build.
-        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.pregao.outputs.adiado != 'true' }}
-        run: |
-          curl -sS -f --retry 3 --retry-delay 2 --retry-connrefused \
-            -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null
-
-      - name: Avisar no Telegram se algo falhou
-        if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
-        shell: bash
-        env:
-          RES_DEPS: ${{ steps.deps.outcome }}
-          RES_SEGREDOS: ${{ steps.segredos.outcome }}
-          RES_MIGRATIONS: ${{ steps.migrations.outcome }}
-          RES_PREGAO: ${{ steps.pregao.outcome }}
-          RES_VERCEL: ${{ steps.vercel.outcome }}
-        run: |
-          onde="passo desconhecido"
-          if [ "$RES_DEPS" = failure ]; then
-            onde="instalacao das dependencias"
-          elif [ "$RES_SEGREDOS" = failure ]; then
-            onde="conferencia dos segredos"
-          elif [ "$RES_MIGRATIONS" = failure ]; then
-            onde="migrations"
-          elif [ "$RES_PREGAO" = failure ]; then
-            ultima=$(grep -E '^\[[0-9]/7\]' /tmp/daily.log 2>/dev/null | tail -1 | cut -c1-52 || true)
-            if [ -n "$ultima" ]; then
-              onde="pregao, depois de $ultima"
-            else
-              onde="pregao, antes da primeira etapa"
-            fi
-          elif [ "$RES_VERCEL" = failure ]; then
-            onde="rebuild na Vercel"
-          fi
-
-          onde=$(printf '%s' "$onde" | tr -d '<>&')
-          texto=$(printf '⚠️ <b>O scanner falhou</b>\nPregão de %s\nOnde: %s\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
-            "$PREGAO" "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
-
-          curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
-            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
-            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
-            -d parse_mode=HTML \
-            -d disable_web_page_preview=true \
-            --data-urlencode "text=$texto"
+  pregao:
+    uses: ./.github/workflows/pregao.yml
+    with:
+      trade_date: ultimo
+    secrets: inherit

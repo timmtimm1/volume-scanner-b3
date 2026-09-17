@@ -246,6 +246,10 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
   fica guardado em `trade_snapshots`, gravado pelo job noturno, e o resumo diário
   no Telegram ganha o bloco **Seus trades** com a posição de cada trade aberto e
   dos encerrados no pregão. Sem custos de corretagem e sem proventos, por enquanto.
+- **Fundamentos da CVM (em construção).** A carga já traz para o banco os
+  balanços trimestrais e anuais de cada empresa negociada (ITR e DFP dos dados
+  abertos da CVM), com a data em que cada um foi entregue. Ainda não aparece no
+  site: a aba na ficha do papel é a última fase.
 - **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
   logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
   toques medem o movimento entre dois pontos e quantos pregões ele levou.
@@ -431,6 +435,43 @@ erDiagram
         numeric fechamento
         numeric resultado
     }
+    empresas {
+        int cd_cvm PK
+        text cnpj
+        text nome
+        text setor_cvm
+        text situacao
+    }
+    empresa_tickers {
+        text ticker PK
+        int cd_cvm FK
+        text fonte
+        timestamptz verificado_em
+    }
+    cvm_documentos {
+        int cd_cvm PK, FK
+        text tipo PK
+        date dt_refer PK
+        smallint versao
+        date recebido_original
+        text escopo
+        text layout
+    }
+    cvm_resultados {
+        int cd_cvm PK, FK
+        date dt_ini PK
+        date dt_fim PK
+        numeric receita
+        numeric lucro_liquido
+        numeric ebit
+    }
+    cvm_balancos {
+        int cd_cvm PK, FK
+        numeric ativo_total
+        numeric patrimonio_liquido
+        numeric emprestimos_lp
+        bigint acoes_on
+    }
 
     daily_bars ||--o{ volume_metrics : "ticker + trade_date"
     daily_bars ||--o{ daily_features : "ticker + trade_date"
@@ -438,6 +479,10 @@ erDiagram
     daily_bars ||--o{ price_alerts : "originou"
     trades ||--o{ trade_operacoes : "compras e vendas"
     trades ||--o{ trade_snapshots : "um por pregão"
+    empresas ||--o{ empresa_tickers : "papéis da empresa"
+    empresas ||--o{ cvm_documentos : "ITR e DFP entregues"
+    cvm_documentos ||--o{ cvm_resultados : "DRE por período"
+    cvm_documentos ||--|| cvm_balancos : "posição na data"
 ```
 
 | Tabela | Guarda |
@@ -451,6 +496,12 @@ erDiagram
 | `trades` | Um trade real por papel: aberto na primeira compra, encerrado quando a quantidade zera |
 | `trade_operacoes` | Cada compra e venda, com a posição depois dela (quantidade, preço médio, realizado) |
 | `trade_snapshots` | O trade marcado a mercado no fechamento de cada pregão. **Fica fora da poda**: as barras de 400 pregões atrás somem, o resultado daquele dia não |
+| `empresas` | Cadastro da CVM das empresas alcançadas por algum papel do banco |
+| `empresa_tickers` | De qual empresa é cada ticker, e de onde veio essa ligação. Linha sem empresa é o "já procurei e não achei", que evita procurar de novo todo dia |
+| `cvm_documentos` | Cada ITR ou DFP entregue: versão, data da primeira entrega e da última, e se o balanço é consolidado ou individual |
+| `cvm_resultados` | As linhas da DRE por período (trimestre e acumulado do ano) e a depreciação da DVA |
+| `cvm_balancos` | As linhas do balanço na data e a composição do capital (ações e tesouraria) |
+| `arquivos_externos` | Controle de download condicional dos arquivos da CVM: o que já foi baixado, e quando a CVM publicou |
 
 Migrations via Alembic, em `src/scanner/storage/migrations/versions/` — nunca schema por SQL solto.
 `scanner db status` mostra pregões, linhas e tamanho de cada tabela no banco atual.
@@ -510,7 +561,13 @@ Em **Settings → Secrets and variables → Actions**:
 ### 4. O job diário
 
 `.github/workflows/pregao.yml` faz: migrations → carga do pregão → métricas →
-scan → snapshot dos trades → resumo → retenção → rebuild na Vercel.
+scan → snapshot dos trades → resumo → retenção → fundamentos da CVM → rebuild
+na Vercel.
+
+O passo dos fundamentos não pode derrubar o pregão: ele roda com
+`continue-on-error` e tem aviso próprio no Telegram. Se a CVM estiver fora do
+ar, o alerta e o resumo saem do mesmo jeito, e a aba Fundamentos fica com os
+dados da véspera.
 
 Ele não roda sozinho. Dois workflows o chamam, e os dois executam exatamente as
 mesmas etapas:
@@ -675,6 +732,16 @@ pareceriam complexas demais para o problema.
 - **Sem `SCANNER_BRAPI_TOKEN`, só o Yahoo responde.** O plano gratuito da
   brapi aceita 1 papel por requisição; sem o token, a brapi fica de fora da
   consulta e a leitura de preço passa a ter uma única fonte.
+- **A CVM publica os balanços uma vez por semana**, não todo dia. Um resultado
+  divulgado numa terça só entra na próxima atualização, até cerca de 7 dias
+  depois. A ficha mostra a data dos dados para não confundir "ainda não saiu"
+  com "a CVM ainda não publicou o arquivo".
+- **Papel que parou de negociar costuma ficar sem empresa ligada.** São 9 dos
+  447 do banco: a Marfrig virou MBRF3, a Eletrobras virou AXIA e as classes
+  AXIA5/AXIA6 deixaram de existir, a Santos Brasil saiu da bolsa, e há dois
+  ETFs e um recibo de subscrição. Ligar pelo prefixo do ticker resolveria e
+  está fora de questão: na B3, o emissor "EMBR" é a EMBRAST, e não a Embraer.
+  Melhor ficar sem fundamentos do que mostrar o balanço de outra empresa.
 - **O rompimento só vê o preço do instante da checagem**, a cada 15 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.

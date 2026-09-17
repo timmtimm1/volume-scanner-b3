@@ -13,6 +13,7 @@ from typing import Any, Literal
 
 import yaml
 from pydantic import BaseModel, Field, SecretStr, field_validator
+from pydantic_core.core_schema import ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
@@ -119,6 +120,12 @@ class FundamentosConfig(BaseModel):
     # de novo depois deste intervalo. O FCA da CVM, que e a fonte da ligacao,
     # e atualizado uma vez por semana.
     dias_para_rechecar_ticker: int = 7
+    # Cadastro da empresa na B3 e historico de proventos mudam pouco: uma vez
+    # por semana basta, e sao 321 consultas cada.
+    dias_para_rechecar_empresa: int = 7
+    # Proventos recentes mudam sempre. 20 horas deixa a passada das 07:40 de
+    # fora quando a das 21:30 ja rodou.
+    horas_para_rechecar_proventos: int = 20
 
     @field_validator("ano_inicial")
     @classmethod
@@ -130,11 +137,18 @@ class FundamentosConfig(BaseModel):
             )
         return value
 
-    @field_validator("dias_para_rechecar_ticker")
+    @field_validator("dias_para_rechecar_ticker", "dias_para_rechecar_empresa")
     @classmethod
-    def _validate_dias_para_rechecar_ticker(cls, value: int) -> int:
+    def _validate_dias(cls, value: int, info: ValidationInfo) -> int:
         if value < 1:
-            raise ValueError("fundamentos.dias_para_rechecar_ticker precisa ser ao menos 1")
+            raise ValueError(f"fundamentos.{info.field_name} precisa ser ao menos 1")
+        return value
+
+    @field_validator("horas_para_rechecar_proventos")
+    @classmethod
+    def _validate_horas_para_rechecar_proventos(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("fundamentos.horas_para_rechecar_proventos precisa ser ao menos 1")
         return value
 
 

@@ -35,6 +35,7 @@ from scanner.storage.models import (
     Empresa,
     EmpresaTicker,
     Event,
+    FundamentoTrimestre,
     PriceAlert,
     Trade,
     TradeOperacao,
@@ -997,6 +998,65 @@ def proventos_do_papel(engine: Engine, ticker: str, limite: int = 12) -> pd.Data
         )
         .where(ProventoModel.ticker == ticker.upper())
         .order_by(ProventoModel.data_com.desc())
+        .limit(limite)
+    )
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)
+
+
+# --- Trimestres calculados (fundamentos fase 3) ------------------------------
+
+
+def dado_bruto_da_cvm(engine: Engine) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
+    """Resultados, balancos e documentos, inteiros, para o recalculo."""
+    resultados = select(CvmResultado)
+    balancos = select(CvmBalanco)
+    documentos = select(
+        CvmDocumento.cd_cvm,
+        CvmDocumento.tipo,
+        CvmDocumento.dt_refer,
+        CvmDocumento.recebido_original.label("publicado_em"),
+        CvmDocumento.layout,
+    )
+    with engine.connect() as conn:
+        return (
+            pd.read_sql(resultados, conn),
+            pd.read_sql(balancos, conn),
+            pd.read_sql(documentos, conn),
+        )
+
+
+def gravar_trimestres(engine: Engine, frame: pd.DataFrame) -> int:
+    """Troca a tabela de trimestres pela recem-calculada.
+
+    A tabela e derivada: apagar e regravar e mais simples e mais seguro do que
+    casar linha a linha, e sao poucos milhares de linhas. Se um documento for
+    reapresentado e mudar de numero, o trimestre acompanha sem sobra.
+    """
+    if frame.empty:
+        return 0
+    linhas = _registros_sql(frame)
+    with engine.begin() as conn:
+        conn.execute(delete(FundamentoTrimestre))
+        conn.execute(insert(FundamentoTrimestre), linhas)
+    return len(linhas)
+
+
+def contar_trimestres(engine: Engine) -> tuple[int, int]:
+    """Quantos trimestres estao calculados, e de quantas empresas."""
+    stmt = select(func.count(), func.count(func.distinct(FundamentoTrimestre.cd_cvm)))
+    with engine.connect() as conn:
+        total, empresas = conn.execute(stmt).one()
+    return int(total), int(empresas)
+
+
+def trimestres_do_ticker(engine: Engine, ticker: str, limite: int = 8) -> pd.DataFrame:
+    """Os ultimos trimestres da empresa do papel, do mais novo para o mais antigo."""
+    stmt = (
+        select(FundamentoTrimestre)
+        .join(EmpresaTicker, EmpresaTicker.cd_cvm == FundamentoTrimestre.cd_cvm)
+        .where(EmpresaTicker.ticker == ticker.upper())
+        .order_by(FundamentoTrimestre.dt_fim.desc())
         .limit(limite)
     )
     with engine.connect() as conn:

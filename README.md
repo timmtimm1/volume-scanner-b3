@@ -250,8 +250,10 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
   balanços trimestrais e anuais de cada empresa negociada (ITR e DFP dos dados
   abertos da CVM), com a data em que cada um foi entregue, e os proventos em
   dinheiro de cada papel — dividendo e juros sobre capital próprio, por classe,
-  porque a ON e a PN recebem valores diferentes. Ainda não aparece no site: a
-  aba na ficha do papel é a última fase.
+  porque a ON e a PN recebem valores diferentes. Em cima disso, o trimestre já
+  calculado: receita, EBITDA e lucro do trimestre e dos últimos 12 meses,
+  patrimônio dos controladores, dívida líquida e liquidez. Ainda não aparece no
+  site: a aba na ficha do papel é a última fase.
 - **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
   logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
   toques medem o movimento entre dois pontos e quantos pregões ele levou.
@@ -474,6 +476,15 @@ erDiagram
         numeric emprestimos_lp
         bigint acoes_on
     }
+    fundamentos_trimestre {
+        int cd_cvm PK, FK
+        date dt_fim PK
+        text rotulo
+        text origem
+        date publicado_em
+        numeric receita_12m
+        numeric lucro_12m
+    }
     proventos {
         bigint id PK
         text ticker FK
@@ -494,6 +505,7 @@ erDiagram
     cvm_documentos ||--o{ cvm_resultados : "DRE por período"
     cvm_documentos ||--|| cvm_balancos : "posição na data"
     empresa_tickers ||--o{ proventos : "dividendos e JCP"
+    empresas ||--o{ fundamentos_trimestre : "trimestre calculado"
 ```
 
 | Tabela | Guarda |
@@ -512,6 +524,7 @@ erDiagram
 | `cvm_documentos` | Cada ITR ou DFP entregue: versão, data da primeira entrega e da última, e se o balanço é consolidado ou individual |
 | `cvm_resultados` | As linhas da DRE por período (trimestre e acumulado do ano) e a depreciação da DVA |
 | `cvm_balancos` | As linhas do balanço na data e a composição do capital (ações e tesouraria) |
+| `fundamentos_trimestre` | O trimestre já calculado que a ficha lê: receita, EBITDA e lucro do trimestre e de 12 meses, patrimônio dos controladores, dívida líquida, liquidez e ações em circulação. É derivada — pode ser apagada e refeita a partir das tabelas acima |
 | `proventos` | Dividendos e JCP por papel, com a data com. Uma linha por provento e por classe: a ON e a PN da mesma empresa recebem valores diferentes |
 | `arquivos_externos` | Controle de download condicional dos arquivos da CVM: o que já foi baixado, e quando a CVM publicou |
 
@@ -748,6 +761,11 @@ pareceriam complexas demais para o problema.
   divulgado numa terça só entra na próxima atualização, até cerca de 7 dias
   depois. A ficha mostra a data dos dados para não confundir "ainda não saiu"
   com "a CVM ainda não publicou o arquivo".
+- **A CVM não publica o quarto trimestre.** Saem ITR para o 1T, 2T e 3T e o DFP
+  do ano; o 4T é a diferença entre os dois. E a depreciação só vem acumulada no
+  ano, então a do trimestre também é uma diferença — sem ela não há EBITDA. Nas
+  duas contas, quando falta o acumulado para subtrair, o trimestre fica de fora
+  em vez de sair inflado: é o caso de quem mudou o exercício social.
 - **O histórico antigo de proventos só entra depois de conferido.** A consulta
   do histórico na B3 casa pelo nome da empresa, que é chave fraca: "KLABIN"
   devolve os proventos de outra companhia, e "AMBEV S/A" — o nome que a própria

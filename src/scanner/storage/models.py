@@ -519,6 +519,56 @@ class CvmBalanco(Base):
     tesouraria_pn: Mapped[int | None] = mapped_column(BigInteger)
 
 
+class FundamentoTrimestre(Base):
+    """O trimestre ja calculado de uma empresa -- o que a ficha do papel le.
+
+    Nada aqui depende de preco: sao numeros da empresa. P/L, P/VP, EV/EBITDA e
+    dividend yield saem na hora de desenhar a ficha, porque dependem da data
+    que o usuario esta olhando.
+
+    `origem` diz de onde o trimestre veio: do ITR, do DFP, ou `derivado` -- o
+    quarto trimestre, que a CVM nao publica e sai do anual menos o acumulado
+    ate o terceiro. `publicado_em` e a data da PRIMEIRA entrega do documento:
+    e ela que decide, na ficha, qual trimestre ja era conhecido no dia do
+    evento.
+    """
+
+    __tablename__ = "fundamentos_trimestre"
+    __table_args__ = (
+        CheckConstraint("origem IN ('ITR', 'DFP', 'derivado')", name="ck_fundamentos_origem"),
+    )
+
+    cd_cvm: Mapped[int] = mapped_column(
+        Integer, ForeignKey(f"{SCHEMA}.empresas.cd_cvm", ondelete="CASCADE"), primary_key=True
+    )
+    dt_fim: Mapped[date] = mapped_column(Date, primary_key=True)
+    rotulo: Mapped[str] = mapped_column(Text, nullable=False)
+    origem: Mapped[str] = mapped_column(Text, nullable=False)
+    publicado_em: Mapped[date | None] = mapped_column(Date)
+    layout: Mapped[str | None] = mapped_column(Text)
+    receita_tri: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    ebitda_tri: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    lucro_tri: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    # Soma de quatro trimestres seguidos. Nula quando falta um no meio: um
+    # acumulado de 15 meses disfarcado seria pior do que numero nenhum.
+    receita_12m: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    ebitda_12m: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    lucro_12m: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    # Dos controladores: e sobre ele que o ROE e o P/VP fazem sentido para quem
+    # compra a acao.
+    patrimonio_liquido: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    ativo_total: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    divida_liquida: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    # A CVM reporta o arrendamento dentro de "emprestimos e financiamentos". Na
+    # Petrobras ele e a maior parte do numero, entao os dois ficam guardados.
+    divida_liquida_sem_arrendamento: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    liquidez_corrente: Mapped[Decimal | None] = mapped_column(Numeric(12, 4))
+    acoes_em_circulacao: Mapped[int | None] = mapped_column(BigInteger)
+    calculado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 class ArquivoExterno(Base):
     """Controle de download condicional dos arquivos da CVM (fundamentos fase 1).
 

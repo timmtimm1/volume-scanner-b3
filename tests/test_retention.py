@@ -28,7 +28,11 @@ from scanner.storage.repository import (
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "daily.yml"
+# As etapas do pregao vivem em `pregao.yml`; `daily.yml` (agenda) e
+# `pregao-manual.yml` (a mao) so o chamam.
+WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pregao.yml"
+DAILY = PROJECT_ROOT / ".github" / "workflows" / "daily.yml"
+MANUAL = PROJECT_ROOT / ".github" / "workflows" / "pregao-manual.yml"
 WORKFLOWS = sorted((PROJECT_ROOT / ".github" / "workflows").glob("*.yml"))
 CRON_EXTERNO = PROJECT_ROOT / ".github" / "cron-externo.yml"
 ROMPIMENTOS = PROJECT_ROOT / ".github" / "workflows" / "rompimentos.yml"
@@ -178,8 +182,19 @@ def _passos_do_job(workflow: dict[Any, Any]) -> list[dict[str, Any]]:
 @pytest.fixture(scope="module")
 def workflow() -> dict[Any, Any]:
     if not WORKFLOW.is_file():
-        pytest.skip("daily.yml ainda nao esta no repositorio (falta o escopo workflow no gh)")
+        pytest.skip("pregao.yml ainda nao esta no repositorio (falta o escopo workflow no gh)")
     return dict(yaml.safe_load(WORKFLOW.read_text(encoding="utf-8")))
+
+
+def _carregar(arquivo: Path) -> dict[Any, Any]:
+    return dict(yaml.safe_load(arquivo.read_text(encoding="utf-8")))
+
+
+def _gatilhos(conteudo: dict[Any, Any]) -> dict[str, Any]:
+    # O YAML 1.1 le a chave `on` como o booleano True.
+    gatilhos = conteudo.get("on") or conteudo.get(True)
+    assert isinstance(gatilhos, dict)
+    return gatilhos
 
 
 def _agenda_externa() -> dict[str, Any]:
@@ -202,17 +217,14 @@ def test_workflow_roda_o_pipeline_completo(workflow: dict[Any, Any], comando: st
     assert comando in WORKFLOW.read_text(encoding="utf-8")
 
 
-def test_workflow_e_disparado_de_fora_e_nao_pelo_agendador_do_github(
-    workflow: dict[Any, Any],
-) -> None:
+def test_workflow_e_disparado_de_fora_e_nao_pelo_agendador_do_github() -> None:
     """Sem `on: schedule`: quem agenda e o cron externo de `cron-externo.yml`.
 
     O agendador nativo do GitHub nao entrega de forma confiavel em repositorio
     publico gratuito. Deixar os dois ligados faria o `daily` rodar duas vezes
     nos dias em que o nativo funciona, reprocessando o mesmo pregao.
     """
-    gatilhos = workflow.get("on") or workflow.get(True)
-    assert isinstance(gatilhos, dict)
+    gatilhos = _gatilhos(_carregar(DAILY))
     assert "workflow_dispatch" in gatilhos
     assert "schedule" not in gatilhos, (
         "o agendador nativo voltou; ou ele sai, ou o job roda duas vezes por dia"
@@ -264,11 +276,15 @@ def test_agenda_externa_cobre_todo_workflow_sem_agendador_proprio() -> None:
     declarados = {str(j["workflow"]) for j in agenda["jobs"].values()}
 
     for arquivo in WORKFLOWS:
-        conteudo = dict(yaml.safe_load(arquivo.read_text(encoding="utf-8")))
-        gatilhos = conteudo.get("on") or conteudo.get(True)
-        assert isinstance(gatilhos, dict)
+        gatilhos = _gatilhos(_carregar(arquivo))
         # `ci.yml` roda por push/PR: nao precisa de agenda nenhuma.
         if {"push", "pull_request"} & set(gatilhos):
+            continue
+        # `pregao.yml` so roda chamado por outro workflow.
+        if set(gatilhos) == {"workflow_call"}:
+            continue
+        # O manual e opcional por definicao: a agenda nao depende dele.
+        if arquivo == MANUAL:
             continue
         assert arquivo.name in declarados, (
             f"{arquivo.name} nao tem agendador proprio nem esta em cron-externo.yml"
@@ -278,6 +294,7 @@ def test_agenda_externa_cobre_todo_workflow_sem_agendador_proprio() -> None:
         assert (PROJECT_ROOT / ".github" / "workflows" / nome).is_file(), (
             f"cron-externo.yml agenda {nome}, que nao existe"
         )
+    assert MANUAL.name not in declarados, "o workflow manual entrou na agenda"
 
 
 def test_workflow_pede_o_ultimo_pregao_e_nao_o_dia_de_hoje(
@@ -390,6 +407,32 @@ def test_aviso_de_falha_nao_se_diz_teste(workflow: dict[Any, Any]) -> None:
     # Com o cron externo toda execucao e workflow_dispatch; marcar dispatch como
     # "[teste]" rotulava toda falha real como teste.
     assert "[teste]" not in WORKFLOW.read_text(encoding="utf-8")
+
+
+@pytest.mark.parametrize("arquivo", [DAILY, MANUAL], ids=lambda p: p.name)
+def test_agenda_e_manual_rodam_o_mesmo_pregao(arquivo: Path) -> None:
+    """Uma copia das etapas em cada workflow divergiria em silencio.
+
+    O manual so serve de teste do agendado se executar exatamente o mesmo job.
+    """
+    conteudo = _carregar(arquivo)
+    (job,) = conteudo["jobs"].values()
+    assert job["uses"] == "./.github/workflows/pregao.yml"
+    assert job["secrets"] == "inherit", "sem inherit o pregao roda sem banco e sem Telegram"
+    assert "concurrency" not in conteudo, (
+        "o grupo fica so no job do pregao.yml: repetido aqui, a execucao espera por ela mesma"
+    )
+
+
+def test_um_pregao_por_vez_venha_da_agenda_ou_da_mao(workflow: dict[Any, Any]) -> None:
+    (job,) = workflow["jobs"].values()
+    assert job["concurrency"]["group"] == "pregao"
+    assert job["concurrency"]["cancel-in-progress"] is False, "cancelar mataria uma carga no meio"
+
+
+def test_agenda_pede_sempre_o_ultimo_pregao() -> None:
+    (job,) = _carregar(DAILY)["jobs"].values()
+    assert job["with"]["trade_date"] == "ultimo"
 
 
 def test_rompimentos_em_feriado_nao_instala_nem_conecta() -> None:

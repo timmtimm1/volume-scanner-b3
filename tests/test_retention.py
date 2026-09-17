@@ -411,6 +411,39 @@ def test_aviso_de_falha_nao_se_diz_teste(workflow: dict[Any, Any]) -> None:
     assert "[teste]" not in WORKFLOW.read_text(encoding="utf-8")
 
 
+# --- Fundamentos (fundamentos fase 1) ----------------------------------------
+
+
+def test_fundamentos_roda_entre_o_pregao_e_a_vercel(workflow: dict[Any, Any]) -> None:
+    """Fundamentos nao pode impedir o alerta nem o rebuild -- por isso vem
+    depois do pregao (que ja gravou tudo que interessa ao alerta) e antes do
+    rebuild (que le o banco no build).
+    """
+    passos = _passos_do_job(workflow)
+    ids = [p.get("id") for p in passos]
+
+    assert "fundamentos" in ids
+    assert ids.index("pregao") < ids.index("fundamentos") < ids.index("vercel")
+
+
+def test_fundamentos_nao_derruba_o_pregao(workflow: dict[Any, Any]) -> None:
+    (fundamentos,) = [p for p in _passos_do_job(workflow) if p.get("id") == "fundamentos"]
+    assert fundamentos.get("continue-on-error") is True
+
+
+def test_fundamentos_tem_aviso_proprio_de_falha(workflow: dict[Any, Any]) -> None:
+    passos = _passos_do_job(workflow)
+    indice_fundamentos = [p.get("id") for p in passos].index("fundamentos")
+    (aviso,) = [
+        p
+        for p in passos[indice_fundamentos:]
+        if "steps.fundamentos.outcome" in str(p.get("if", ""))
+    ]
+    assert "failure" in str(aviso["if"])
+    assert "api.telegram.org" in str(aviso.get("run", ""))
+    assert "Fundamentos não atualizaram" in str(aviso.get("run", ""))
+
+
 @pytest.mark.parametrize("arquivo", [DAILY, MANUAL], ids=lambda p: p.name)
 def test_agenda_e_manual_rodam_o_mesmo_pregao(arquivo: Path) -> None:
     """Uma copia das etapas em cada workflow divergiria em silencio.

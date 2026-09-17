@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+from datetime import date
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
-from scanner.config import AlertConfig, ScannerConfig, Settings, load_config
+from scanner.config import AlertConfig, FundamentosConfig, ScannerConfig, Settings, load_config
 
 
 def test_repo_config_carrega(repo_config_path: Path) -> None:
@@ -17,6 +18,8 @@ def test_repo_config_carrega(repo_config_path: Path) -> None:
     assert cfg.alert.windows == [30, 45, 60]
     assert cfg.alert.require_all_windows is False
     assert cfg.alert.min_volume_brl == 500_000
+    assert cfg.fundamentos.ano_inicial == 2022
+    assert cfg.fundamentos.dias_para_rechecar_ticker == 7
 
 
 def test_config_ausente_falha_alto(tmp_path: Path) -> None:
@@ -48,6 +51,18 @@ def test_janelas_saem_ordenadas() -> None:
 def test_threshold_precisa_ser_positivo() -> None:
     with pytest.raises(ValidationError):
         AlertConfig(threshold=0)
+
+
+def test_ano_inicial_fora_do_intervalo_e_rejeitado() -> None:
+    with pytest.raises(ValidationError):
+        FundamentosConfig(ano_inicial=2010)
+    with pytest.raises(ValidationError):
+        FundamentosConfig(ano_inicial=date.today().year + 1)
+
+
+def test_dias_para_rechecar_ticker_minimo_e_um() -> None:
+    with pytest.raises(ValidationError):
+        FundamentosConfig(dias_para_rechecar_ticker=0)
 
 
 def test_segredos_nao_vazam_no_repr() -> None:

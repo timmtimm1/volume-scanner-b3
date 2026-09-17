@@ -32,6 +32,11 @@ def test_nomes_das_tabelas() -> None:
     # `trades`, `trade_operacoes` e `trade_snapshots` (migration 0006) sao a
     # fase 1 da marcacao a mercado: trades reais do usuario, as operacoes que
     # os compoem e o snapshot diario de cada um.
+    #
+    # `empresas`, `empresa_tickers`, `cvm_documentos`, `cvm_resultados`,
+    # `cvm_balancos` e `arquivos_externos` (migration 0007) sao a fase 1 de
+    # fundamentos: o dado bruto de balanco da CVM, carregado e guardado, sem
+    # indicador calculado.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -42,6 +47,12 @@ def test_nomes_das_tabelas() -> None:
         "trades",
         "trade_operacoes",
         "trade_snapshots",
+        "empresas",
+        "empresa_tickers",
+        "cvm_documentos",
+        "cvm_resultados",
+        "cvm_balancos",
+        "arquivos_externos",
     }
 
 
@@ -62,10 +73,42 @@ def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
         ("events", ["id"]),
         ("trades", ["id"]),
         ("trade_snapshots", ["trade_id", "trade_date"]),
+        ("empresas", ["cd_cvm"]),
+        ("empresa_tickers", ["ticker"]),
+        ("cvm_documentos", ["cd_cvm", "tipo", "dt_refer"]),
+        ("cvm_resultados", ["cd_cvm", "tipo", "dt_refer", "dt_ini", "dt_fim"]),
+        ("cvm_balancos", ["cd_cvm", "tipo", "dt_refer"]),
+        ("arquivos_externos", ["url"]),
     ],
 )
 def test_chaves_primarias(name: str, expected: list[str]) -> None:
     assert [c.name for c in table(name).primary_key] == expected
+
+
+def test_ticker_aponta_para_empresa_e_nunca_para_prefixo() -> None:
+    """A ligacao ticker -> empresa e uma linha gravada, com origem declarada.
+
+    Nao ha coluna de emissor em lugar nenhum: o codigo de emissor da B3 nem
+    sempre e o prefixo do ticker (o "EMBR" la e a EMBRAST, nao a Embraer), e
+    deduzir por prefixo colaria o balanco de uma empresa em outra.
+    """
+    colunas = {c.name for c in table("empresa_tickers").columns}
+    assert colunas == {"ticker", "cd_cvm", "fonte", "verificado_em"}
+    assert "emissor" not in {c.name for c in table("empresas").columns}
+
+    fks = table("empresa_tickers").foreign_keys
+    assert {fk.column.table.name for fk in fks} == {"empresas"}
+
+
+def test_cvm_documentos_referencia_empresas() -> None:
+    fks = table("cvm_documentos").foreign_keys
+    assert {fk.column.table.name for fk in fks} == {"empresas"}
+
+
+def test_cvm_resultados_e_balancos_referenciam_documentos() -> None:
+    for nome in ("cvm_resultados", "cvm_balancos"):
+        fks = table(nome).foreign_keys
+        assert {fk.column.table.name for fk in fks} == {"cvm_documentos"}
 
 
 def test_dedupe_de_evento_por_ticker_e_data() -> None:

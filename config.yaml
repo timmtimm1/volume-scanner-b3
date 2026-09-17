@@ -36,3 +36,11 @@ universe:
 retention:
   # O banco hospedado guarda os ultimos N pregoes de barras (secao 5).
   keep_sessions: 400
+
+fundamentos:
+  # Primeiro ano carregado da CVM. 2022 cobre o minigrafico de 8 trimestres e o
+  # acumulado de 12 meses dos eventos mais antigos do historico (400 pregoes).
+  ano_inicial: 2022
+  # Ticker procurado e nao encontrado (um ETF, por exemplo) so e procurado de
+  # novo depois deste intervalo, em dias.
+  dias_para_rechecar_ticker: 7

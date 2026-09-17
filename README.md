@@ -248,8 +248,10 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
   dos encerrados no pregão. Sem custos de corretagem e sem proventos, por enquanto.
 - **Fundamentos da CVM (em construção).** A carga já traz para o banco os
   balanços trimestrais e anuais de cada empresa negociada (ITR e DFP dos dados
-  abertos da CVM), com a data em que cada um foi entregue. Ainda não aparece no
-  site: a aba na ficha do papel é a última fase.
+  abertos da CVM), com a data em que cada um foi entregue, e os proventos em
+  dinheiro de cada papel — dividendo e juros sobre capital próprio, por classe,
+  porque a ON e a PN recebem valores diferentes. Ainda não aparece no site: a
+  aba na ficha do papel é a última fase.
 - **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
   logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
   toques medem o movimento entre dois pontos e quantos pregões ele levou.
@@ -472,6 +474,14 @@ erDiagram
         numeric emprestimos_lp
         bigint acoes_on
     }
+    proventos {
+        bigint id PK
+        text ticker FK
+        text tipo
+        numeric valor
+        date data_com
+        text fonte
+    }
 
     daily_bars ||--o{ volume_metrics : "ticker + trade_date"
     daily_bars ||--o{ daily_features : "ticker + trade_date"
@@ -483,6 +493,7 @@ erDiagram
     empresas ||--o{ cvm_documentos : "ITR e DFP entregues"
     cvm_documentos ||--o{ cvm_resultados : "DRE por período"
     cvm_documentos ||--|| cvm_balancos : "posição na data"
+    empresa_tickers ||--o{ proventos : "dividendos e JCP"
 ```
 
 | Tabela | Guarda |
@@ -501,6 +512,7 @@ erDiagram
 | `cvm_documentos` | Cada ITR ou DFP entregue: versão, data da primeira entrega e da última, e se o balanço é consolidado ou individual |
 | `cvm_resultados` | As linhas da DRE por período (trimestre e acumulado do ano) e a depreciação da DVA |
 | `cvm_balancos` | As linhas do balanço na data e a composição do capital (ações e tesouraria) |
+| `proventos` | Dividendos e JCP por papel, com a data com. Uma linha por provento e por classe: a ON e a PN da mesma empresa recebem valores diferentes |
 | `arquivos_externos` | Controle de download condicional dos arquivos da CVM: o que já foi baixado, e quando a CVM publicou |
 
 Migrations via Alembic, em `src/scanner/storage/migrations/versions/` — nunca schema por SQL solto.
@@ -736,6 +748,17 @@ pareceriam complexas demais para o problema.
   divulgado numa terça só entra na próxima atualização, até cerca de 7 dias
   depois. A ficha mostra a data dos dados para não confundir "ainda não saiu"
   com "a CVM ainda não publicou o arquivo".
+- **O histórico antigo de proventos só entra depois de conferido.** A consulta
+  do histórico na B3 casa pelo nome da empresa, que é chave fraca: "KLABIN"
+  devolve os proventos de outra companhia, e "AMBEV S/A" — o nome que a própria
+  B3 publica — não devolve nada, enquanto "AMBEV S.A." devolve 39. Por isso
+  cada histórico é conferido antes de entrar, de dois jeitos: o fechamento que
+  a B3 informa na data com tem de bater com a barra do COTAHIST daquele dia,
+  ou os valores têm de coincidir com os proventos que já entraram identificados
+  pelo ISIN. Sem prova, o histórico é descartado — hoje isso acontece em 117
+  das 321 empresas, quase sempre porque os proventos delas são anteriores aos
+  400 pregões que o banco guarda. Os proventos dos últimos 12 meses não
+  dependem disso: vêm com o ISIN do papel e entram sempre.
 - **Papel que parou de negociar costuma ficar sem empresa ligada.** São 9 dos
   447 do banco: a Marfrig virou MBRF3, a Eletrobras virou AXIA e as classes
   AXIA5/AXIA6 deixaram de existir, a Santos Brasil saiu da bolsa, e há dois

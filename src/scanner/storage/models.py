@@ -17,6 +17,7 @@ from sqlalchemy import (
     Date,
     DateTime,
     ForeignKey,
+    ForeignKeyConstraint,
     Index,
     Integer,
     MetaData,
@@ -281,3 +282,204 @@ class TradeSnapshot(Base):
     gravado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class Empresa(Base):
+    """Empresa do cadastro da CVM que tem papel negociado no banco (fundamentos fase 1).
+
+    Todos os campos vem do cadastro da CVM (`cad_cia_aberta.csv`). So entram
+    empresas alcancadas por algum ticker de `daily_bars`, via
+    `empresa_tickers`: a tabela nao guarda o cadastro inteiro, so a fatia que
+    interessa ao scanner.
+
+    `situacao` e o `SIT` do cadastro, guardado para exibicao. Empresa fora de
+    ATIVO continua valendo: um papel em recuperacao ou saindo da bolsa ainda
+    tem evento de volume e ficha no site.
+    """
+
+    __tablename__ = "empresas"
+
+    cd_cvm: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cnpj: Mapped[str] = mapped_column(Text, nullable=False)
+    nome: Mapped[str] = mapped_column(Text, nullable=False)
+    nome_comercial: Mapped[str | None] = mapped_column(Text)
+    setor_cvm: Mapped[str | None] = mapped_column(Text)
+    situacao: Mapped[str | None] = mapped_column(Text)
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class EmpresaTicker(Base):
+    """De qual empresa e cada ticker -- a ligacao entre o COTAHIST e a CVM.
+
+    NAO se liga por prefixo do ticker. O codigo de emissor da B3 nem sempre e
+    o prefixo: o emissor "EMBR" la e a EMBRAST, e nao a Embraer (que aparece
+    como "EMBJ"), e ligar por prefixo colaria o balanco de uma empresa no
+    papel de outra. A ligacao vem do FCA da CVM, que declara o codigo de
+    negociacao de cada empresa (`fonte='fca'`), e, para o que o FCA nao cobre,
+    de uma busca na B3 conferida contra os codigos que a propria B3 lista para
+    aquela empresa (`fonte='b3'`).
+
+    `cd_cvm` nulo e cache negativo: "ja procurei e nao achei". Sem ele, todo
+    ticker sem empresa (um ETF, por exemplo) refaria a busca na B3 todo dia.
+    """
+
+    __tablename__ = "empresa_tickers"
+    __table_args__ = (
+        CheckConstraint("fonte IS NULL OR fonte IN ('fca', 'b3')", name="ck_empresa_tickers_fonte"),
+        CheckConstraint(
+            "(cd_cvm IS NULL) = (fonte IS NULL)", name="ck_empresa_tickers_fonte_com_empresa"
+        ),
+    )
+
+    ticker: Mapped[str] = mapped_column(Text, primary_key=True)
+    cd_cvm: Mapped[int | None] = mapped_column(
+        Integer, ForeignKey(f"{SCHEMA}.empresas.cd_cvm", ondelete="CASCADE")
+    )
+    fonte: Mapped[str | None] = mapped_column(Text)
+    verificado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+
+
+class CvmDocumento(Base):
+    """Um documento (ITR ou DFP) entregue por uma empresa para uma data de referencia.
+
+    A CVM reapresenta documentos: uma versao nova troca os numeros de uma
+    versao antiga da mesma `dt_refer`. Aqui so fica o resumo das versoes
+    (`versao`, `recebido_original`, `recebido_ultima`); os valores das contas
+    ficam em `cvm_resultados` e `cvm_balancos`, sempre da versao mais recente
+    -- a CVM so publica o documento de contas com a ultima versao, entao nao ha
+    historico de valor por versao para guardar.
+    """
+
+    __tablename__ = "cvm_documentos"
+    __table_args__ = (
+        CheckConstraint("tipo IN ('ITR', 'DFP')", name="ck_cvm_documentos_tipo"),
+        CheckConstraint("escopo IN ('con', 'ind')", name="ck_cvm_documentos_escopo"),
+        CheckConstraint("layout IN ('geral', 'financeiro')", name="ck_cvm_documentos_layout"),
+        CheckConstraint(
+            "recebido_ultima >= recebido_original",
+            name="ck_cvm_documentos_recebido_em_ordem",
+        ),
+    )
+
+    cd_cvm: Mapped[int] = mapped_column(
+        Integer, ForeignKey(f"{SCHEMA}.empresas.cd_cvm", ondelete="CASCADE"), primary_key=True
+    )
+    tipo: Mapped[str] = mapped_column(Text, primary_key=True)
+    dt_refer: Mapped[date] = mapped_column(Date, primary_key=True)
+    # Maior versao vista no indice da CVM para este (empresa, tipo, dt_refer).
+    versao: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    # DT_RECEB da primeira versao: quando o mercado soube pela primeira vez.
+    recebido_original: Mapped[date] = mapped_column(Date, nullable=False)
+    # DT_RECEB da versao vigente (a maior): quando os numeros atuais chegaram.
+    recebido_ultima: Mapped[date] = mapped_column(Date, nullable=False)
+    escopo: Mapped[str] = mapped_column(Text, nullable=False)
+    layout: Mapped[str] = mapped_column(Text, nullable=False)
+    id_doc: Mapped[int | None] = mapped_column(BigInteger)
+    carregado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class CvmResultado(Base):
+    """Uma linha de DRE/DVA de um documento, por periodo reportado (tri ou acumulado).
+
+    O ITR traz duas linhas por conta: o trimestre e o acumulado do ano (no 1T
+    as duas coincidem). `dt_ini`/`dt_fim` sao o que distingue as duas -- por
+    isso entram na chave primaria, e nao so `dt_refer`.
+    """
+
+    __tablename__ = "cvm_resultados"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["cd_cvm", "tipo", "dt_refer"],
+            [
+                f"{SCHEMA}.cvm_documentos.cd_cvm",
+                f"{SCHEMA}.cvm_documentos.tipo",
+                f"{SCHEMA}.cvm_documentos.dt_refer",
+            ],
+            ondelete="CASCADE",
+        ),
+        CheckConstraint("dt_ini <= dt_fim", name="ck_cvm_resultados_periodo_em_ordem"),
+    )
+
+    cd_cvm: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tipo: Mapped[str] = mapped_column(Text, primary_key=True)
+    dt_refer: Mapped[date] = mapped_column(Date, primary_key=True)
+    dt_ini: Mapped[date] = mapped_column(Date, primary_key=True)
+    dt_fim: Mapped[date] = mapped_column(Date, primary_key=True)
+    receita: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    resultado_bruto: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    ebit: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    lucro_liquido: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    lucro_controladores: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    # Sinal como reportado: na DVA a D&A vem negativa. So existe na linha do
+    # acumulado -- no trimestre fica NULL, porque a DVA do ITR so traz o
+    # acumulado.
+    depreciacao_amortizacao: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+
+
+class CvmBalanco(Base):
+    """Contas de saldo (BPA/BPP) e composicao do capital de um documento.
+
+    Uma linha por documento -- BPA e BPP nao tem trimestre vs acumulado, so a
+    posicao na data de referencia.
+    """
+
+    __tablename__ = "cvm_balancos"
+    __table_args__ = (
+        ForeignKeyConstraint(
+            ["cd_cvm", "tipo", "dt_refer"],
+            [
+                f"{SCHEMA}.cvm_documentos.cd_cvm",
+                f"{SCHEMA}.cvm_documentos.tipo",
+                f"{SCHEMA}.cvm_documentos.dt_refer",
+            ],
+            ondelete="CASCADE",
+        ),
+    )
+
+    cd_cvm: Mapped[int] = mapped_column(Integer, primary_key=True)
+    tipo: Mapped[str] = mapped_column(Text, primary_key=True)
+    dt_refer: Mapped[date] = mapped_column(Date, primary_key=True)
+    ativo_total: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    ativo_circulante: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    caixa: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    aplicacoes_financeiras: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    passivo_circulante: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    # Como a CVM reporta: emprestimos_cp/lp INCLUEM o arrendamento.
+    # arrendamento_* vem separado para a fase 3 poder tirar, se quiser.
+    emprestimos_cp: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    arrendamento_cp: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    emprestimos_lp: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    arrendamento_lp: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    # Total, e INCLUI participacao de nao controladores.
+    patrimonio_liquido: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    pl_nao_controladores: Mapped[Decimal | None] = mapped_column(Numeric(20, 2))
+    acoes_on: Mapped[int | None] = mapped_column(BigInteger)
+    acoes_pn: Mapped[int | None] = mapped_column(BigInteger)
+    tesouraria_on: Mapped[int | None] = mapped_column(BigInteger)
+    tesouraria_pn: Mapped[int | None] = mapped_column(BigInteger)
+
+
+class ArquivoExterno(Base):
+    """Controle de download condicional dos arquivos da CVM (fundamentos fase 1).
+
+    `etag`/`last_modified` sao os headers crus, reenviados como
+    `If-None-Match`/`If-Modified-Since` na proxima checagem. `modificado_em` e
+    o mesmo `Last-Modified` convertido para timestamp -- e a "data dos dados da
+    CVM" que a ficha do papel mostra na fase 4, nao a data em que o scanner
+    rodou. `escopo_hash` guarda contra qual lista de empresas o arquivo foi
+    processado por ultimo: mudou a lista, um 304 nao basta mais.
+    """
+
+    __tablename__ = "arquivos_externos"
+
+    url: Mapped[str] = mapped_column(Text, primary_key=True)
+    etag: Mapped[str | None] = mapped_column(Text)
+    last_modified: Mapped[str | None] = mapped_column(Text)
+    modificado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    escopo_hash: Mapped[str | None] = mapped_column(Text)
+    verificado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    processado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

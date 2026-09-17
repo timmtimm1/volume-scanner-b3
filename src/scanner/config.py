@@ -6,6 +6,7 @@ Segredos vem exclusivamente do ambiente, com prefixo `SCANNER_`.
 
 from __future__ import annotations
 
+from datetime import date
 from functools import lru_cache
 from pathlib import Path
 from typing import Any, Literal
@@ -103,6 +104,40 @@ class RetentionConfig(BaseModel):
     keep_sessions: int = 400
 
 
+# A CVM tem dados abertos desde 2011 (Lei 11.638 e a adocao do IFRS no Brasil
+# tornaram o formato anterior incomparavel). Nao ha razao para carregar antes disso.
+ANO_MINIMO_CVM = 2011
+
+
+class FundamentosConfig(BaseModel):
+    """Carga de fundamentos da CVM (fundamentos fase 1)."""
+
+    # Primeiro ano carregado da CVM. 2022 cobre o minigrafico de 8 trimestres e
+    # o acumulado de 12 meses dos eventos mais antigos do historico (400 pregoes).
+    ano_inicial: int = 2022
+    # Ticker procurado e nao encontrado (um ETF, por exemplo) so e procurado
+    # de novo depois deste intervalo. O FCA da CVM, que e a fonte da ligacao,
+    # e atualizado uma vez por semana.
+    dias_para_rechecar_ticker: int = 7
+
+    @field_validator("ano_inicial")
+    @classmethod
+    def _validate_ano_inicial(cls, value: int) -> int:
+        ano_corrente = date.today().year
+        if not ANO_MINIMO_CVM <= value <= ano_corrente:
+            raise ValueError(
+                f"fundamentos.ano_inicial precisa ficar entre {ANO_MINIMO_CVM} e {ano_corrente}"
+            )
+        return value
+
+    @field_validator("dias_para_rechecar_ticker")
+    @classmethod
+    def _validate_dias_para_rechecar_ticker(cls, value: int) -> int:
+        if value < 1:
+            raise ValueError("fundamentos.dias_para_rechecar_ticker precisa ser ao menos 1")
+        return value
+
+
 class ScannerConfig(BaseModel):
     """Conteudo completo de `config.yaml`."""
 
@@ -111,6 +146,7 @@ class ScannerConfig(BaseModel):
     ingest: IngestConfig = Field(default_factory=IngestConfig)
     universe: UniverseConfig = Field(default_factory=UniverseConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
+    fundamentos: FundamentosConfig = Field(default_factory=FundamentosConfig)
 
 
 class Settings(BaseSettings):

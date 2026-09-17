@@ -30,6 +30,7 @@ config_app = typer.Typer(help="Inspecao da configuracao.", no_args_is_help=True)
 calendar_app = typer.Typer(help="Calendario de pregoes da B3.", no_args_is_help=True)
 universe_app = typer.Typer(help="Universo de papeis acompanhados.", no_args_is_help=True)
 db_app = typer.Typer(help="Operacoes de banco.", no_args_is_help=True)
+fundamentos_app = typer.Typer(help="Empresas e balancos da CVM.", no_args_is_help=True)
 
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(metrics_app, name="metrics")
@@ -38,6 +39,7 @@ app.add_typer(config_app, name="config")
 app.add_typer(calendar_app, name="calendar")
 app.add_typer(universe_app, name="universe")
 app.add_typer(db_app, name="db")
+app.add_typer(fundamentos_app, name="fundamentos")
 
 
 # Codigo de saida do `daily` quando o arquivo do pregao de HOJE ainda nao saiu
@@ -629,6 +631,121 @@ def report_ticker(
             f"{r['trade_date'].date().isoformat():<12}{float(r['close']):>9.2f}"
             f"{ret:>8}{z:>8}{rv:>8}{tk:>12}"
         )
+
+
+@fundamentos_app.command("atualizar")
+def fundamentos_atualizar(
+    forcar: Annotated[
+        bool, typer.Option("--forcar", help="Ignora o cache e reprocessa tudo.")
+    ] = False,
+) -> None:
+    """Liga empresas ao ticker e carrega os balancos da CVM (ITR/DFP)."""
+    from scanner.fundamentos.carga import atualizar_fundamentos
+    from scanner.storage.engine import build_engine
+
+    relatorio = atualizar_fundamentos(build_engine(), load_config().fundamentos, forcar=forcar)
+    for linha in relatorio.linhas():
+        typer.echo(f"[fundamentos] {linha}")
+    if relatorio.teve_falha:
+        raise typer.Exit(code=1)
+
+
+@fundamentos_app.command("status")
+def fundamentos_status() -> None:
+    """Empresas, documentos por tipo/ano e tickers ainda sem empresa ligada."""
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import (
+        contagem_do_mapeamento,
+        contar_empresas,
+        datas_dos_arquivos_externos,
+        documentos_por_tipo_e_ano,
+        tickers_sem_empresa,
+    )
+
+    engine = build_engine()
+    ligados, sem_empresa = contagem_do_mapeamento(engine)
+    typer.echo(f"empresas: {contar_empresas(engine):>6,}")
+    typer.echo(f"tickers ligados: {ligados:>6,}")
+
+    docs = documentos_por_tipo_e_ano(engine)
+    if docs.empty:
+        typer.echo("documentos: nenhum")
+    else:
+        for _, linha in docs.iterrows():
+            typer.echo(
+                f"  {linha['tipo']:<4} {int(linha['ano'])}: {int(linha['total']):>5,} documentos"
+            )
+
+    datas = datas_dos_arquivos_externos(engine)
+    for _, linha in datas.iterrows():
+        quando = linha["modificado_em"]
+        data = quando.strftime("%d/%m/%Y") if pd.notna(quando) else "-"
+        typer.echo(f"  {linha['url']}: dados de {data}")
+
+    orfaos = tickers_sem_empresa(engine)
+    typer.echo(f"tickers sem empresa ligada: {sem_empresa}")
+    for ticker in orfaos[:10]:
+        typer.echo(f"  {ticker}")
+
+
+@fundamentos_app.command("empresa")
+def fundamentos_empresa(
+    ticker: Annotated[str, typer.Argument(help="Papel, ex.: UNIP6.")],
+) -> None:
+    """O que esta gravado da empresa do ticker -- ferramenta de conferencia manual."""
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import (
+        balanco_da_empresa,
+        empresa_do_ticker,
+        resultados_da_empresa,
+        ultimos_documentos_da_empresa,
+    )
+
+    engine = build_engine()
+    empresa = empresa_do_ticker(engine, ticker)
+    if empresa is None:
+        typer.secho(
+            f"[erro] nenhuma empresa ligada a {ticker.upper()}", fg=typer.colors.RED, err=True
+        )
+        raise typer.Exit(code=1)
+
+    typer.echo(f"{empresa['nome']} (CD_CVM {empresa['cd_cvm']}, CNPJ {empresa['cnpj']})")
+    typer.echo(
+        f"setor CVM: {empresa['setor_cvm']}  situacao: {empresa['situacao']}"
+        f"  ligacao pelo {empresa['fonte'].upper()}"
+    )
+
+    documentos = ultimos_documentos_da_empresa(engine, int(empresa["cd_cvm"]), limite=4)
+    if documentos.empty:
+        typer.echo("nenhum documento carregado")
+        return
+
+    for _, doc in documentos.iterrows():
+        typer.echo(
+            f"\n{doc['tipo']} {doc['dt_refer']} (escopo {doc['escopo']}, "
+            f"layout {doc['layout']}, versao {doc['versao']}, "
+            f"recebido {doc['recebido_original']} -> {doc['recebido_ultima']})"
+        )
+        resultados = resultados_da_empresa(
+            engine, int(empresa["cd_cvm"]), str(doc["tipo"]), doc["dt_refer"]
+        )
+        for _, r in resultados.iterrows():
+            typer.echo(
+                f"  {r['dt_ini']} a {r['dt_fim']}: receita {r['receita']}, "
+                f"lucro_liquido {r['lucro_liquido']}, "
+                f"lucro_controladores {r['lucro_controladores']}, "
+                f"ebit {r['ebit']}, "
+                f"depreciacao_amortizacao {r['depreciacao_amortizacao']}"
+            )
+        balanco = balanco_da_empresa(
+            engine, int(empresa["cd_cvm"]), str(doc["tipo"]), doc["dt_refer"]
+        )
+        if not balanco.empty:
+            b = balanco.iloc[0]
+            typer.echo(
+                f"  ativo_total {b['ativo_total']}, patrimonio_liquido {b['patrimonio_liquido']}, "
+                f"passivo_circulante {b['passivo_circulante']}, caixa {b['caixa']}"
+            )
 
 
 if __name__ == "__main__":  # pragma: no cover

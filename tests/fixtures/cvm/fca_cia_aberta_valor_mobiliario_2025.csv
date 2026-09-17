@@ -1,0 +1,5 @@
+CNPJ_Companhia;Data_Referencia;Versao;ID_Documento;Nome_Empresarial;Valor_Mobiliario;Sigla_Classe_Acao_Preferencial;Classe_Acao_Preferencial;Codigo_Negociacao;Composicao_BDR_Unit;Mercado;Sigla_Entidade_Administradora;Entidade_Administradora;Data_Inicio_Negociacao;Data_Fim_Negociacao;Segmento;Data_Inicio_Listagem;Data_Fim_Listagem
+33.958.695/0001-78;2025-01-01;1;148771;UNIPAR CARBOCLORO S.A.;Ações Ordinárias;;;UNIP3;;Bolsa;B3;B3 S.A. - Brasil, Bolsa, Balcão.;1980-06-04;;Básico;1980-06-04;
+33.958.695/0001-78;2025-01-01;1;148771;UNIPAR CARBOCLORO S.A.;Ações Preferenciais;PNB;Preferencial Classe B;UNIP6;;Bolsa;B3;B3 S.A. - Brasil, Bolsa, Balcão.;1980-06-04;;Básico;1980-06-04;
+60.872.504/0001-23;2025-01-01;1;145293;ITAU UNIBANCO HOLDING S.A.;Ações Preferenciais;;;ITUB4;;Bolsa;B3;B3 S.A. - Brasil, Bolsa, Balcão.;2002-12-30;;Nível 1 de Governança Corporativa;2002-12-30;
+00.001.180/0001-26;2025-01-01;4;150856;CENTRAIS ELET BRAS S.A. - ELETROBRAS;Debêntures;;;;;Balcão Organizado;B3;B3 S.A. - Brasil, Bolsa, Balcão.;2024-10-17;;Básico;2024-09-15;

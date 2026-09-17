@@ -44,7 +44,12 @@ Se você achar que uma dessas coisas melhoraria o sistema, sugira em texto. Não
 
 ## Dados
 
-Fonte única: COTAHIST da B3, registros de largura fixa de 245 bytes. Layout na seção 2 do plano.
+**Preço e volume têm fonte única: o COTAHIST da B3**, registros de largura fixa de 245 bytes. Layout na seção 2 do plano. A regra do alerta nunca depende de outra fonte.
+
+Fora disso, duas fontes entram só para o que o COTAHIST não tem, e nenhuma delas alimenta a regra do alerta:
+
+- **Cotação durante o pregão** (brapi e Yahoo), para os alertas de rompimento e o candle do dia.
+- **Balanços e cadastro de empresas** (dados abertos da CVM), para a aba Fundamentos da ficha. A CVM publica uma vez por semana. O código de negociação de cada empresa vem do FCA da CVM; o que faltar é procurado no site da B3 e só é aceito quando a própria B3 lista aquele papel para aquela empresa. **Nunca ligue ticker a empresa pelo prefixo de 4 letras** — o emissor "EMBR" na B3 é a EMBRAST, não a Embraer.
 
 Validação obrigatória do parser: `VOLTOT ≈ PREMED × QUATOT`, tolerância 1%. Falhando em mais de 0,5% das linhas, abortar a carga.
 

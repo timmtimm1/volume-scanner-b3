@@ -10,23 +10,30 @@ from __future__ import annotations
 import csv
 import io
 import json
-from collections.abc import Sequence
-from datetime import date
+from collections.abc import Iterable, Sequence
+from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, NamedTuple
 
 import pandas as pd
-from sqlalchemy import Engine, delete, func, select, text, update
+from sqlalchemy import Connection, Engine, delete, func, select, text, tuple_, update
 from sqlalchemy.dialects.postgresql import insert
 
 from scanner.features import FEATURE_COLUMNS
+from scanner.fundamentos.cvm import Extracao
 from scanner.ingest.cotahist import BAR_COLUMNS
 from scanner.rompimentos import DIRECOES, Alerta, Direcao
 from scanner.storage.models import (
     SCHEMA,
+    ArquivoExterno,
+    CvmBalanco,
+    CvmDocumento,
+    CvmResultado,
     DailyBar,
     DailyFeature,
     DigestSend,
+    Empresa,
+    EmpresaTicker,
     Event,
     PriceAlert,
     Trade,
@@ -681,3 +688,415 @@ def gravar_snapshots(engine: Engine, frame: pd.DataFrame) -> int:
     with engine.begin() as conn:
         conn.execute(statement, rows)
     return len(rows)
+
+
+# --- Fundamentos (fundamentos fase 1) ----------------------------------------
+#
+# Nenhuma destas tabelas entra em `prune_bars`: fundamentos nao tem relacao
+# com a retencao de 400 pregoes de barras.
+
+_EMPRESA_ATUALIZAVEIS = ("cnpj", "nome", "nome_comercial", "setor_cvm", "situacao")
+
+
+def _registros_sql(frame: pd.DataFrame) -> list[dict[str, Any]]:
+    """Registros para INSERT, com NaN/NaT/`pd.NA` virando None (NULL de verdade).
+
+    `_to_rows` (usado pelas barras) nao faz essa conversao porque o DataFrame
+    de barras nunca tem essas colunas ausentes; os campos de fundamentos sao
+    naturalmente cheios de NULL (conta que a empresa nao reporta), e um
+    `float('nan')` mandado para uma coluna NUMERIC nao vira NULL, vira o valor
+    especial NaN do Postgres -- errado aqui.
+    """
+    limpo = frame.astype(object).where(pd.notna(frame), None)
+    return [{str(k): v for k, v in row.items()} for row in limpo.to_dict(orient="records")]
+
+
+def tickers_do_banco(engine: Engine) -> set[str]:
+    """Todo ticker que ja apareceu em `daily_bars`."""
+    with engine.connect() as conn:
+        return {str(t) for t in conn.execute(select(DailyBar.ticker).distinct()).scalars()}
+
+
+def tickers_pendentes(engine: Engine, tickers: set[str], corte: datetime) -> set[str]:
+    """Tickers que ainda precisam ser procurados: sem empresa, ou procurados ha muito.
+
+    Quem ja tem empresa nao e procurado de novo. Quem tem cache negativo
+    (`cd_cvm` nulo) espera ate `corte` para uma nova tentativa -- o FCA e
+    semanal, e um ETF nunca vai ter empresa nenhuma.
+    """
+    stmt = select(EmpresaTicker.ticker, EmpresaTicker.cd_cvm, EmpresaTicker.verificado_em)
+    with engine.connect() as conn:
+        linhas = conn.execute(stmt).all()
+
+    resolvidos = {str(t) for t, cd, _ in linhas if cd is not None}
+    recentes = {str(t) for t, cd, quando in linhas if cd is None and quando > corte}
+    return tickers - resolvidos - recentes
+
+
+def contagem_do_mapeamento(engine: Engine) -> tuple[int, int]:
+    """Quantos tickers tem empresa ligada e quantos ficaram sem."""
+    stmt = select(
+        func.count().filter(EmpresaTicker.cd_cvm.is_not(None)),
+        func.count().filter(EmpresaTicker.cd_cvm.is_(None)),
+    )
+    with engine.connect() as conn:
+        ligados, sem = conn.execute(stmt).one()
+    return int(ligados), int(sem)
+
+
+def tickers_sem_empresa(engine: Engine) -> list[str]:
+    """Os tickers ja procurados que nao tem empresa na CVM (ETF, por exemplo)."""
+    stmt = (
+        select(EmpresaTicker.ticker)
+        .where(EmpresaTicker.cd_cvm.is_(None))
+        .order_by(EmpresaTicker.ticker)
+    )
+    with engine.connect() as conn:
+        return [str(t) for t in conn.execute(stmt).scalars()]
+
+
+def cd_cvms_mapeados(engine: Engine) -> set[int]:
+    """CD_CVM de toda empresa alcancada por algum ticker do banco."""
+    stmt = select(EmpresaTicker.cd_cvm).where(EmpresaTicker.cd_cvm.is_not(None)).distinct()
+    with engine.connect() as conn:
+        return {int(c) for c in conn.execute(stmt).scalars() if c is not None}
+
+
+def upsert_empresas(engine: Engine, frame: pd.DataFrame) -> int:
+    """Grava empresas, atualizando `atualizado_em` so em quem foi de fato tocado.
+
+    Nunca apaga: uma empresa que saiu do cadastro continua ligada aos papeis
+    que ja tinha, e os balancos dela seguem no banco.
+    """
+    if frame.empty:
+        return 0
+    rows = _registros_sql(frame.loc[:, ["cd_cvm", *_EMPRESA_ATUALIZAVEIS]])
+    statement = insert(Empresa)
+    statement = statement.on_conflict_do_update(
+        index_elements=["cd_cvm"],
+        set_={
+            **{name: statement.excluded[name] for name in _EMPRESA_ATUALIZAVEIS},
+            "atualizado_em": func.now(),
+        },
+    )
+    with engine.begin() as conn:
+        conn.execute(statement, rows)
+    return len(rows)
+
+
+def upsert_empresa_tickers(
+    engine: Engine,
+    ligacoes: dict[str, int],
+    pela_b3: Iterable[str],
+    sem_empresa: Sequence[str],
+    verificado_em: datetime,
+) -> int:
+    """Grava a ligacao ticker -> empresa, incluindo o cache negativo.
+
+    `sem_empresa` sao os tickers procurados sem sucesso: gravam `cd_cvm` nulo
+    para nao serem procurados de novo amanha. Quem nao foi procurado (porque a
+    B3 caiu no meio) nao entra aqui, e fica pendente para a proxima passada.
+    """
+    da_b3 = set(pela_b3)
+    rows: list[dict[str, Any]] = [
+        {
+            "ticker": ticker,
+            "cd_cvm": cd_cvm,
+            "fonte": "b3" if ticker in da_b3 else "fca",
+            "verificado_em": verificado_em,
+        }
+        for ticker, cd_cvm in sorted(ligacoes.items())
+    ]
+    rows.extend(
+        {"ticker": ticker, "cd_cvm": None, "fonte": None, "verificado_em": verificado_em}
+        for ticker in sem_empresa
+    )
+    if not rows:
+        return 0
+
+    statement = insert(EmpresaTicker)
+    statement = statement.on_conflict_do_update(
+        index_elements=["ticker"],
+        set_={
+            "cd_cvm": statement.excluded.cd_cvm,
+            "fonte": statement.excluded.fonte,
+            "verificado_em": statement.excluded.verificado_em,
+        },
+    )
+    with engine.begin() as conn:
+        conn.execute(statement, rows)
+    return len(rows)
+
+
+def buscar_arquivo_externo(engine: Engine, url: str) -> dict[str, Any] | None:
+    """O estado salvo do controle de download condicional de `url`, se existir."""
+    stmt = select(
+        ArquivoExterno.etag,
+        ArquivoExterno.last_modified,
+        ArquivoExterno.modificado_em,
+        ArquivoExterno.escopo_hash,
+        ArquivoExterno.processado_em,
+    ).where(ArquivoExterno.url == url)
+    with engine.connect() as conn:
+        linha = conn.execute(stmt).first()
+    return None if linha is None else linha._asdict()
+
+
+def marcar_arquivo_verificado(engine: Engine, url: str, verificado_em: datetime) -> None:
+    """304: nada mudou. So registra que a checagem aconteceu agora."""
+    statement = insert(ArquivoExterno).values(url=url, verificado_em=verificado_em)
+    statement = statement.on_conflict_do_update(
+        index_elements=["url"], set_={"verificado_em": statement.excluded.verificado_em}
+    )
+    with engine.begin() as conn:
+        conn.execute(statement)
+
+
+def registrar_arquivo_externo(
+    engine: Engine,
+    url: str,
+    *,
+    etag: str | None,
+    last_modified: str | None,
+    modificado_em: datetime | None,
+    escopo_hash: str,
+    verificado_em: datetime,
+) -> None:
+    """Upsert de `arquivos_externos` fora de uma transacao maior (ex.: o cadastro da CVM)."""
+    with engine.begin() as conn:
+        _upsert_arquivo_externo(
+            conn,
+            url=url,
+            etag=etag,
+            last_modified=last_modified,
+            modificado_em=modificado_em,
+            escopo_hash=escopo_hash,
+            verificado_em=verificado_em,
+        )
+
+
+def _upsert_arquivo_externo(
+    conn: Connection,
+    *,
+    url: str,
+    etag: str | None,
+    last_modified: str | None,
+    modificado_em: datetime | None,
+    escopo_hash: str,
+    verificado_em: datetime,
+) -> None:
+    statement = insert(ArquivoExterno).values(
+        url=url,
+        etag=etag,
+        last_modified=last_modified,
+        modificado_em=modificado_em,
+        escopo_hash=escopo_hash,
+        verificado_em=verificado_em,
+        processado_em=verificado_em,
+    )
+    statement = statement.on_conflict_do_update(
+        index_elements=["url"],
+        set_={
+            "etag": statement.excluded.etag,
+            "last_modified": statement.excluded.last_modified,
+            "modificado_em": statement.excluded.modificado_em,
+            "escopo_hash": statement.excluded.escopo_hash,
+            "verificado_em": statement.excluded.verificado_em,
+            "processado_em": statement.excluded.processado_em,
+        },
+    )
+    conn.execute(statement)
+
+
+class RelatorioGravacao(NamedTuple):
+    """O que aconteceu ao gravar um arquivo da CVM."""
+
+    documentos: int
+    novos: int
+    com_nova_versao: int
+
+
+def gravar_arquivo_cvm(
+    engine: Engine,
+    extracao: Extracao,
+    *,
+    url: str,
+    etag: str | None,
+    last_modified: str | None,
+    modificado_em: datetime | None,
+    escopo_hash: str,
+    verificado_em: datetime,
+) -> RelatorioGravacao:
+    """Grava uma extracao inteira e atualiza `arquivos_externos`, numa transacao so.
+
+    Apaga os documentos (cd_cvm, tipo, dt_refer) presentes na extracao -- as
+    linhas de `cvm_resultados`/`cvm_balancos` caem juntas por CASCADE -- e
+    insere tudo de novo. `recebido_original` de um documento que ja existia
+    vira o menor entre o valor anterior e o novo: a reapresentacao troca os
+    numeros, mas nao muda quando o mercado soube pela primeira vez.
+    """
+    documentos = extracao.documentos.copy()
+    if documentos.empty:
+        with engine.begin() as conn:
+            _upsert_arquivo_externo(
+                conn,
+                url=url,
+                etag=etag,
+                last_modified=last_modified,
+                modificado_em=modificado_em,
+                escopo_hash=escopo_hash,
+                verificado_em=verificado_em,
+            )
+        return RelatorioGravacao(0, 0, 0)
+
+    chaves = list(documentos[["cd_cvm", "tipo", "dt_refer"]].itertuples(index=False, name=None))
+    chave_composta = tuple_(CvmDocumento.cd_cvm, CvmDocumento.tipo, CvmDocumento.dt_refer)
+
+    with engine.begin() as conn:
+        anteriores = pd.read_sql(
+            select(
+                CvmDocumento.cd_cvm,
+                CvmDocumento.tipo,
+                CvmDocumento.dt_refer,
+                CvmDocumento.versao,
+                CvmDocumento.recebido_original,
+            ).where(chave_composta.in_(chaves)),
+            conn,
+        )
+        renomeadas = {
+            "versao": "versao_anterior",
+            "recebido_original": "recebido_original_anterior",
+        }
+        documentos = documentos.merge(
+            anteriores.rename(columns=renomeadas),
+            on=["cd_cvm", "tipo", "dt_refer"],
+            how="left",
+        )
+        novos = int(documentos["versao_anterior"].isna().sum())
+        # fillna(-1) antes de comparar: comparar contra pd.NA direto emite
+        # RuntimeWarning e obriga a lidar com dtype nullable no resultado.
+        com_nova_versao = int(
+            (documentos["versao"] > documentos["versao_anterior"].fillna(-1)).sum()
+        )
+
+        minimo = pd.concat(
+            [
+                pd.to_datetime(documentos["recebido_original"]),
+                pd.to_datetime(documentos["recebido_original_anterior"]),
+            ],
+            axis=1,
+        ).min(axis=1)
+        documentos["recebido_original"] = minimo.dt.date
+        documentos = documentos.drop(columns=["versao_anterior", "recebido_original_anterior"])
+
+        conn.execute(delete(CvmDocumento).where(chave_composta.in_(chaves)))
+        conn.execute(insert(CvmDocumento), _registros_sql(documentos))
+        if not extracao.resultados.empty:
+            conn.execute(insert(CvmResultado), _registros_sql(extracao.resultados))
+        if not extracao.balancos.empty:
+            conn.execute(insert(CvmBalanco), _registros_sql(extracao.balancos))
+
+        _upsert_arquivo_externo(
+            conn,
+            url=url,
+            etag=etag,
+            last_modified=last_modified,
+            modificado_em=modificado_em,
+            escopo_hash=escopo_hash,
+            verificado_em=verificado_em,
+        )
+
+    return RelatorioGravacao(len(documentos), novos, com_nova_versao)
+
+
+def contar_empresas(engine: Engine) -> int:
+    with engine.connect() as conn:
+        return int(conn.execute(select(func.count()).select_from(Empresa)).scalar_one())
+
+
+def documentos_por_tipo_e_ano(engine: Engine) -> pd.DataFrame:
+    """Quantos documentos existem, por tipo e ano de `dt_refer`."""
+    stmt = select(
+        CvmDocumento.tipo,
+        func.extract("year", CvmDocumento.dt_refer).label("ano"),
+        func.count().label("total"),
+    ).group_by(CvmDocumento.tipo, text("ano"))
+    with engine.connect() as conn:
+        frame = pd.read_sql(stmt, conn)
+    frame["ano"] = frame["ano"].astype(int)
+    return frame.sort_values(["tipo", "ano"]).reset_index(drop=True)
+
+
+def datas_dos_arquivos_externos(engine: Engine) -> pd.DataFrame:
+    """`modificado_em` de cada arquivo controlado -- "data dos dados da CVM"."""
+    stmt = select(ArquivoExterno.url, ArquivoExterno.modificado_em, ArquivoExterno.processado_em)
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)
+
+
+def empresa_do_ticker(engine: Engine, ticker: str) -> dict[str, Any] | None:
+    """A empresa ligada ao ticker em `empresa_tickers`.
+
+    Nunca por prefixo: a ligacao e a que a carga gravou, vinda do FCA da CVM
+    ou de uma busca conferida na B3.
+    """
+    stmt = (
+        select(
+            Empresa.cd_cvm,
+            Empresa.cnpj,
+            Empresa.nome,
+            Empresa.nome_comercial,
+            Empresa.setor_cvm,
+            Empresa.situacao,
+            EmpresaTicker.fonte,
+        )
+        .join(EmpresaTicker, EmpresaTicker.cd_cvm == Empresa.cd_cvm)
+        .where(EmpresaTicker.ticker == ticker.upper())
+    )
+    with engine.connect() as conn:
+        linha = conn.execute(stmt).first()
+    return None if linha is None else linha._asdict()
+
+
+def ultimos_documentos_da_empresa(engine: Engine, cd_cvm: int, limite: int = 4) -> pd.DataFrame:
+    """Os `limite` documentos mais recentes de uma empresa, com data de referencia."""
+    stmt = (
+        select(
+            CvmDocumento.tipo,
+            CvmDocumento.dt_refer,
+            CvmDocumento.versao,
+            CvmDocumento.recebido_original,
+            CvmDocumento.recebido_ultima,
+            CvmDocumento.escopo,
+            CvmDocumento.layout,
+        )
+        .where(CvmDocumento.cd_cvm == cd_cvm)
+        .order_by(CvmDocumento.dt_refer.desc())
+        .limit(limite)
+    )
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)
+
+
+def resultados_da_empresa(engine: Engine, cd_cvm: int, tipo: str, dt_refer: date) -> pd.DataFrame:
+    """Todas as linhas de `cvm_resultados` (tri e acumulado) de um documento."""
+    stmt = (
+        select(CvmResultado)
+        .where(
+            CvmResultado.cd_cvm == cd_cvm,
+            CvmResultado.tipo == tipo,
+            CvmResultado.dt_refer == dt_refer,
+        )
+        .order_by(CvmResultado.dt_fim.desc())
+    )
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)
+
+
+def balanco_da_empresa(engine: Engine, cd_cvm: int, tipo: str, dt_refer: date) -> pd.DataFrame:
+    """A linha de `cvm_balancos` de um documento."""
+    stmt = select(CvmBalanco).where(
+        CvmBalanco.cd_cvm == cd_cvm, CvmBalanco.tipo == tipo, CvmBalanco.dt_refer == dt_refer
+    )
+    with engine.connect() as conn:
+        return pd.read_sql(stmt, conn)

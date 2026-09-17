@@ -72,6 +72,14 @@ def test_parse_trade_date() -> None:
     assert parse_trade_date("HOJE") == hoje_na_b3()
 
 
+def test_fundamentos_help_lista_os_tres_comandos() -> None:
+    result = runner.invoke(app, ["fundamentos", "--help"])
+    assert result.exit_code == 0
+    assert "atualizar" in result.output
+    assert "status" in result.output
+    assert "empresa" in result.output
+
+
 def test_calendar_holidays_lista_o_ano() -> None:
     result = runner.invoke(app, ["calendar", "holidays", "--year", "2026"])
     assert result.exit_code == 0

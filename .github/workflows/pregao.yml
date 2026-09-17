@@ -98,6 +98,29 @@ jobs:
           fi
           exit "$codigo"
 
+      - name: Fundamentos
+        id: fundamentos
+        # Nao pode impedir o alerta nem o rebuild: fundamentos e uma aba a
+        # mais na ficha do papel, nao o pipeline principal. O passo vem antes
+        # do rebuild -- e nao depois -- porque o site le o banco no build, e
+        # uma falha aqui nao pode deixar o build seguinte com dado pela metade.
+        continue-on-error: true
+        run: uv run --no-sync scanner fundamentos atualizar
+
+      - name: Avisar no Telegram se os fundamentos falharam
+        if: ${{ steps.fundamentos.outcome == 'failure' && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
+        shell: bash
+        run: |
+          texto=$(printf '⚠️ <b>Fundamentos não atualizaram</b>\nO pregão de %s foi processado normalmente; a aba Fundamentos segue com os dados anteriores.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$PREGAO" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+
+          curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
+            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$texto"
+
       - name: Disparar rebuild na Vercel
         id: vercel
         # Adiado nao gravou nada: reconstruir o site so gastaria build.

@@ -22,7 +22,7 @@
 
 import { Pool } from "pg";
 import { PISO_DE_VOLUME, UNIVERSO, Z_MINIMO_DO_SITE } from "./config";
-import type { Barra, Evento, FaixaDeDesvio, Papel, Pregao, Universo } from "./types";
+import type { Barra, Evento, FaixaDeDesvio, Fundamentos, Papel, Pregao, Universo } from "./types";
 
 let pool: Pool | null = null;
 
@@ -393,4 +393,148 @@ export async function barrasRecentes(
     });
   }
   return saida;
+}
+
+/**
+ * O que a aba Fundamentos da ficha mostra: trimestres, proventos e o cadastro
+ * da empresa do papel.
+ *
+ * Tres consultas, porque sao tres perguntas diferentes: o que a empresa
+ * publicou, o que o papel pagou, e quanto valiam as outras classes em cada
+ * pregao (o valor de mercado soma cada classe pelo proprio preco).
+ *
+ * Papel sem empresa ligada -- um ETF, ou um codigo que parou de negociar --
+ * devolve `null`, e a ficha simplesmente nao mostra a aba.
+ */
+export async function fundamentos(
+  ticker: string,
+  sessoes = 180,
+  trimestresDesejados = 12,
+): Promise<Fundamentos | null> {
+  const empresa = await conexao().query(
+    `SELECT e.cd_cvm, e.nome, e.setor_cvm, t.classe
+       FROM volume_scanner.empresa_tickers t
+       JOIN volume_scanner.empresas e USING (cd_cvm)
+      WHERE t.ticker = $1`,
+    [ticker],
+  );
+  if (empresa.rows.length === 0) return null;
+  const { cd_cvm, nome, setor_cvm, classe } = empresa.rows[0];
+
+  const [trimestres, proventos, irmaos] = await Promise.all([
+    conexao().query(
+      `SELECT f.dt_fim, f.rotulo, f.origem, f.publicado_em, f.layout,
+              f.receita_tri, f.ebitda_tri, f.lucro_tri,
+              f.receita_12m, f.ebitda_12m, f.lucro_12m,
+              f.patrimonio_liquido, f.ativo_total, f.divida_liquida,
+              f.liquidez_corrente, f.acoes_em_circulacao,
+              b.acoes_on - COALESCE(b.tesouraria_on, 0) AS acoes_on,
+              b.acoes_pn - COALESCE(b.tesouraria_pn, 0) AS acoes_pn
+         FROM volume_scanner.fundamentos_trimestre f
+         LEFT JOIN volume_scanner.cvm_balancos b
+                ON b.cd_cvm = f.cd_cvm AND b.dt_refer = f.dt_fim
+        WHERE f.cd_cvm = $1
+        ORDER BY f.dt_fim DESC
+        LIMIT $2`,
+      [cd_cvm, trimestresDesejados],
+    ),
+    conexao().query(
+      `SELECT data_com, tipo, valor
+         FROM volume_scanner.proventos
+        WHERE ticker = $1 AND data_com > CURRENT_DATE - INTERVAL '4 years'
+        ORDER BY data_com`,
+      [ticker],
+    ),
+    // O fechamento das outras classes da empresa, no mesmo periodo da ficha.
+    // Sem eles o valor de mercado usaria um preco so para todas as classes, e
+    // a UNIP3 nao vale o mesmo que a UNIP6.
+    conexao().query(
+      `WITH janela AS (
+          SELECT DISTINCT trade_date FROM volume_scanner.daily_bars
+           WHERE ticker = $1 ORDER BY trade_date DESC LIMIT $3
+       ),
+       papeis AS (
+          SELECT ticker, classe FROM volume_scanner.empresa_tickers
+           WHERE cd_cvm = $2 AND classe IS NOT NULL
+       )
+       SELECT p.classe, b.trade_date, b.close,
+              SUM(b.volume_financial) OVER (PARTITION BY b.ticker) AS liquidez
+         FROM volume_scanner.daily_bars b
+         JOIN papeis p USING (ticker)
+        WHERE b.trade_date IN (SELECT trade_date FROM janela)`,
+      [ticker, cd_cvm, sessoes],
+    ),
+  ]);
+
+  return {
+    empresa: String(nome),
+    setor: setor_cvm === null ? null : String(setor_cvm),
+    classe: classe === null ? null : String(classe),
+    trimestres: trimestres.rows
+      .map((r) => ({
+        dtFim: dia(r.dt_fim),
+        rotulo: String(r.rotulo),
+        origem: String(r.origem),
+        publicadoEm: r.publicado_em === null ? null : dia(r.publicado_em),
+        layout: r.layout === null ? null : String(r.layout),
+        receitaTri: num(r.receita_tri),
+        ebitdaTri: num(r.ebitda_tri),
+        lucroTri: num(r.lucro_tri),
+        receita12m: num(r.receita_12m),
+        ebitda12m: num(r.ebitda_12m),
+        lucro12m: num(r.lucro_12m),
+        patrimonioLiquido: num(r.patrimonio_liquido),
+        ativoTotal: num(r.ativo_total),
+        dividaLiquida: num(r.divida_liquida),
+        liquidezCorrente: num(r.liquidez_corrente),
+        acoesEmCirculacao: num(r.acoes_em_circulacao),
+        acoesOn: num(r.acoes_on),
+        acoesPn: num(r.acoes_pn),
+      }))
+      .reverse(),
+    proventos: proventos.rows.map((r) => ({
+      dataCom: dia(r.data_com),
+      tipo: String(r.tipo),
+      valor: num(r.valor) ?? 0,
+    })),
+    precosPorClasse: precosPorClasse(irmaos.rows),
+  };
+}
+
+/**
+ * Agrupa o fechamento das classes em duas series: ON e PN.
+ *
+ * Empresa com PNA e PNB (a Unipar tem as duas) fica com a mais negociada no
+ * periodo: e a que representa o preco da preferencial. A unit nao entra --
+ * ela ja embute ON e PN, e contar as duas coisas dobraria o valor de mercado.
+ */
+function precosPorClasse(
+  linhas: {
+    classe: unknown;
+    trade_date: unknown;
+    close: unknown;
+    liquidez: unknown;
+  }[],
+): { on: Record<string, number>; pn: Record<string, number> } {
+  const melhorPn = linhas
+    .filter((r) => String(r.classe).startsWith("PN"))
+    .reduce<{ classe: string; liquidez: number } | null>((melhor, r) => {
+      const liquidez = num(r.liquidez) ?? 0;
+      const classe = String(r.classe);
+      return melhor === null || liquidez > melhor.liquidez
+        ? { classe, liquidez }
+        : melhor;
+    }, null);
+
+  const on: Record<string, number> = {};
+  const pn: Record<string, number> = {};
+  for (const linha of linhas) {
+    const fechamento = num(linha.close);
+    if (fechamento === null) continue;
+    const classe = String(linha.classe);
+    if (classe === "ON") on[dia(linha.trade_date)] = fechamento;
+    else if (melhorPn !== null && classe === melhorPn.classe)
+      pn[dia(linha.trade_date)] = fechamento;
+  }
+  return { on, pn };
 }

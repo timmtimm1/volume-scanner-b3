@@ -104,7 +104,20 @@ jobs:
         # mais na ficha do papel, nao o pipeline principal. O passo vem antes
         # do rebuild -- e nao depois -- porque o site le o banco no build, e
         # uma falha aqui nao pode deixar o build seguinte com dado pela metade.
+        #
+        # O teto de tempo e o que garante isso na pratica. `continue-on-error`
+        # cobre a falha do passo, mas nao o job inteiro estourar os 30 minutos:
+        # em 19/09/2026 a carga ficou 29min36s de pe, o job foi cancelado, e o
+        # rebuild da Vercel -- o passo seguinte -- nem chegou a rodar. O pregao
+        # estava gravado no banco havia meia hora e o site ficou parado no build
+        # anterior ate alguem rodar o manual. Uma passada boa leva ~7 minutos.
+        #
+        # Cortar no meio e seguro: a carga grava empresa por empresa e marca
+        # cada uma como consultada, entao a proxima passada continua de onde
+        # esta; e `gravar_trimestres` troca a tabela inteira numa transacao so,
+        # que ou entra ou nao entra.
         continue-on-error: true
+        timeout-minutes: 15
         run: uv run --no-sync scanner fundamentos atualizar
 
       - name: Avisar no Telegram se os fundamentos falharam

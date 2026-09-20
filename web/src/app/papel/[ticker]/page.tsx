@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { FichaDoPapel } from "@/components/FichaDoPapel";
-import { papeisComEvento, papel } from "@/lib/db";
+import { fundamentos, papeisComEvento, papel } from "@/lib/db";
 import { TICKER } from "@/lib/ticker";
 
 /** Uma pagina estatica por papel que teve ao menos um evento. */
@@ -28,7 +28,11 @@ export default async function Papel({
   const { ticker } = await params;
   if (!TICKER.test(ticker)) notFound();
 
-  const dados = await papel(ticker);
+  // As duas em paralelo: o build faz isso uma vez por papel com ficha.
+  const [dados, balancos] = await Promise.all([
+    papel(ticker),
+    fundamentos(ticker),
+  ]);
   if (dados.barras.length === 0) notFound();
 
   return (
@@ -41,6 +45,7 @@ export default async function Papel({
         ticker={dados.ticker}
         barras={dados.barras}
         eventos={dados.eventos}
+        fundamentos={balancos}
       />
     </Suspense>
   );

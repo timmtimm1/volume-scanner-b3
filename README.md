@@ -246,14 +246,17 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
   fica guardado em `trade_snapshots`, gravado pelo job noturno, e o resumo diário
   no Telegram ganha o bloco **Seus trades** com a posição de cada trade aberto e
   dos encerrados no pregão. Sem custos de corretagem e sem proventos, por enquanto.
-- **Fundamentos da CVM (em construção).** A carga já traz para o banco os
-  balanços trimestrais e anuais de cada empresa negociada (ITR e DFP dos dados
-  abertos da CVM), com a data em que cada um foi entregue, e os proventos em
-  dinheiro de cada papel — dividendo e juros sobre capital próprio, por classe,
-  porque a ON e a PN recebem valores diferentes. Em cima disso, o trimestre já
-  calculado: receita, EBITDA e lucro do trimestre e dos últimos 12 meses,
-  patrimônio dos controladores, dívida líquida e liquidez. Ainda não aparece no
-  site: a aba na ficha do papel é a última fase.
+- **Fundamentos da CVM.** A carga traz para o banco os balanços trimestrais e
+  anuais de cada empresa negociada (ITR e DFP dos dados abertos da CVM), com a
+  data em que cada um foi entregue, e os proventos em dinheiro de cada papel —
+  dividendo e juros sobre capital próprio, por classe, porque a ON e a PN
+  recebem valores diferentes. Em cima disso, o trimestre já calculado: receita,
+  EBITDA e lucro do trimestre e dos últimos 12 meses, patrimônio dos
+  controladores, dívida líquida e liquidez. Na ficha do papel isso vira a aba
+  **Fundamentos**, com os múltiplos calculados **na data que a ficha está
+  mostrando**: abrindo a ficha por um evento de março, o P/L é o de março, com o
+  balanço que já era público naquele dia. As datas de entrega viram marca no
+  gráfico, para dar para ver se o volume anômalo veio logo depois do resultado.
 - **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
   logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
   toques medem o movimento entre dois pontos e quantos pregões ele levou.
@@ -793,6 +796,46 @@ pareceriam complexas demais para o problema.
   ETFs e um recibo de subscrição. Ligar pelo prefixo do ticker resolveria e
   está fora de questão: na B3, o emissor "EMBR" é a EMBRAST, e não a Embraer.
   Melhor ficar sem fundamentos do que mostrar o balanço de outra empresa.
+- **Um terço das empresas declara as ações em milhares, e a CVM não diz qual
+  delas.** O `composicao_capital` não tem coluna de escala: a Unipar informa
+  113.173.265 ações e a Afluente informa 63.085, que são 63.085.000. Nada no
+  arquivo separa as duas. Sem tratar isso, P/L, P/VP, EV/EBITDA e valor de
+  mercado sairiam **mil vezes errados** em um terço da base — a Afluente
+  apareceria valendo R$ 461,8 mil.
+
+  Nenhuma conferência sozinha manda. São seis camadas independentes, e a
+  contagem só vale passando em **todas**:
+
+  | camada | o que olha | pega o que as outras não pegam |
+  |---|---|---|
+  | `existe` | a própria contagem | ausente ou negativa |
+  | `piso` | só a ordem de grandeza | contagem pequena e ilíquida |
+  | `teto` | só a ordem de grandeza | contagem inflada, sem preço |
+  | `serie` | o histórico da empresa | a troca de escala no meio dela |
+  | `giro` | o volume negociado | impossibilidade, não estimativa |
+  | `patrimonio` | preço contra o balanço | o ilíquido que o giro não vê |
+
+  A redundância não é decorativa: dos 143 papéis recusados hoje, **19 caem por
+  uma única camada** — 12 só pelo patrimônio, 4 só pelo giro, e um cada pelo
+  piso, pelo teto e pela série. Tirar qualquer uma delas deixa dado errado
+  passar.
+
+  Os limites são calibrados contra a base, não chutados. O piso de 100 mil
+  ações não custa nenhum papel bom: a menor contagem legítima da base é
+  153.464. O corte de 2% do patrimônio cai num vão largo — os papéis com a
+  escala certa não descem de 0,063 e os errados não passam de 0,006. E a série
+  tolera queda de até 500×, porque grupamento de 100:1 acontece (a Mobly fez um)
+  e o erro de escala é sempre de mil.
+
+  A referência da série **só aceita trimestres que passariam no piso e no
+  teto** — sem isso ela se envenena: a Gol declarou 9,17 trilhões de ações em
+  três trimestres de 2025, e comparar contra esse pico reprovaria justamente os
+  trimestres em que ela declarou os 3,2 bilhões corretos.
+
+  Reprovando em qualquer camada, os quatro múltiplos que dividem por ação viram
+  travessão e **a ficha diz qual conferência falhou**. Receita, lucro, EBITDA,
+  patrimônio, ROE, margem, liquidez e dividend yield não dependem da contagem e
+  continuam — são 9 dos 13 números.
 - **O rompimento só vê o preço do instante da checagem**, a cada 15 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.

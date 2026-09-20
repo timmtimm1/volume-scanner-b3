@@ -2,9 +2,10 @@
 
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { AnelDoDesvio } from "@/components/AnelDoDesvio";
 import { Grafico } from "@/components/Grafico";
+import { PainelDeFundamentos } from "@/components/PainelDeFundamentos";
 import type { Direcao } from "@/lib/alertas";
 import { PainelDeAlerta } from "@/components/PainelDeAlerta";
 import { PainelDeTrade } from "@/components/PainelDeTrade";
@@ -22,12 +23,18 @@ import {
   reais,
 } from "@/lib/formato";
 import { marcarAgora } from "@/lib/posicao";
-import type { Barra, Evento } from "@/lib/types";
+import type { Barra, Evento, Fundamentos } from "@/lib/types";
 import { useAlertasDoPapel } from "@/lib/useAlertasDoPapel";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
 import { useTradesDoPapel } from "@/lib/useTradesDoPapel";
 
-type Props = { ticker: string; barras: Barra[]; eventos: Evento[] };
+type Props = {
+  ticker: string;
+  barras: Barra[];
+  eventos: Evento[];
+  /** Nulo em papel sem empresa ligada -- um ETF, ou um codigo que saiu da bolsa. */
+  fundamentos: Fundamentos | null;
+};
 
 /** Onde a barra de cada janela fecha: 8σ ocupa a largura toda. */
 const TETO_DAS_JANELAS = 8;
@@ -92,7 +99,7 @@ function Quadro({ rotulo, valor, nota }: { rotulo: string; valor: string; nota?:
 
 const corDaDirecao = (v: number | null) => ((v ?? 0) >= 0 ? "text-alta" : "text-baixa");
 
-export function FichaDoPapel({ ticker, barras, eventos }: Props) {
+export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
   const params = useSearchParams();
   const pedido = params.get("data");
   const hoje = useCandleDeHoje(ticker);
@@ -171,6 +178,40 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
       resultadoPct: marcado.resultadoPct,
     };
   }, [estadoDosTrades.tradeAberto, agoraDaRegua]);
+
+  // Qual aba do cartao de contexto esta aberta. Comeca sempre em "evento":
+  // quem chega pelo alerta do Telegram quer ver por que o papel apareceu, e
+  // nao o balanco -- os fundamentos estao a um toque.
+  const [aba, setAba] = useState<"evento" | "fundamentos">("evento");
+
+  // As datas em que a empresa publicou balanco, para marcar no grafico. Sem
+  // elas nao da para ver se o volume anomalo veio logo depois do resultado.
+  const publicacoes = useMemo(
+    () =>
+      (fundamentos?.trimestres ?? [])
+        .filter((t) => t.publicadoEm !== null)
+        .map((t) => ({ data: t.publicadoEm as string, rotulo: t.rotulo })),
+    [fundamentos],
+  );
+
+  // O pregao que os multiplos usam. Sem evento -- papel que tem ficha mas nunca
+  // cruzou o limiar, que `dynamicParams` deixa existir -- vale o ultimo pregao
+  // que a pagina tem.
+  const dataDosFundamentos = evento?.tradeDate ?? barras.at(-1)?.tradeDate ?? null;
+
+  // Montado aqui, e nao no JSX, para a checagem de nulo valer para o TypeScript
+  // nos tres lugares que perguntam se ha fundamentos. Criar o elemento nao
+  // executa o componente: ele so roda se entrar na arvore.
+  const painelDeFundamentos =
+    fundamentos !== null && dataDosFundamentos !== null ? (
+      <PainelDeFundamentos dados={fundamentos} barras={barras} data={dataDosFundamentos} />
+    ) : null;
+
+  // Papel sem evento nao tem o que mostrar na aba Evento: a ficha abre direto
+  // nos fundamentos, e sem as abas.
+  const verFundamentos =
+    painelDeFundamentos !== null && (evento === null || aba === "fundamentos");
+  const comAbas = evento !== null && painelDeFundamentos !== null;
 
   const faixa = leituraDaFaixa(evento?.pos252 ?? null);
   const ticket = leituraDoTicket(
@@ -275,6 +316,7 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
             hoje={hoje}
             operacoes={operacoesDeTrade}
             posicao={posicaoDoGrafico}
+            publicacoes={publicacoes}
             regua={regua}
             classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
           />
@@ -401,33 +443,62 @@ export function FichaDoPapel({ ticker, barras, eventos }: Props) {
 
         {/* Contexto e alerta */}
         <section className="flex flex-col gap-4 lg:col-start-3 lg:row-span-2 lg:row-start-1">
-          {evento && (
+          {(evento || verFundamentos) && (
             <div className="cartao px-5 pb-2 pt-5">
-              <div className="mb-1.5 flex items-center justify-between">
-                <h2 className="text-[16px] font-extrabold">Contexto do evento</h2>
-                <span className="text-[12px] font-semibold text-tinta-3">a leitura é sua</span>
+              <div className="mb-1.5 flex items-center justify-between gap-3">
+                {comAbas ? (
+                  <div className="flex items-center gap-1" role="tablist" aria-label="O que ver">
+                    {(["evento", "fundamentos"] as const).map((chave) => (
+                      <button
+                        key={chave}
+                        type="button"
+                        role="tab"
+                        aria-selected={aba === chave}
+                        onClick={() => setAba(chave)}
+                        className={`rounded-full px-3 py-1.5 text-[14px] font-extrabold transition-colors ${
+                          aba === chave ? "bg-selecao text-acento" : "text-tinta-3 hover:text-tinta"
+                        }`}
+                      >
+                        {chave === "evento" ? "Evento" : "Fundamentos"}
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <h2 className="text-[16px] font-extrabold">
+                    {evento ? "Contexto do evento" : "Fundamentos"}
+                  </h2>
+                )}
+                <span className="shrink-0 text-[12px] font-semibold text-tinta-3">a leitura é sua</span>
               </div>
-              <LinhaDeContexto rotulo="Variação do dia" valor={percentual(evento.retDay)} cor={corDaDirecao(evento.retDay)} />
-              <LinhaDeContexto rotulo="Gap de abertura" valor={percentual(evento.gap)} cor={corDaDirecao(evento.gap)} />
-              <LinhaDeContexto rotulo="Fechou no range" valor={proporcao(evento.clv)} fracao={evento.clv} />
-              <LinhaDeContexto rotulo="Amplitude do dia" valor={proporcao(evento.rangeNorm, 1)} />
-              <LinhaDeContexto
-                rotulo={faixa ? `Faixa de 252 pregões · ${faixa}` : "Faixa de 252 pregões"}
-                valor={proporcao(evento.pos252)}
-                fracao={evento.pos252}
-              />
-              <LinhaDeContexto
-                rotulo="20 pregões anteriores"
-                valor={percentual(evento.retPrior20)}
-                cor={corDaDirecao(evento.retPrior20)}
-              />
-              <LinhaDeContexto rotulo="z do ticket" valor={numero(evento.ticketZ, 1)} />
-              <div className="flex min-h-[50px] items-center gap-3">
-                <span className="flex-1 text-[13px] font-extrabold">z líquido do mercado</span>
-                <span className="num inline-flex h-8 items-center rounded-full bg-selecao px-3 text-[15px] font-extrabold text-acento">
-                  {numero(evento.zExcess)}
-                </span>
-              </div>
+              {verFundamentos ? (
+                painelDeFundamentos
+              ) : (
+                evento && (
+                  <>
+                    <LinhaDeContexto rotulo="Variação do dia" valor={percentual(evento.retDay)} cor={corDaDirecao(evento.retDay)} />
+                    <LinhaDeContexto rotulo="Gap de abertura" valor={percentual(evento.gap)} cor={corDaDirecao(evento.gap)} />
+                    <LinhaDeContexto rotulo="Fechou no range" valor={proporcao(evento.clv)} fracao={evento.clv} />
+                    <LinhaDeContexto rotulo="Amplitude do dia" valor={proporcao(evento.rangeNorm, 1)} />
+                    <LinhaDeContexto
+                      rotulo={faixa ? `Faixa de 252 pregões · ${faixa}` : "Faixa de 252 pregões"}
+                      valor={proporcao(evento.pos252)}
+                      fracao={evento.pos252}
+                    />
+                    <LinhaDeContexto
+                      rotulo="20 pregões anteriores"
+                      valor={percentual(evento.retPrior20)}
+                      cor={corDaDirecao(evento.retPrior20)}
+                    />
+                    <LinhaDeContexto rotulo="z do ticket" valor={numero(evento.ticketZ, 1)} />
+                    <div className="flex min-h-[50px] items-center gap-3">
+                      <span className="flex-1 text-[13px] font-extrabold">z líquido do mercado</span>
+                      <span className="num inline-flex h-8 items-center rounded-full bg-selecao px-3 text-[15px] font-extrabold text-acento">
+                        {numero(evento.zExcess)}
+                      </span>
+                    </div>
+                  </>
+                )
+              )}
             </div>
           )}
           <PainelDeTrade estado={estadoDosTrades} hoje={hoje} />

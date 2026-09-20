@@ -79,3 +79,61 @@ export type Universo = {
   /** Quantos papéis negociaram na janela, antes dos cortes. */
   avaliados: number;
 };
+
+/** Um trimestre ja calculado, como a fase 3 grava. Valores em reais. */
+export type Trimestre = {
+  /** Fim do periodo, AAAA-MM-DD. */
+  dtFim: string;
+  /** "2T26", como o mercado chama. */
+  rotulo: string;
+  /** ITR, DFP ou `derivado` -- o 4T, que a CVM nao publica. */
+  origem: string;
+  /** Data da PRIMEIRA entrega do documento: quando o mercado soube. */
+  publicadoEm: string | null;
+  /** `financeiro` em banco: la nao existe EBITDA nem divida liquida. */
+  layout: string | null;
+  receitaTri: number | null;
+  ebitdaTri: number | null;
+  lucroTri: number | null;
+  receita12m: number | null;
+  ebitda12m: number | null;
+  lucro12m: number | null;
+  /** Dos controladores, que e sobre o que ROE e P/VP fazem sentido. */
+  patrimonioLiquido: number | null;
+  ativoTotal: number | null;
+  dividaLiquida: number | null;
+  liquidezCorrente: number | null;
+  acoesEmCirculacao: number | null;
+  /** Por classe, para o valor de mercado somar cada uma pelo seu preco. */
+  acoesOn: number | null;
+  acoesPn: number | null;
+};
+
+/** Um provento em dinheiro do papel. `valor` e por acao. */
+export type Provento = {
+  dataCom: string;
+  tipo: string;
+  valor: number;
+};
+
+/** Tudo que a aba Fundamentos da ficha precisa. */
+export type Fundamentos = {
+  empresa: string;
+  setor: string | null;
+  /** Classe do papel aberto (ON, PN, PNA, UNT...), quando conhecida. */
+  classe: string | null;
+  trimestres: Trimestre[];
+  proventos: Provento[];
+  /**
+   * Fechamento das outras classes da mesma empresa, por pregao. O valor de
+   * mercado soma cada classe pelo proprio preco: em 15/09/2026 a UNIP3 valia
+   * R$ 55,40 e a UNIP6, R$ 57,48.
+   */
+  precosPorClasse: { on: Record<string, number>; pn: Record<string, number> };
+  /**
+   * O maior volume em ACOES que um papel da empresa negociou num pregao da
+   * janela. Serve de prova contra a contagem de acoes: a empresa nao pode ter
+   * menos acoes em circulacao do que negociou num dia so.
+   */
+  picoDeVolumeEmAcoes: number | null;
+};

@@ -590,9 +590,19 @@ scan → snapshot dos trades → resumo → retenção → fundamentos da CVM �
 na Vercel.
 
 O passo dos fundamentos não pode derrubar o pregão: ele roda com
-`continue-on-error` e tem aviso próprio no Telegram. Se a CVM estiver fora do
-ar, o alerta e o resumo saem do mesmo jeito, e a aba Fundamentos fica com os
-dados da véspera.
+`continue-on-error`, tem teto de 15 minutos e aviso próprio no Telegram. Se a
+CVM estiver fora do ar, o alerta e o resumo saem do mesmo jeito, e a aba
+Fundamentos fica com os dados da véspera.
+
+O teto existe porque `continue-on-error` sozinho não bastava. O limite de 30
+minutos vale para o job inteiro: em 19/09/2026 a carga ficou 29min36s de pé, o
+job foi cancelado, e o **rebuild na Vercel nem chegou a rodar**. O pregão estava
+no banco havia meia hora e o site continuou mostrando o build anterior até
+alguém rodar o pregão manual. Uma passada boa leva cerca de 7 minutos.
+
+Cortar a carga no meio é seguro: ela grava empresa por empresa e marca cada uma
+como consultada, então a passada seguinte continua de onde parou; e a tabela de
+trimestres é trocada inteira numa transação só.
 
 Ele não roda sozinho. Dois workflows o chamam, e os dois executam exatamente as
 mesmas etapas:

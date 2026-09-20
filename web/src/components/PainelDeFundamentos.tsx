@@ -161,6 +161,9 @@ export function PainelDeFundamentos({ dados, barras, data }: Props) {
   }
 
   const { trimestre, anoAnterior, ehBanco } = indicadores;
+  // Qual camada barrou a contagem de acoes. Dizer qual foi e melhor que um
+  // travessao mudo: o numero nao sumiu por acaso, e da para conferir.
+  const reprovada = indicadores.conferencias.find((c) => !c.passou);
 
   return (
     <div className="flex flex-col">
@@ -192,11 +195,11 @@ export function PainelDeFundamentos({ dados, barras, data }: Props) {
         />
       </Grupo>
 
-      {!indicadores.acoesConfiaveis && (
+      {reprovada && (
         <p className="pt-2 text-[11px] leading-relaxed text-tinta-3">
-          A CVM não declara em que escala esta empresa informou a quantidade de
-          ações, e a contagem não passou na conferência. Os múltiplos que
-          dividem por ação ficam de fora — o resto do balanço vale.
+          A quantidade de ações que a CVM publica não passou na conferência:{" "}
+          {reprovada.porque}. Os múltiplos que dividem por ação ficam de fora —
+          o resto do balanço vale.
         </p>
       )}
 

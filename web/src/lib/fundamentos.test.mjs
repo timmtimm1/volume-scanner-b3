@@ -5,6 +5,7 @@ import { describe, it } from "node:test";
 
 import {
   acoesConfiaveis,
+  conferirAcoes,
   indicadoresNaData,
   proventosDeDozeMeses,
   trimestreNaData,
@@ -230,48 +231,102 @@ describe("variacaoAnual", () => {
   });
 });
 
-describe("acoesConfiaveis", () => {
-  // O `composicao_capital` da CVM nao tem coluna de escala, e cerca de um terco
-  // das empresas declara a quantidade de acoes em milhares. Estes testes sao os
-  // dois jeitos de flagrar isso, com numeros que existem na base.
+describe("conferirAcoes: as seis camadas", () => {
+  // Cada teste derruba UMA camada e deixa as outras passando, para provar que
+  // aquela camada sozinha e quem pegou. Numeros tirados da base real.
   const mercado = 111_622_153 * 57.48;
+  const passa = (t, serie = SERIE, m = mercado, pico = 1_200_000) =>
+    acoesConfiaveis(conferirAcoes(t, serie, m, pico));
+  const barrou = (t, serie = SERIE, m = mercado, pico = 1_200_000) =>
+    conferirAcoes(t, serie, m, pico).find((c) => !c.passou)?.nome ?? null;
 
-  it("a Unipar passa: negocia menos do que tem, e vale mais que o patrimonio", () => {
-    assert.equal(acoesConfiaveis(DOIS_T26, mercado, 1_200_000), true);
+  it("a Unipar passa em todas", () => {
+    assert.equal(passa(DOIS_T26), true);
+    assert.equal(barrou(DOIS_T26), null);
   });
 
-  it("a prova: negociar num pregao mais acoes do que existem reprova", () => {
-    // O caso do papel liquido, como PCAR3: 492.547 acoes declaradas e
-    // 57.588.900 negociadas num dia so.
+  it("existe: sem contagem nao ha o que conferir", () => {
+    const sem = { ...DOIS_T26, acoesEmCirculacao: null };
+    assert.equal(barrou(sem), "existe");
+  });
+
+  it("piso: 63.085 acoes e escala errada, nao empresa pequena", () => {
+    // O AFLT3, que declara em milhares e e iliquido demais para o giro pegar.
+    const afluente = { ...DOIS_T26, acoesEmCirculacao: 63_085 };
+    const serie = SERIE.map((t) => ({ ...t, acoesEmCirculacao: 63_085 }));
+    assert.equal(barrou(afluente, serie, 63_085 * 7.32, 5_700), "piso");
+  });
+
+  it("teto: 54 trilhoes de acoes e lixo declarado", () => {
+    const lixo = { ...DOIS_T26, acoesEmCirculacao: 54_730_851_690_132 };
+    // Sem preco e sem giro, so a ordem de grandeza denuncia.
+    assert.equal(barrou(lixo, SERIE, null, null), "teto");
+  });
+
+  it("serie: a escala trocando no meio do historico da empresa", () => {
+    // A serie fica na escala certa e so o trimestre da vez cai mil vezes.
+    const caiu = { ...DOIS_T26, acoesEmCirculacao: 111_622 };
+    assert.equal(barrou(caiu, SERIE, null, null), "serie");
+  });
+
+  it("serie: lixo no historico nao contamina a referencia", () => {
+    // A Gol declarou 9.165.945.381.681 acoes em tres trimestres de 2025 e
+    // 3.202.274.726 nos anteriores. Comparar contra o pico cru reprovaria
+    // justamente os trimestres corretos -- por isso a referencia so aceita
+    // trimestres que passariam no piso e no teto.
+    const certo = { ...DOIS_T26, acoesEmCirculacao: 3_202_274_726 };
+    const lixo = { ...DOIS_T26, acoesEmCirculacao: 9_165_945_381_681 };
+    const serie = [certo, certo, certo, lixo, lixo];
+    assert.equal(passa(certo, serie, null, 1_200_000), true);
+    // E o trimestre de lixo, quando e ele o da vez, cai no teto.
+    assert.equal(barrou(lixo, serie, null, 1_200_000), "teto");
+  });
+
+  it("serie: grupamento de 100:1 nao e escala errada, e passa", () => {
+    // A Mobly foi de 3.788.605.704 para 37.886.057. Evento legitimo.
+    const antes = { ...DOIS_T26, acoesEmCirculacao: 3_788_605_704 };
+    const depois = { ...DOIS_T26, acoesEmCirculacao: 37_886_057 };
+    const serie = [antes, antes, antes, depois];
+    assert.equal(passa(depois, serie, 37_886_057 * 5.0, 1_200_000), true);
+  });
+
+  it("giro: negociar num pregao mais acoes do que existem e impossivel", () => {
+    // O caso do papel liquido, como PCAR3. A contagem passa no piso e na serie.
+    const poucas = { ...DOIS_T26, acoesEmCirculacao: 2_000_000 };
+    const serie = SERIE.map((t) => ({ ...t, acoesEmCirculacao: 2_000_000 }));
+    assert.equal(barrou(poucas, serie, 2_000_000 * 57.48, 57_588_900), "giro");
+  });
+
+  it("patrimonio: o iliquido que o giro nao alcanca", () => {
     const emMilhares = { ...DOIS_T26, acoesEmCirculacao: 111_622 };
-    assert.equal(acoesConfiaveis(emMilhares, mercado, 1_200_000), false);
+    const serie = SERIE.map((t) => ({ ...t, acoesEmCirculacao: 111_622 }));
+    // Passa no piso (>= 100.000), na serie (toda igual) e no giro (pouco
+    // volume); so o balanco denuncia: a empresa "valeria" 0,3% do patrimonio.
+    assert.equal(barrou(emMilhares, serie, 111_622 * 57.48, 90_000), "patrimonio");
   });
 
-  it("a plausibilidade: no iliquido, o valor de mercado minusculo reprova", () => {
-    // O caso do AFLT3: pouca liquidez, entao a prova nao alcanca -- mas a
-    // empresa inteira "valendo" 0,1% do proprio patrimonio denuncia a escala.
-    const emMilhares = { ...DOIS_T26, acoesEmCirculacao: 111_622 };
-    const mercadoMil = 111_622 * 57.48;
-    assert.equal(acoesConfiaveis(emMilhares, mercadoMil, 5_700), false);
+  it("patrimonio tambem tem teto: contagem inflada infla o valor de mercado", () => {
+    const inflada = { ...DOIS_T26, acoesEmCirculacao: 111_622_153_000 };
+    const serie = SERIE.map((t) => ({ ...t, acoesEmCirculacao: 111_622_153_000 }));
+    assert.equal(barrou(inflada, serie, 111_622_153_000 * 57.48, 900_000), "patrimonio");
   });
 
-  it("patrimonio negativo nao serve de regua: so a prova decide", () => {
+  it("patrimonio negativo nao serve de regua: as outras camadas decidem", () => {
     const semPatrimonio = { ...DOIS_T26, patrimonioLiquido: -100_000_000 };
-    assert.equal(acoesConfiaveis(semPatrimonio, mercado, 1_200_000), true);
-    assert.equal(acoesConfiaveis(semPatrimonio, mercado, 999_999_999), false);
+    assert.equal(passa(semPatrimonio), true);
+    assert.equal(barrou(semPatrimonio, SERIE, mercado, 999_999_999), "giro");
   });
 
-  it("sem contagem de acoes nao ha o que confiar", () => {
-    assert.equal(
-      acoesConfiaveis({ ...DOIS_T26, acoesEmCirculacao: null }, mercado, 1_200_000),
-      false,
-    );
+  it("serie curta demais nao opina", () => {
+    const so = [DOIS_T26];
+    assert.equal(conferirAcoes(DOIS_T26, so, mercado, 1_200_000).some((c) => c.nome === "serie"), false);
   });
 
-  it("papel sem barra no ano perde a prova, mas nao a plausibilidade", () => {
-    assert.equal(acoesConfiaveis(DOIS_T26, mercado, null), true);
-    const emMilhares = { ...DOIS_T26, acoesEmCirculacao: 111_622 };
-    assert.equal(acoesConfiaveis(emMilhares, 111_622 * 57.48, null), false);
+  it("a camada que reprova diz por que, para a ficha mostrar", () => {
+    const sem = { ...DOIS_T26, acoesEmCirculacao: null };
+    const reprovada = conferirAcoes(sem, SERIE, mercado, 1_200_000).find((c) => !c.passou);
+    assert.equal(typeof reprovada.porque, "string");
+    assert.ok(reprovada.porque.length > 10);
   });
 });
 

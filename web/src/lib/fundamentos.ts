@@ -33,8 +33,10 @@ export type Indicadores = {
   /** Pregao a que esses numeros se referem. */
   data: string;
   ehBanco: boolean;
-  /** Falso quando a contagem de acoes da CVM nao passou na conferencia. */
+  /** Falso quando a contagem de acoes da CVM nao passou em alguma camada. */
   acoesConfiaveis: boolean;
+  /** As seis conferencias e o que cada uma viu. */
+  conferencias: Conferencia[];
   precoLucro: number | null;
   precoValorPatrimonial: number | null;
   evEbitda: number | null;
@@ -134,44 +136,148 @@ export function valorDeMercado(
 }
 
 /**
- * O piso do valor de mercado sobre o patrimonio dos controladores.
- *
- * A empresa inteira valendo menos de 2% do proprio patrimonio nao acontece.
- * Quando a conta da isso, quem esta errado e o numero de acoes, nao o mercado.
- * Medido na base inteira: os papeis com a escala certa nao descem de 0,063, e
- * os com a escala errada nao passam de 0,006. O corte cai no vao entre os dois.
- */
-const PISO_DO_VALOR_SOBRE_PATRIMONIO = 0.02;
-
-/**
- * Da para confiar na contagem de acoes da CVM?
+ * As conferencias da contagem de acoes, em camadas independentes.
  *
  * O `composicao_capital` da CVM nao tem coluna de escala, e cerca de um terco
- * das empresas declara a quantidade em MILHARES. Nada no arquivo distingue uma
- * da outra, entao a contagem so vale quando sobrevive a duas conferencias:
+ * das empresas declara a quantidade em MILHARES. Pior: a mesma empresa troca de
+ * escala entre trimestres. E ha lixo declarado -- 1 acao, 1.000 acoes, e uma
+ * empresa com 54 trilhoes. Nada no arquivo separa o certo do errado.
  *
- * - **A prova.** A empresa nao pode ter negociado num unico pregao mais acoes
- *   do que tem em circulacao. Nao e estimativa, e impossibilidade -- mas so
- *   alcanca quem tem liquidez.
- * - **A plausibilidade.** O valor de mercado nao pode ser uma fracao minuscula
- *   do patrimonio. Alcanca os iliquidos, que a prova nao pega.
+ * Por isso nenhuma conferencia sozinha manda. Sao seis, cada uma olhando para
+ * um lado diferente do problema, e a contagem so vale passando em TODAS:
  *
- * Falhando qualquer uma, tudo que divide por acao vira `null`. Um numero mil
- * vezes errado e pior que um travessao.
+ * | camada        | o que olha                  | pega o que as outras nao pegam |
+ * |---------------|-----------------------------|--------------------------------|
+ * | `existe`      | a propria contagem          | ausente ou negativa            |
+ * | `piso`        | so a ordem de grandeza      | contagem pequena e iliquida    |
+ * | `teto`        | so a ordem de grandeza      | contagem inflada, sem preco    |
+ * | `serie`       | o historico da empresa      | a troca de escala no meio dela |
+ * | `giro`        | o volume negociado          | impossibilidade, nao estimativa|
+ * | `patrimonio`  | preco contra o balanco      | o iliquido que o giro nao ve   |
+ *
+ * Medido na base: 24 dos 153 papeis recusados caem por uma unica camada. Tirar
+ * qualquer uma delas deixa dado errado passar.
  */
-export function acoesConfiaveis(
+export type Conferencia = {
+  nome: string;
+  passou: boolean;
+  /** So quando reprova: a frase que a ficha mostra. */
+  porque: string | null;
+};
+
+/**
+ * Menos que isto nao e companhia aberta na B3, e sim a escala errada. O menor
+ * numero legitimo da base inteira e 153.464, entao o piso nao custa nenhum
+ * papel bom e derruba 64 errados sozinho.
+ */
+const PISO_DE_ACOES = 100_000;
+
+/** Acima disto e lixo declarado: a maior contagem real da base nao chega a 10^11. */
+const TETO_DE_ACOES = 1e12;
+
+/**
+ * Quanto a contagem pode ser menor que o pico da propria empresa.
+ *
+ * Grupamento de verdade acontece: a Mobly fez 100:1 e a contagem caiu de
+ * 3.788.605.704 para 37.886.057. O erro de escala e sempre mil vezes. 500 fica
+ * no meio -- acima de qualquer grupamento plausivel, abaixo da assinatura do
+ * erro.
+ */
+const QUEDA_MAXIMA_NA_SERIE = 500;
+
+/** A empresa inteira nao vale menos de 2% nem mais de 100x o proprio patrimonio. */
+const PISO_DO_VALOR_SOBRE_PATRIMONIO = 0.02;
+const TETO_DO_VALOR_SOBRE_PATRIMONIO = 100;
+
+/** Quantos trimestres a serie precisa ter para servir de referencia. */
+const MINIMO_PARA_COMPARAR_A_SERIE = 3;
+
+/**
+ * Passa a contagem de acoes pelas seis conferencias.
+ *
+ * Devolve todas, e nao so as que reprovaram, para a ficha poder dizer qual
+ * falhou em vez de um "nao da para calcular" sem explicacao.
+ */
+export function conferirAcoes(
   trimestre: Trimestre,
+  serie: Trimestre[],
   mercado: number | null,
   picoDeVolumeEmAcoes: number | null,
-): boolean {
+): Conferencia[] {
   const acoes = trimestre.acoesEmCirculacao;
-  if (acoes === null || acoes <= 0) return false;
-  if (picoDeVolumeEmAcoes !== null && picoDeVolumeEmAcoes > acoes) return false;
+  const ok = (nome: string): Conferencia => ({ nome, passou: true, porque: null });
+  const nao = (nome: string, porque: string): Conferencia => ({
+    nome,
+    passou: false,
+    porque,
+  });
 
-  // Patrimonio negativo nao serve de regua: quem decide e so a prova acima.
+  if (acoes === null || acoes <= 0) {
+    return [nao("existe", "a CVM não informou a quantidade de ações")];
+  }
+
+  const camadas: Conferencia[] = [ok("existe")];
+
+  camadas.push(
+    acoes < PISO_DE_ACOES
+      ? nao("piso", "a quantidade de ações é pequena demais para ser real")
+      : ok("piso"),
+  );
+
+  camadas.push(
+    acoes > TETO_DE_ACOES
+      ? nao("teto", "a quantidade de ações é grande demais para ser real")
+      : ok("teto"),
+  );
+
+  // A serie da propria empresa: uma queda dessas nao e grupamento, e escala.
+  //
+  // A referencia so aceita trimestres que passariam no piso e no teto. Sem esse
+  // filtro a propria serie envenena a conferencia: a Gol declarou 9,17 trilhoes
+  // de acoes em tres trimestres de 2025, e comparar contra esse pico reprovaria
+  // os trimestres em que ela declarou os 3,2 bilhoes corretos.
+  const contagens = serie
+    .map((t) => t.acoesEmCirculacao)
+    .filter(
+      (v): v is number =>
+        v !== null && v >= PISO_DE_ACOES && v <= TETO_DE_ACOES,
+    );
+  if (contagens.length >= MINIMO_PARA_COMPARAR_A_SERIE) {
+    const pico = Math.max(...contagens);
+    camadas.push(
+      pico / acoes >= QUEDA_MAXIMA_NA_SERIE
+        ? nao("serie", "a quantidade destoa do histórico da própria empresa")
+        : ok("serie"),
+    );
+  }
+
+  // A prova: ninguem negocia num pregao mais acoes do que tem em circulacao.
+  if (picoDeVolumeEmAcoes !== null) {
+    camadas.push(
+      picoDeVolumeEmAcoes > acoes
+        ? nao("giro", "o papel já negociou num pregão mais ações do que existiriam")
+        : ok("giro"),
+    );
+  }
+
+  // Patrimonio negativo nao serve de regua; as camadas acima e que decidem.
   const patrimonio = trimestre.patrimonioLiquido;
-  if (mercado === null || patrimonio === null || patrimonio <= 0) return true;
-  return mercado / patrimonio >= PISO_DO_VALOR_SOBRE_PATRIMONIO;
+  if (mercado !== null && patrimonio !== null && patrimonio > 0) {
+    const sobrePatrimonio = mercado / patrimonio;
+    camadas.push(
+      sobrePatrimonio < PISO_DO_VALOR_SOBRE_PATRIMONIO ||
+        sobrePatrimonio > TETO_DO_VALOR_SOBRE_PATRIMONIO
+        ? nao("patrimonio", "o valor de mercado não é compatível com o patrimônio")
+        : ok("patrimonio"),
+    );
+  }
+
+  return camadas;
+}
+
+/** A contagem so vale passando em todas as conferencias. */
+export function acoesConfiaveis(camadas: Conferencia[]): boolean {
+  return camadas.every((c) => c.passou);
 }
 
 /**
@@ -197,11 +303,13 @@ export function indicadoresNaData(
   // lucro, patrimonio, ROE, margem, liquidez e dividend yield nao dividem por
   // acao nenhuma e seguem valendo.
   const mercadoBruto = valorDeMercado(trimestre, dados.precosPorClasse, data);
-  const confiaveis = acoesConfiaveis(
+  const conferencias = conferirAcoes(
     trimestre,
+    dados.trimestres,
     mercadoBruto,
     dados.picoDeVolumeEmAcoes,
   );
+  const confiaveis = acoesConfiaveis(conferencias);
   const acoes = confiaveis ? trimestre.acoesEmCirculacao : null;
   const mercado = confiaveis ? mercadoBruto : null;
 
@@ -231,6 +339,7 @@ export function indicadoresNaData(
     data,
     ehBanco,
     acoesConfiaveis: confiaveis,
+    conferencias,
     precoLucro: razao(preco, lucroPorAcao, { positivo: true }),
     precoValorPatrimonial: razao(preco, valorPatrimonialPorAcao, {
       positivo: true,

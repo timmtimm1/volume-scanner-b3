@@ -728,6 +728,23 @@ def _extrair_resultados(contas: pd.DataFrame, tipo: str) -> pd.DataFrame:
     periodos["lucro_controladores"] = periodos["lucro_controladores"].fillna(
         periodos["lucro_liquido"]
     )
+    # Reparticao zerada nao e reparticao, e ausencia.
+    #
+    # 561 dos 2.317 periodos do ITR de 2023 trazem "Atribuido a Socios da
+    # Empresa Controladora" E "a Socios Nao Controladores" ambos em zero, com o
+    # consolidado cheio: o Santander declara R$ 2,78 bi no 3T23 e reparte em
+    # 0 + 0. A empresa nao preencheu a quebra -- zero ali nao significa que o
+    # controlador nao ganhou nada, porque para isso ele teria de ter 0% da
+    # companhia.
+    #
+    # Sem isto o zero seguia ate a ficha como lucro do trimestre, e o grafico
+    # desenhava barra nenhuma como se a empresa nao tivesse dado resultado.
+    zerado = (
+        (periodos["lucro_controladores"] == 0)
+        & periodos["lucro_liquido"].notna()
+        & (periodos["lucro_liquido"] != 0)
+    )
+    periodos.loc[zerado, "lucro_controladores"] = periodos.loc[zerado, "lucro_liquido"]
 
     juntar(
         "depreciacao_amortizacao",

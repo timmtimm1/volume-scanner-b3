@@ -607,6 +607,17 @@ Cortar a carga no meio é seguro: ela grava empresa por empresa e marca cada uma
 como consultada, então a passada seguinte continua de onde parou; e a tabela de
 trimestres é trocada inteira numa transação só.
 
+**Corrigir o parser não conserta o dado já gravado.** A carga só relê um zip
+quando a CVM muda o arquivo, e ITR de 2022 não muda mais — então uma correção
+na extração nunca alcançaria os documentos antigos. Para isso existe a opção
+**"Reprocessar os zips da CVM mesmo sem mudança"** no workflow `pregao manual`,
+que passa `--forcar` e sobe o teto do passo de 15 para 45 minutos. Use depois
+de corrigir o parser, e só então:
+
+```bash
+gh workflow run pregao-manual.yml -f trade_date=ultimo -f fundamentos_forcar=true
+```
+
 Ele não roda sozinho. Dois workflows o chamam, e os dois executam exatamente as
 mesmas etapas:
 
@@ -796,6 +807,20 @@ pareceriam complexas demais para o problema.
   ETFs e um recibo de subscrição. Ligar pelo prefixo do ticker resolveria e
   está fora de questão: na B3, o emissor "EMBR" é a EMBRAST, e não a Embraer.
   Melhor ficar sem fundamentos do que mostrar o balanço de outra empresa.
+- **Repartição do lucro zerada não é repartição, é ausência.** A DRE quebra o
+  resultado em "Atribuído a Sócios da Empresa Controladora" e "a Sócios Não
+  Controladores", e é a primeira que interessa. Só que **561 dos 2.317 períodos
+  do ITR de 2023 trazem as duas em zero com o consolidado cheio**: o Santander
+  declara R$ 2,78 bi no 3T23 e reparte em 0 + 0. Ler o zero ao pé da letra
+  deixava 781 trimestres com lucro exatamente zero — Santander, Sabesp e
+  Eletrobras entre eles — e o gráfico desenhava barra nenhuma, como se a
+  empresa não tivesse dado resultado.
+
+  Zero ali não pode significar "o controlador não ganhou nada": para isso ele
+  teria de ter 0% da companhia. Então filha em zero com o pai preenchido vale o
+  consolidado. Restam 13 trimestres com lucro zero, todos de empresa dormente,
+  com receita zero também.
+
 - **Um terço das empresas declara as ações em milhares, e a CVM não diz qual
   delas.** O `composicao_capital` não tem coluna de escala: a Unipar informa
   113.173.265 ações e a Afluente informa 63.085, que são 63.085.000. Nada no
@@ -832,10 +857,38 @@ pareceriam complexas demais para o problema.
   três trimestres de 2025, e comparar contra esse pico reprovaria justamente os
   trimestres em que ela declarou os 3,2 bilhões corretos.
 
-  Reprovando em qualquer camada, os quatro múltiplos que dividem por ação viram
+  **Reprovada a contagem publicada, uma hipótese é testada: "veio em
+  milhares".** Ela não é aceita por ser plausível — passa pelas mesmas seis
+  camadas, e só vale se sobreviver a todas. Não passando, o número continua
+  recusado; corrigir às cegas seria trocar um erro conhecido por um chute.
+
+  Isso resgata **127 dos 143 papéis** que a recusa pura deixaria sem valuation,
+  incluindo VALE3, ITUB4, ABEV3, ITSA4, LREN3, ASAI3, ELET3 e EMBR3 — as
+  gigantes são justamente as que mais declaram em milhares. Das 30 blue chips
+  testadas, 30 mostram P/L e P/VP e 28 mostram valor de mercado. A ficha avisa
+  quando o número foi corrigido.
+
+  Nos 16 que nem assim passam, os quatro múltiplos que dividem por ação viram
   travessão e **a ficha diz qual conferência falhou**. Receita, lucro, EBITDA,
   patrimônio, ROE, margem, liquidez e dividend yield não dependem da contagem e
   continuam — são 9 dos 13 números.
+
+- **51 dos 447 tickers estão sem classe**, porque a B3 não devolveu o ISIN
+  deles. Sem classe, o fechamento não entra na soma por classe e o valor de
+  mercado ficaria nulo mesmo com preço e quantidade em mãos. Duas saídas,
+  ambas por construção e não por chute:
+
+  - **empresa de classe única** usa o fechamento do papel aberto: se o balanço
+    só tem ON, o papel que o usuário está olhando só pode ser o ON. Resolve
+    EMBR3 e JBSS3;
+  - **classe irrelevante não bloqueia a conta**: a Sabesp declara UMA ação
+    preferencial ao lado de 3,5 bilhões de ordinárias, e exigir o preço dela
+    deixaria a empresa inteira sem valor de mercado por R$ 50 de diferença.
+    Abaixo de 0,1% do total, a classe não move nenhum múltiplo na segunda casa.
+
+  Empresa com duas classes de verdade e preço faltando continua nula — somar
+  só parte das ações daria um valor menor que o real. É o caso de CPLE6 e
+  ELET3 enquanto a B3 não devolver o ISIN delas.
 - **O rompimento só vê o preço do instante da checagem**, a cada 15 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.

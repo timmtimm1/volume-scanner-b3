@@ -37,6 +37,8 @@ export type Indicadores = {
   acoesConfiaveis: boolean;
   /** As seis conferencias e o que cada uma viu. */
   conferencias: Conferencia[];
+  /** A CVM declarou as acoes em milhares e o numero foi corrigido. */
+  escalaCorrigida: boolean;
   precoLucro: number | null;
   precoValorPatrimonial: number | null;
   evEbitda: number | null;
@@ -120,17 +122,43 @@ export function valorDeMercado(
   trimestre: Trimestre,
   precos: Fundamentos["precosPorClasse"],
   data: string,
+  precoDoPapel: number | null = null,
 ): number | null {
-  const partes: { acoes: number | null; preco: number | undefined }[] = [
+  const candidatas = [
     { acoes: trimestre.acoesOn, preco: precos.on[data] },
     { acoes: trimestre.acoesPn, preco: precos.pn[data] },
-  ];
+  ].filter((p) => p.acoes !== null && p.acoes > 0);
+
+  // Classe irrelevante nao bloqueia a conta. A Sabesp declara UMA acao
+  // preferencial ao lado de 3,5 bilhoes de ordinarias: exigir o preco dela
+  // deixaria a empresa inteira sem valor de mercado por R$ 50 de diferenca.
+  // O corte e por materialidade -- abaixo de 0,1% do total, a classe nao muda
+  // nenhum multiplo na segunda casa.
+  const totalDeAcoes = candidatas.reduce((s, p) => s + (p.acoes as number), 0);
+  const partes = candidatas.filter(
+    (p) => (p.acoes as number) / totalDeAcoes >= FRACAO_MINIMA_DA_CLASSE,
+  );
+
+  // Empresa de classe unica sem preco classificado: vale o fechamento do papel
+  // aberto. Se o balanco so tem ON, o papel que o usuario esta olhando SO pode
+  // ser o ON -- nao ha outra coisa para negociar. A duvida de "qual classe e
+  // esta" so existe quando ha duas, e ai a regra de cima continua valendo.
+  //
+  // Acontece porque 51 dos 447 tickers estao sem classe no banco: a B3 nao nos
+  // deu o ISIN deles. Sem esta saida, EMBR3, JBSS3 e ELET3 ficariam sem valor
+  // de mercado tendo preco e quantidade de acoes em maos.
+  if (
+    partes.length === 1 &&
+    partes[0].preco === undefined &&
+    precoDoPapel !== null
+  ) {
+    return (partes[0].acoes as number) * precoDoPapel;
+  }
 
   let total = 0;
   for (const { acoes, preco } of partes) {
-    if (acoes === null || acoes === 0) continue;
     if (preco === undefined) return null;
-    total += acoes * preco;
+    total += (acoes as number) * preco;
   }
   return total === 0 ? null : total;
 }
@@ -188,6 +216,14 @@ const QUEDA_MAXIMA_NA_SERIE = 500;
 /** A empresa inteira nao vale menos de 2% nem mais de 100x o proprio patrimonio. */
 const PISO_DO_VALOR_SOBRE_PATRIMONIO = 0.02;
 const TETO_DO_VALOR_SOBRE_PATRIMONIO = 100;
+
+/**
+ * Quanto uma classe precisa representar para o preco dela ser exigido.
+ *
+ * Abaixo disto ela nao move nenhum multiplo na segunda casa, e exigir o preco
+ * so faria a empresa inteira ficar sem valor de mercado.
+ */
+const FRACAO_MINIMA_DA_CLASSE = 0.001;
 
 /** Quantos trimestres a serie precisa ter para servir de referencia. */
 const MINIMO_PARA_COMPARAR_A_SERIE = 3;
@@ -281,6 +317,86 @@ export function acoesConfiaveis(camadas: Conferencia[]): boolean {
 }
 
 /**
+ * O erro de escala da CVM e sempre este: a empresa declarou em milhares.
+ *
+ * Nao e um fator ajustavel. Quem declara errado declara em milhares, e por isso
+ * a correcao e uma hipotese unica -- ou ela explica o numero, ou nao explica.
+ */
+const FATOR_DA_ESCALA = 1000;
+
+/**
+ * O mesmo trimestre com a contagem de acoes multiplicada.
+ *
+ * So a quantidade muda. O balanco em reais esta certo: a CVM erra a escala das
+ * ACOES, no `composicao_capital`, e nao a dos valores, que tem `ESCALA_MOEDA`.
+ */
+function comEscala(t: Trimestre, fator: number): Trimestre {
+  const vezes = (v: number | null) => (v === null ? null : v * fator);
+  return {
+    ...t,
+    acoesEmCirculacao: vezes(t.acoesEmCirculacao),
+    acoesOn: vezes(t.acoesOn),
+    acoesPn: vezes(t.acoesPn),
+  };
+}
+
+export type Contagem = {
+  /** O trimestre a usar, ja com a escala corrigida quando foi o caso. */
+  trimestre: Trimestre;
+  mercado: number | null;
+  conferencias: Conferencia[];
+  confiaveis: boolean;
+  escalaCorrigida: boolean;
+};
+
+/**
+ * Resolve a contagem de acoes: a da CVM, ou a corrigida, ou nenhuma.
+ *
+ * Reprovada a contagem publicada, a unica hipotese testada e "veio em
+ * milhares". E ela nao e aceita por ser plausivel: e submetida as MESMAS seis
+ * camadas, e so vale passando em todas. Nao passando, o numero continua
+ * recusado -- corrigir as cegas seria trocar um erro conhecido por um chute.
+ *
+ * A serie inteira e multiplicada junto com o trimestre, senao a camada `serie`
+ * compararia o corrigido contra um historico cru e reprovaria por construcao.
+ * Multiplicar tudo preserva as razoes, entao aquela camada decide o mesmo antes
+ * e depois -- quem muda de opiniao sao piso, teto, giro e patrimonio, que e
+ * exatamente o que se quer testar.
+ */
+export function resolverContagem(
+  trimestre: Trimestre,
+  serie: Trimestre[],
+  mercadoDe: (t: Trimestre) => number | null,
+  picoDeVolumeEmAcoes: number | null,
+): Contagem {
+  const tentar = (fator: number): Contagem => {
+    const alvo = fator === 1 ? trimestre : comEscala(trimestre, fator);
+    const historico =
+      fator === 1 ? serie : serie.map((x) => comEscala(x, fator));
+    const mercado = mercadoDe(alvo);
+    const conferencias = conferirAcoes(
+      alvo,
+      historico,
+      mercado,
+      picoDeVolumeEmAcoes,
+    );
+    return {
+      trimestre: alvo,
+      mercado,
+      conferencias,
+      confiaveis: acoesConfiaveis(conferencias),
+      escalaCorrigida: fator !== 1,
+    };
+  };
+
+  const publicada = tentar(1);
+  if (publicada.confiaveis) return publicada;
+
+  const corrigida = tentar(FATOR_DA_ESCALA);
+  return corrigida.confiaveis ? corrigida : publicada;
+}
+
+/**
  * Tudo que a aba mostra para um pregao.
  *
  * `null` quando nao ha trimestre publicado ate a data ou nao ha fechamento
@@ -302,23 +418,25 @@ export function indicadoresNaData(
   // quatro multiplos que dependem dela ficam em `null` -- e so eles: receita,
   // lucro, patrimonio, ROE, margem, liquidez e dividend yield nao dividem por
   // acao nenhuma e seguem valendo.
-  const mercadoBruto = valorDeMercado(trimestre, dados.precosPorClasse, data);
-  const conferencias = conferirAcoes(
+  const contagem = resolverContagem(
     trimestre,
     dados.trimestres,
-    mercadoBruto,
+    (t) => valorDeMercado(t, dados.precosPorClasse, data, preco),
     dados.picoDeVolumeEmAcoes,
   );
-  const confiaveis = acoesConfiaveis(conferencias);
-  const acoes = confiaveis ? trimestre.acoesEmCirculacao : null;
-  const mercado = confiaveis ? mercadoBruto : null;
+  const { conferencias, confiaveis, escalaCorrigida } = contagem;
+  // Daqui para baixo vale o trimestre que a contagem resolveu: e o mesmo
+  // balanco, com a quantidade de acoes corrigida se ela veio em milhares.
+  const doTrimestre = contagem.trimestre;
+  const acoes = confiaveis ? doTrimestre.acoesEmCirculacao : null;
+  const mercado = confiaveis ? contagem.mercado : null;
 
-  const lucroPorAcao = razao(trimestre.lucro12m, acoes, { positivo: true });
-  const valorPatrimonialPorAcao = razao(trimestre.patrimonioLiquido, acoes, {
+  const lucroPorAcao = razao(doTrimestre.lucro12m, acoes, { positivo: true });
+  const valorPatrimonialPorAcao = razao(doTrimestre.patrimonioLiquido, acoes, {
     positivo: true,
   });
   const empresa =
-    mercado === null ? null : mercado + (trimestre.dividaLiquida ?? 0);
+    mercado === null ? null : mercado + (doTrimestre.dividaLiquida ?? 0);
 
   const posicao = dados.trimestres.indexOf(trimestre);
   const serie = dados.trimestres.slice(
@@ -334,40 +452,41 @@ export function indicadoresNaData(
       : null;
 
   return {
-    trimestre,
+    trimestre: doTrimestre,
     preco,
     data,
     ehBanco,
     acoesConfiaveis: confiaveis,
     conferencias,
+    escalaCorrigida,
     precoLucro: razao(preco, lucroPorAcao, { positivo: true }),
     precoValorPatrimonial: razao(preco, valorPatrimonialPorAcao, {
       positivo: true,
     }),
     evEbitda: ehBanco
       ? null
-      : razao(empresa, trimestre.ebitda12m, { positivo: true }),
+      : razao(empresa, doTrimestre.ebitda12m, { positivo: true }),
     dividendYield: razao(proventosDeDozeMeses(dados.proventos, data), preco),
     valorDeMercado: mercado,
     retornoSobrePatrimonio: razao(
-      trimestre.lucro12m,
-      trimestre.patrimonioLiquido,
+      doTrimestre.lucro12m,
+      doTrimestre.patrimonioLiquido,
       {
         positivo: true,
       },
     ),
     margemLiquida: ehBanco
       ? null
-      : razao(trimestre.lucro12m, trimestre.receita12m, {
+      : razao(doTrimestre.lucro12m, doTrimestre.receita12m, {
           positivo: true,
         }),
     dividaLiquidaPatrimonio: ehBanco
       ? null
-      : razao(trimestre.dividaLiquida, trimestre.patrimonioLiquido, {
+      : razao(doTrimestre.dividaLiquida, doTrimestre.patrimonioLiquido, {
           positivo: true,
         }),
-    liquidezCorrente: trimestre.liquidezCorrente,
-    dividaLiquida: trimestre.dividaLiquida,
+    liquidezCorrente: doTrimestre.liquidezCorrente,
+    dividaLiquida: doTrimestre.dividaLiquida,
     anoAnterior,
     serie,
   };

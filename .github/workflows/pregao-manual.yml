@@ -15,6 +15,11 @@ on:
         description: "Pregao: 'ultimo' (o mais recente ja encerrado) ou uma data AAAA-MM-DD"
         required: false
         default: "ultimo"
+      fundamentos_forcar:
+        description: "Reprocessar os zips da CVM mesmo sem mudanca (so apos corrigir o parser)"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -24,4 +29,5 @@ jobs:
     uses: ./.github/workflows/pregao.yml
     with:
       trade_date: ${{ inputs.trade_date }}
+      fundamentos_forcar: ${{ inputs.fundamentos_forcar }}
     secrets: inherit

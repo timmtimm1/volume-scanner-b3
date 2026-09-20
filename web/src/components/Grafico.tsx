@@ -51,6 +51,9 @@ import { useMedias } from "@/lib/useMedias";
 import { PainelDaRegua } from "./PainelDaRegua";
 
 /** Cores das series: fixas nos dois temas. */
+/** A cor da marca de balanco no candle. A ficha le para montar a legenda. */
+export const COR_DO_BALANCO = "#7C8AA5";
+
 const SERIE = {
   alta: "#0E9F6E",
   baixa: "#E0474C",
@@ -67,7 +70,7 @@ const SERIE = {
   pm: "#64748B",
   // Balanco publicado: cinza-azulado, de proposito sem verde nem vermelho --
   // nao e direcao de preco, e uma data em que a empresa falou.
-  balanco: "#7C8AA5",
+  balanco: COR_DO_BALANCO,
 };
 
 /** Tamanho do rotulo da regua, em pixels -- para ele nao sair da area do grafico. */

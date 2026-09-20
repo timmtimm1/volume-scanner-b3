@@ -638,12 +638,26 @@ def fundamentos_atualizar(
     forcar: Annotated[
         bool, typer.Option("--forcar", help="Ignora o cache e reprocessa tudo.")
     ] = False,
+    sem_b3: Annotated[
+        bool,
+        typer.Option(
+            "--sem-b3",
+            help=(
+                "Pula cadastro e proventos da B3: so a CVM (balancos) e o "
+                "recalculo dos trimestres. E o que o pregao roda -- a CVM "
+                "publica por trimestre, nao por dia; a B3 fica para o "
+                "workflow semanal."
+            ),
+        ),
+    ] = False,
 ) -> None:
     """Liga empresas ao ticker e carrega os balancos da CVM (ITR/DFP)."""
     from scanner.fundamentos.carga import atualizar_fundamentos
     from scanner.storage.engine import build_engine
 
-    relatorio = atualizar_fundamentos(build_engine(), load_config().fundamentos, forcar=forcar)
+    relatorio = atualizar_fundamentos(
+        build_engine(), load_config().fundamentos, forcar=forcar, com_b3=not sem_b3
+    )
     for linha in relatorio.linhas():
         typer.echo(f"[fundamentos] {linha}")
     if relatorio.teve_falha:

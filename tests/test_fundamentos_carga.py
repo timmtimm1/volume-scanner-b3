@@ -237,9 +237,12 @@ def _rodar(
     config: FundamentosConfig,
     *,
     forcar: bool = False,
+    com_b3: bool = True,
     agora: datetime = AGORA,
 ) -> carga_mod.RelatorioFundamentos:
-    return carga_mod.atualizar_fundamentos(engine, config, agora=agora, forcar=forcar, pausa_b3=0)
+    return carga_mod.atualizar_fundamentos(
+        engine, config, agora=agora, forcar=forcar, com_b3=com_b3, pausa_b3=0
+    )
 
 
 def test_carga_liga_as_quatro_empresas(
@@ -265,6 +268,56 @@ def test_carga_liga_as_quatro_empresas(
     # Unipar: ITR 2026-03, ITR 2026-06, DFP 2025-12. Itau: ITR 2026-06.
     # Armac: ITR 2026-06. Individual: ITR 2026-06. Total 6 documentos.
     assert len(total_docs) == 6
+
+
+def test_sem_b3_pula_cadastro_e_proventos_mas_calcula_trimestre(
+    engine: Engine,
+    config: FundamentosConfig,
+    servidor: ServidorFalso,
+    b3: B3Falsa,
+    tickers: list[str],
+) -> None:
+    """`com_b3=False` e o que o pregao roda a cada passada.
+
+    A CVM publica por trimestre, nao por dia -- entao P/L, EV/EBITDA e o resto
+    do que a ficha calcula na hora nao dependem da B3 nenhum dia da semana. So
+    o cadastro (`detalhe_em`) e os proventos (`proventos_em`, `historico_em`)
+    ficam de fora; eles vao para o fundamentos-b3.yml, semanal.
+    """
+    relatorio = _rodar(engine, config, com_b3=False)
+
+    assert not relatorio.teve_falha
+    # O que P/L e companhia precisam: empresa ligada e trimestre calculado.
+    assert repository.contar_empresas(engine) == 4
+    total, empresas = repository.contar_trimestres(engine)
+    assert total > 0
+    assert empresas > 0
+
+    with engine.connect() as conn:
+        carimbos = conn.execute(
+            select(Empresa.detalhe_em, Empresa.proventos_em, Empresa.historico_em)
+        ).all()
+    assert carimbos, "deveria ter ao menos uma empresa ligada"
+    assert all(c.detalhe_em is None for c in carimbos)
+    assert all(c.proventos_em is None for c in carimbos)
+    assert all(c.historico_em is None for c in carimbos)
+
+
+def test_sem_b3_ainda_liga_ticker_novo_pela_busca_da_b3(
+    engine: Engine,
+    config: FundamentosConfig,
+    servidor: ServidorFalso,
+    b3: B3Falsa,
+    tickers: list[str],
+) -> None:
+    """A excecao do `com_b3=False`: ligar um ticker novo nao pode esperar uma
+    semana, senao o papel que acabou de cruzar o limiar fica sem ficha."""
+    _rodar(engine, config, com_b3=False)
+
+    # CRSM3 so existe na busca da B3 (o FCA nao declara); com_b3=False nao
+    # impede essa ligacao.
+    assert b3.buscas == ["CRSM3"]
+    assert repository.tickers_sem_empresa(engine) == []
 
 
 def test_escopo_vem_de_daily_bars(

@@ -51,3 +51,13 @@ jobs:
       fechamento se estende alguns minutos, que e justamente quando um
       rompimento acontece. Feriado da B3 tambem cai em dia util, e o cron nao
       sabe disso -- quem barra e a guarda `is_trading_day` no `alerta checar`.
+
+  fundamentos-b3:
+    workflow: fundamentos-b3.yml
+    cron: "30 8 * * 0"
+    porque: >-
+      Domingo as 08:30, uma vez por semana. Cadastro na B3 e proventos nao
+      pedem cadencia diaria -- a empresa nao publica balanco nem provento todo
+      dia, e nada aqui alimenta o alerta. Domingo porque o mercado esta
+      fechado e nao ha pressa nenhuma: da folga inteira antes da abertura de
+      segunda para qualquer coisa que precise de atencao.

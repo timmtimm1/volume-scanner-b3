@@ -593,30 +593,57 @@ scan → snapshot dos trades → resumo → retenção → fundamentos da CVM �
 na Vercel.
 
 O passo dos fundamentos não pode derrubar o pregão: ele roda com
-`continue-on-error`, tem teto de 15 minutos e aviso próprio no Telegram. Se a
+`continue-on-error`, tem teto de 10 minutos e aviso próprio no Telegram. Se a
 CVM estiver fora do ar, o alerta e o resumo saem do mesmo jeito, e a aba
 Fundamentos fica com os dados da véspera.
 
-O teto existe porque `continue-on-error` sozinho não bastava. O limite de 30
-minutos vale para o job inteiro: em 19/09/2026 a carga ficou 29min36s de pé, o
-job foi cancelado, e o **rebuild na Vercel nem chegou a rodar**. O pregão estava
-no banco havia meia hora e o site continuou mostrando o build anterior até
-alguém rodar o pregão manual. Uma passada boa leva cerca de 7 minutos.
+**Esse passo roda só a parte da CVM (`--sem-b3`): baixar ITR/DFP e recalcular
+os trimestres.** É o que P/L, EV/EBITDA, dividend yield e o resto dos múltiplos
+precisam — a CVM publica balanço por trimestre, não por dia, então checar
+diariamente é barato (download condicional; quase sempre "sem mudança"). O
+cadastro na B3 (ligação ticker↔empresa) e os proventos ficam de fora — não
+porque sejam menos importantes, mas porque a B3 não tem cadência diária para
+perseguir, e são eles quem tornava esse passo lento e instável.
 
-Cortar a carga no meio é seguro: ela grava empresa por empresa e marca cada uma
-como consultada, então a passada seguinte continua de onde parou; e a tabela de
-trimestres é trocada inteira numa transação só.
+Em 19/09/2026, antes desse corte, a carga (que incluía a B3) ficou 29min36s de
+pé, o job foi cancelado nos 30 minutos do teto do job inteiro, e o **rebuild na
+Vercel nem chegou a rodar**: o pregão estava no banco havia meia hora e o site
+continuou mostrando o build anterior até alguém rodar o manual. Sem a B3 no
+caminho, o passo agora leva segundos a poucos minutos, e o teto de 10 é folga,
+não expectativa.
+
+Cortar a carga no meio é seguro: ela grava documento por documento, e a tabela
+de trimestres é trocada inteira numa transação só.
 
 **Corrigir o parser não conserta o dado já gravado.** A carga só relê um zip
 quando a CVM muda o arquivo, e ITR de 2022 não muda mais — então uma correção
 na extração nunca alcançaria os documentos antigos. Para isso existe a opção
 **"Reprocessar os zips da CVM mesmo sem mudança"** no workflow `pregao manual`,
-que passa `--forcar` e sobe o teto do passo de 15 para 45 minutos. Use depois
-de corrigir o parser, e só então:
+que passa `--forcar` (sempre junto com `--sem-b3`, então continua rápido — sem
+tocar a B3, ~2 minutos localmente para 5 anos de ITR/DFP). Use depois de
+corrigir o parser, e só então:
 
 ```bash
 gh workflow run pregao-manual.yml -f trade_date=ultimo -f fundamentos_forcar=true
 ```
+
+### O cadastro e os proventos da B3: semanal, à parte
+
+`.github/workflows/fundamentos-b3.yml` faz a metade que o pregão não faz mais:
+liga o ticker que o FCA não declara à empresa (via busca na B3) e atualiza
+proventos recentes e histórico. Roda sozinho, uma vez por semana — domingo às
+08:30, pelo mesmo cron externo — porque nada disso muda todo dia e nada disso
+alimenta o alerta: dividend yield 12m atrasado alguns dias não muda a leitura
+da ficha.
+
+Sem gatilho de rebuild próprio: o pregão roda pelo menos uma vez por dia útil e
+já dispara o rebuild dele, então o que este workflow grava aparece no site na
+próxima passada normal.
+
+A única B3 que continua diária é a exceção dentro do próprio `_mapear_tickers`:
+ligar um ticker novo (o FCA não declara todos) não pode esperar uma semana,
+senão o papel que acabou de cruzar o limiar fica sem ficha. É rara — histórico
+de 34 de 438 tickers — e o pregão continua fazendo essa parte.
 
 Ele não roda sozinho. Dois workflows o chamam, e os dois executam exatamente as
 mesmas etapas:

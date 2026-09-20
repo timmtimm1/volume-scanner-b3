@@ -44,7 +44,11 @@ fundamentos:
   # Ticker procurado e nao encontrado (um ETF, por exemplo) so e procurado de
   # novo depois deste intervalo, em dias.
   dias_para_rechecar_ticker: 7
-  # Cadastro da empresa na B3 e historico de proventos: uma vez por semana.
+  # Cadastro da empresa na B3 e historico de proventos. Na pratica quem manda e
+  # o `fundamentos-b3.yml`, que so roda uma vez por semana (domingo) -- este
+  # numero e o piso interno, para nao reconsultar tudo se o workflow for
+  # disparado duas vezes na mesma semana.
   dias_para_rechecar_empresa: 7
-  # Proventos recentes: uma vez por dia.
+  # Proventos recentes. Mesma logica do campo acima: o `fundamentos-b3.yml` e
+  # quem define a cadencia real (semanal); este e o piso dentro dela.
   horas_para_rechecar_proventos: 20

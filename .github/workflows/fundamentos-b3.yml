@@ -1,0 +1,91 @@
+name: fundamentos b3
+
+# Disparado por um cron externo (cron-job.org) via workflow_dispatch, nao pelo
+# agendador nativo do GitHub -- mesmo motivo do daily.yml e do rompimentos.yml:
+# em repositorio publico gratuito ele atrasa e falha demais para ser confiavel.
+# Agenda em .github/cron-externo.yml.
+#
+# Cadastro na B3 (ticker -> empresa) e proventos nao pedem cadencia diaria: a
+# empresa nao publica balanco nem provento todo dia, e nada aqui alimenta o
+# alerta. O passo Fundamentos do pregao.yml roda so a parte da CVM
+# (`--sem-b3`), que e o que P/L, EV/EBITDA e afins precisam e nao depende da
+# B3. Esta e a unica passada que consulta a B3 -- e por isso pode ser semanal
+# sem a ficha ficar desatualizada: dividend yield 12m atrasado alguns dias nao
+# muda a leitura.
+#
+# Sem rebuild na Vercel aqui de proposito: o pregao roda pelo menos uma vez por
+# dia util e ja dispara o rebuild dele, entao o dado que este workflow grava
+# aparece no site na proxima passada normal, sem precisar de um gatilho extra.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fundamentos-b3
+  cancel-in-progress: false
+
+jobs:
+  b3:
+    runs-on: ubuntu-latest
+    # So a B3 tem timeout largo: sem o passo do pregao competindo pelos mesmos
+    # 30 minutos do job, nao ha pressa. Numa passada com tudo vencido de uma vez
+    # (as tres consultas para as ~320 empresas), a pior medida ja vista foi
+    # 29min36s.
+    timeout-minutes: 60
+
+    env:
+      SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
+      SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
+      SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
+
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Instalar dependencias
+        id: deps
+        run: uv sync --locked --no-dev
+
+      - name: Migrations
+        id: migrations
+        # --no-sync: sem ele o `uv run` ressincroniza com o grupo dev e baixa
+        # mypy, ruff e pytest a cada execucao, depois do `--no-dev` acima.
+        run: uv run --no-sync alembic upgrade head
+
+      - name: Cadastro e proventos na B3
+        id: b3
+        run: uv run --no-sync scanner fundamentos atualizar
+
+      - name: Avisar no Telegram se algo falhou
+        if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
+        shell: bash
+        env:
+          RES_DEPS: ${{ steps.deps.outcome }}
+          RES_MIGRATIONS: ${{ steps.migrations.outcome }}
+          RES_B3: ${{ steps.b3.outcome }}
+        run: |
+          onde="passo desconhecido"
+          if [ "$RES_DEPS" = failure ]; then
+            onde="instalacao das dependencias"
+          elif [ "$RES_MIGRATIONS" = failure ]; then
+            onde="migrations"
+          elif [ "$RES_B3" = failure ]; then
+            onde="cadastro ou proventos na B3"
+          fi
+
+          onde=$(printf '%s' "$onde" | tr -d '<>&')
+          texto=$(printf '⚠️ <b>Cadastro/proventos da B3 não atualizaram</b>\nOnde: %s\nA aba Fundamentos segue com os dados da passada anterior; o pregão diário não depende disto.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+
+          curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
+            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$texto"

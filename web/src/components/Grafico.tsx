@@ -65,6 +65,9 @@ const SERIE = {
   compra: "#2F6FED",
   venda: "#B45FE0",
   pm: "#64748B",
+  // Balanco publicado: cinza-azulado, de proposito sem verde nem vermelho --
+  // nao e direcao de preco, e uma data em que a empresa falou.
+  balanco: "#7C8AA5",
 };
 
 /** Tamanho do rotulo da regua, em pixels -- para ele nao sair da area do grafico. */
@@ -94,6 +97,11 @@ type Props = {
   hoje?: CandleDeHoje | null;
   /** Compras e vendas de TODOS os trades do papel, para os marcadores no candle. */
   operacoes?: { data: string; tipo: "compra" | "venda"; quantidade: number }[];
+  /**
+   * Dias em que a empresa entregou balanco. Viram uma marca no candle, para
+   * dar para ver se o volume anomalo veio logo depois do resultado.
+   */
+  publicacoes?: { data: string; rotulo: string }[];
   /**
    * O trade aberto do papel, ja marcado a mercado, para a linha tracejada do
    * preco medio. Null sem trade aberto -- sem ela, nao ha linha.
@@ -171,6 +179,7 @@ export function Grafico({
   aoEscolherPreco,
   hoje = null,
   operacoes = [],
+  publicacoes = [],
   posicao = null,
   regua,
 }: Props) {
@@ -212,6 +221,7 @@ export function Grafico({
   const linhasDeMedia = useRef(new Map<string, ISeriesApi<"Line">>());
   const linhaDoParcial = useRef<IPriceLine | null>(null);
   const marcadoresDeTrade = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const marcadoresDeBalanco = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const linhaDoPM = useRef<IPriceLine | null>(null);
   // Cores da superficie para o rotulo da regua (HTML por cima do canvas, nao
   // desenhado pelo lightweight-charts). Estado, nao ref -- o render le para
@@ -600,6 +610,38 @@ export function Grafico({
       });
     }
   }, [operacoes, posicao, barras, eventos, destaque]);
+
+  /**
+   * As marcas de balanco publicado, acima do candle.
+   *
+   * Ficam do lado oposto as de compra e venda, que vao embaixo: sao duas leituras
+   * diferentes e nao podem se empilhar. `eventos` e `destaque` entram nas
+   * dependencias porque a serie e recriada quando eles mudam, e a marca precisa
+   * ser reatada na serie nova -- o mesmo motivo do efeito de cima.
+   */
+  useEffect(() => {
+    const s = serie.current;
+    if (!s) return;
+
+    marcadoresDeBalanco.current?.detach();
+    const diasDoGrafico = barras.map((b) => b.tradeDate);
+    const marcas = publicacoes
+      .map((p) => ({
+        rotulo: p.rotulo,
+        // A empresa costuma entregar o balanco depois do fechamento: a marca vai
+        // no primeiro pregao a partir da entrega, que e quando o preco reagiu.
+        dia: diasDoGrafico.find((d) => d >= p.data),
+      }))
+      .filter((m): m is { rotulo: string; dia: string } => m.dia !== undefined)
+      .map((m) => ({
+        time: m.dia as Time,
+        position: "aboveBar" as const,
+        shape: "circle" as const,
+        color: SERIE.balanco,
+        text: m.rotulo,
+      }));
+    marcadoresDeBalanco.current = createSeriesMarkers(s, marcas);
+  }, [publicacoes, barras, eventos, destaque]);
 
   // A ultima versao de `recalcularPixelsDaRegua` (definida no efeito abaixo),
   // para o efeito de redimensionamento poder chamar a atual sem precisar

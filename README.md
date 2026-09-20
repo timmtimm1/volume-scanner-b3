@@ -607,6 +607,17 @@ Cortar a carga no meio é seguro: ela grava empresa por empresa e marca cada uma
 como consultada, então a passada seguinte continua de onde parou; e a tabela de
 trimestres é trocada inteira numa transação só.
 
+**Corrigir o parser não conserta o dado já gravado.** A carga só relê um zip
+quando a CVM muda o arquivo, e ITR de 2022 não muda mais — então uma correção
+na extração nunca alcançaria os documentos antigos. Para isso existe a opção
+**"Reprocessar os zips da CVM mesmo sem mudança"** no workflow `pregao manual`,
+que passa `--forcar` e sobe o teto do passo de 15 para 45 minutos. Use depois
+de corrigir o parser, e só então:
+
+```bash
+gh workflow run pregao-manual.yml -f trade_date=ultimo -f fundamentos_forcar=true
+```
+
 Ele não roda sozinho. Dois workflows o chamam, e os dois executam exatamente as
 mesmas etapas:
 
@@ -796,6 +807,20 @@ pareceriam complexas demais para o problema.
   ETFs e um recibo de subscrição. Ligar pelo prefixo do ticker resolveria e
   está fora de questão: na B3, o emissor "EMBR" é a EMBRAST, e não a Embraer.
   Melhor ficar sem fundamentos do que mostrar o balanço de outra empresa.
+- **Repartição do lucro zerada não é repartição, é ausência.** A DRE quebra o
+  resultado em "Atribuído a Sócios da Empresa Controladora" e "a Sócios Não
+  Controladores", e é a primeira que interessa. Só que **561 dos 2.317 períodos
+  do ITR de 2023 trazem as duas em zero com o consolidado cheio**: o Santander
+  declara R$ 2,78 bi no 3T23 e reparte em 0 + 0. Ler o zero ao pé da letra
+  deixava 781 trimestres com lucro exatamente zero — Santander, Sabesp e
+  Eletrobras entre eles — e o gráfico desenhava barra nenhuma, como se a
+  empresa não tivesse dado resultado.
+
+  Zero ali não pode significar "o controlador não ganhou nada": para isso ele
+  teria de ter 0% da companhia. Então filha em zero com o pai preenchido vale o
+  consolidado. Restam 13 trimestres com lucro zero, todos de empresa dormente,
+  com receita zero também.
+
 - **Um terço das empresas declara as ações em milhares, e a CVM não diz qual
   delas.** O `composicao_capital` não tem coluna de escala: a Unipar informa
   113.173.265 ações e a Afluente informa 63.085, que são 63.085.000. Nada no

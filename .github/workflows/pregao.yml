@@ -12,6 +12,11 @@ on:
         type: string
         required: false
         default: "ultimo"
+      fundamentos_forcar:
+        description: "Reprocessa os zips da CVM mesmo sem mudanca (ver README)"
+        type: boolean
+        required: false
+        default: false
 
 jobs:
   scan:
@@ -29,6 +34,7 @@ jobs:
       SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
       SCANNER_WEB_BASE_URL: ${{ vars.SCANNER_WEB_BASE_URL }}
       PREGAO: ${{ inputs.trade_date || 'ultimo' }}
+      FUNDAMENTOS_FORCAR: ${{ inputs.fundamentos_forcar && '--forcar' || '' }}
       VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
     steps:
       - name: Barrar Re-run de codigo antigo
@@ -116,9 +122,15 @@ jobs:
         # cada uma como consultada, entao a proxima passada continua de onde
         # esta; e `gravar_trimestres` troca a tabela inteira numa transacao so,
         # que ou entra ou nao entra.
+        #
+        # `--forcar` (so pelo pregao manual) reprocessa os zips mesmo sem
+        # mudanca na CVM. E o caminho de uma correcao no parser chegar ao
+        # dado ja gravado: sem ele, documento cujo arquivo nao mudou nunca e
+        # relido, e ITR de 2022 nao muda mais. Demora bem mais que os 15
+        # minutos do passo normal, por isso o teto sobe junto.
         continue-on-error: true
-        timeout-minutes: 15
-        run: uv run --no-sync scanner fundamentos atualizar
+        timeout-minutes: ${{ inputs.fundamentos_forcar && 45 || 15 }}
+        run: uv run --no-sync scanner fundamentos atualizar $FUNDAMENTOS_FORCAR
 
       - name: Avisar no Telegram se os fundamentos falharam
         if: ${{ steps.fundamentos.outcome == 'failure' && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}

@@ -273,6 +273,91 @@ def test_escala_unidade_nao_multiplica(tmp_path: Path) -> None:
     assert linha["ativo_total"] == pytest.approx(12_345)
 
 
+def _zip_com_dre(tmp_path: Path, linhas_dre: str) -> Path:
+    """Um zip de ITR minimo com uma DRE fabricada, para casos que o recorte real
+    nao tem. Mesmo formato dos CSVs da CVM: latin-1 e separador `;`."""
+    indice = (
+        "CNPJ_CIA;DT_REFER;VERSAO;CD_CVM;ID_DOC;DT_RECEB\n"
+        "11.111.111/0001-11;2026-06-30;1;999999;1;2026-08-01\n"
+    )
+    cabecalho = (
+        "CNPJ_CIA;DT_REFER;VERSAO;DENOM_CIA;CD_CVM;GRUPO_DFP;MOEDA;ESCALA_MOEDA;"
+        "ORDEM_EXERC;DT_INI_EXERC;DT_FIM_EXERC;CD_CONTA;DS_CONTA;VL_CONTA;ST_CONTA_FIXA\n"
+    )
+    zip_path = tmp_path / "itr_2026.zip"
+    with zipfile.ZipFile(zip_path, "w") as zf:
+        zf.writestr("itr_cia_aberta_2026.csv", indice.encode("latin-1"))
+        zf.writestr(
+            "itr_cia_aberta_DRE_con_2026.csv",
+            (cabecalho + linhas_dre).encode("latin-1"),
+        )
+    return zip_path
+
+
+def _linha_dre(cd_conta: str, ds_conta: str, valor: str) -> str:
+    return (
+        f"11.111.111/0001-11;2026-06-30;1;FABRICADA S.A.;999999;DRE;REAL;MIL;"
+        f"ÚLTIMO;2026-04-01;2026-06-30;{cd_conta};{ds_conta};{valor};S\n"
+    )
+
+
+def test_reparticao_do_lucro_zerada_vale_o_consolidado(tmp_path: Path) -> None:
+    """Filha "controladora" em zero com o pai cheio e ausencia, nao reparticao.
+
+    O caso real e o Banco Santander: no 3T23 ele declara R$ 2,78 bi em
+    "Lucro/Prejuizo Consolidado do Periodo" (3.09) e reparte em 0 + 0 nas duas
+    filhas. Sao 561 dos 2.317 periodos do ITR de 2023 -- e 781 trimestres da
+    base local saiam com lucro exatamente zero por causa disso, incluindo
+    Santander, Sabesp e Eletrobras.
+
+    Zero ali nao pode significar "o controlador nao ganhou nada": para isso ele
+    teria de ter 0% da companhia.
+    """
+    dre = (
+        _linha_dre("3.01", "Receitas da Intermediação Financeira", "32651076.00")
+        + _linha_dre("3.09", "Lucro/Prejuízo Consolidado do Período", "2780672.00")
+        + _linha_dre("3.09.01", "Atribuído a Sócios da Empresa Controladora", "0.00")
+        + _linha_dre("3.09.02", "Atribuído a Sócios Não Controladores", "0.00")
+    )
+    extracao = extrair_documentos(_zip_com_dre(tmp_path, dre), "ITR", {999999})
+    linha = _resultado(extracao.resultados, 999999, date(2026, 4, 1), date(2026, 6, 30))
+    assert linha["lucro_liquido"] == pytest.approx(2_780_672_000)
+    assert linha["lucro_controladores"] == pytest.approx(2_780_672_000)
+
+
+def test_reparticao_do_lucro_preenchida_continua_valendo(tmp_path: Path) -> None:
+    """A correcao nao pode atropelar quem preencheu: com minoritarios de
+    verdade, o lucro dos controladores e MENOR que o consolidado."""
+    dre = (
+        _linha_dre("3.09", "Lucro/Prejuízo Consolidado do Período", "1000000.00")
+        + _linha_dre("3.09.01", "Atribuído a Sócios da Empresa Controladora", "900000.00")
+        + _linha_dre("3.09.02", "Atribuído a Sócios Não Controladores", "100000.00")
+    )
+    extracao = extrair_documentos(_zip_com_dre(tmp_path, dre), "ITR", {999999})
+    linha = _resultado(extracao.resultados, 999999, date(2026, 4, 1), date(2026, 6, 30))
+    assert linha["lucro_controladores"] == pytest.approx(900_000_000)
+
+
+def test_prejuizo_repartido_em_zero_tambem_vale_o_consolidado(tmp_path: Path) -> None:
+    """O mesmo vale para prejuizo: o sinal nao muda a regra."""
+    dre = _linha_dre("3.09", "Lucro/Prejuízo Consolidado do Período", "-450000.00") + _linha_dre(
+        "3.09.01", "Atribuído a Sócios da Empresa Controladora", "0.00"
+    )
+    extracao = extrair_documentos(_zip_com_dre(tmp_path, dre), "ITR", {999999})
+    linha = _resultado(extracao.resultados, 999999, date(2026, 4, 1), date(2026, 6, 30))
+    assert linha["lucro_controladores"] == pytest.approx(-450_000_000)
+
+
+def test_consolidado_zerado_de_verdade_continua_zero(tmp_path: Path) -> None:
+    """Pai em zero nao e ausencia: nada a substituir, e zero permanece."""
+    dre = _linha_dre("3.09", "Lucro/Prejuízo Consolidado do Período", "0.00") + _linha_dre(
+        "3.09.01", "Atribuído a Sócios da Empresa Controladora", "0.00"
+    )
+    extracao = extrair_documentos(_zip_com_dre(tmp_path, dre), "ITR", {999999})
+    linha = _resultado(extracao.resultados, 999999, date(2026, 4, 1), date(2026, 6, 30))
+    assert linha["lucro_controladores"] == pytest.approx(0)
+
+
 # --- Cadastro da CVM ---------------------------------------------------------
 
 

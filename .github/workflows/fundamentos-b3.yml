@@ -18,6 +18,12 @@ name: fundamentos b3
 # aparece no site na proxima passada normal, sem precisar de um gatilho extra.
 on:
   workflow_dispatch:
+    inputs:
+      forcar:
+        description: "Reconsultar a B3 inteira, ignorando quem ja foi consultado"
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: read
@@ -36,6 +42,7 @@ jobs:
     timeout-minutes: 60
 
     env:
+      FORCAR: ${{ inputs.forcar && '--forcar' || '' }}
       SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
       SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
       SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
@@ -60,10 +67,24 @@ jobs:
 
       - name: Cadastro e proventos na B3
         id: b3
-        run: uv run --no-sync scanner fundamentos atualizar
+        # `--forcar` zera os cortes e reconsulta as ~320 empresas nas tres
+        # perguntas. E o caminho de uma correcao no parser de proventos chegar
+        # ao dado ja gravado: sem ele, empresa consultada ha menos de uma
+        # semana nunca e relida, e o numero errado fica. Mesma lacuna que o
+        # pregao manual fechou do lado da CVM.
+        #
+        # Nao use sem motivo: sao ~930 requisicoes na B3 contra as 0 de uma
+        # passada em que nada venceu.
+        run: uv run --no-sync scanner fundamentos atualizar $FORCAR
 
       - name: Avisar no Telegram se algo falhou
-        if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
+        # `cancelled()` junto de `failure()`: com `--forcar` o job passa a poder
+        # bater nos 60 minutos, e job cancelado por tempo nao e falha -- sem
+        # isto ele morreria calado, que e o mesmo silencio ambiguo que o
+        # rompimentos.yml ja fecha.
+        if: >-
+          ${{ (failure() || cancelled()) && env.SCANNER_TELEGRAM_BOT_TOKEN != ''
+          && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
         shell: bash
         env:
           RES_DEPS: ${{ steps.deps.outcome }}
@@ -71,7 +92,9 @@ jobs:
           RES_B3: ${{ steps.b3.outcome }}
         run: |
           onde="passo desconhecido"
-          if [ "$RES_DEPS" = failure ]; then
+          if [ "$RES_B3" = cancelled ]; then
+            onde="B3, cancelado no teto de 60 minutos"
+          elif [ "$RES_DEPS" = failure ]; then
             onde="instalacao das dependencias"
           elif [ "$RES_MIGRATIONS" = failure ]; then
             onde="migrations"

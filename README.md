@@ -645,6 +645,21 @@ ligar um ticker novo (o FCA não declara todos) não pode esperar uma semana,
 senão o papel que acabou de cruzar o limiar fica sem ficha. É rara — histórico
 de 34 de 438 tickers — e o pregão continua fazendo essa parte.
 
+**Corrigir o parser de proventos também não conserta o dado já gravado** — a
+mesma armadilha da CVM, do outro lado. Empresa consultada há menos de uma
+semana não é relida, e o número errado fica. Para isso o workflow tem a opção
+**"Reconsultar a B3 inteira, ignorando quem já foi consultado"**, que passa
+`--forcar`:
+
+```bash
+gh workflow run fundamentos-b3.yml -f forcar=true
+```
+
+Não use sem motivo: são cerca de 930 requisições na B3 (as três perguntas para
+as ~320 empresas), contra zero numa passada em que nada venceu. O teto do job é
+de 60 minutos, e o aviso no Telegram cobre também o cancelamento por tempo —
+que, com `--forcar`, deixa de ser hipotético.
+
 Ele não roda sozinho. Dois workflows o chamam, e os dois executam exatamente as
 mesmas etapas:
 

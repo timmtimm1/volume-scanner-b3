@@ -832,10 +832,38 @@ pareceriam complexas demais para o problema.
   três trimestres de 2025, e comparar contra esse pico reprovaria justamente os
   trimestres em que ela declarou os 3,2 bilhões corretos.
 
-  Reprovando em qualquer camada, os quatro múltiplos que dividem por ação viram
+  **Reprovada a contagem publicada, uma hipótese é testada: "veio em
+  milhares".** Ela não é aceita por ser plausível — passa pelas mesmas seis
+  camadas, e só vale se sobreviver a todas. Não passando, o número continua
+  recusado; corrigir às cegas seria trocar um erro conhecido por um chute.
+
+  Isso resgata **127 dos 143 papéis** que a recusa pura deixaria sem valuation,
+  incluindo VALE3, ITUB4, ABEV3, ITSA4, LREN3, ASAI3, ELET3 e EMBR3 — as
+  gigantes são justamente as que mais declaram em milhares. Das 30 blue chips
+  testadas, 30 mostram P/L e P/VP e 28 mostram valor de mercado. A ficha avisa
+  quando o número foi corrigido.
+
+  Nos 16 que nem assim passam, os quatro múltiplos que dividem por ação viram
   travessão e **a ficha diz qual conferência falhou**. Receita, lucro, EBITDA,
   patrimônio, ROE, margem, liquidez e dividend yield não dependem da contagem e
   continuam — são 9 dos 13 números.
+
+- **51 dos 447 tickers estão sem classe**, porque a B3 não devolveu o ISIN
+  deles. Sem classe, o fechamento não entra na soma por classe e o valor de
+  mercado ficaria nulo mesmo com preço e quantidade em mãos. Duas saídas,
+  ambas por construção e não por chute:
+
+  - **empresa de classe única** usa o fechamento do papel aberto: se o balanço
+    só tem ON, o papel que o usuário está olhando só pode ser o ON. Resolve
+    EMBR3 e JBSS3;
+  - **classe irrelevante não bloqueia a conta**: a Sabesp declara UMA ação
+    preferencial ao lado de 3,5 bilhões de ordinárias, e exigir o preço dela
+    deixaria a empresa inteira sem valor de mercado por R$ 50 de diferença.
+    Abaixo de 0,1% do total, a classe não move nenhum múltiplo na segunda casa.
+
+  Empresa com duas classes de verdade e preço faltando continua nula — somar
+  só parte das ações daria um valor menor que o real. É o caso de CPLE6 e
+  ELET3 enquanto a B3 não devolver o ISIN delas.
 - **O rompimento só vê o preço do instante da checagem**, a cada 15 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.

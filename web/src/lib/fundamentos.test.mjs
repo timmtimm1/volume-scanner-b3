@@ -330,8 +330,9 @@ describe("conferirAcoes: as seis camadas", () => {
   });
 });
 
-describe("indicadoresNaData com a contagem de acoes reprovada", () => {
-  // Um terco da base cai aqui. O que divide por acao sai; o resto fica.
+describe("indicadoresNaData e a escala das acoes", () => {
+  // Um terco da base declara em milhares -- a VALE3 entre elas. A correcao nao
+  // e aceita por ser plausivel: ela passa pelas MESMAS seis camadas.
   const emMilhares = dados({
     trimestres: SERIE.map((t) => ({
       ...t,
@@ -339,24 +340,89 @@ describe("indicadoresNaData com a contagem de acoes reprovada", () => {
       acoesOn: Math.round(t.acoesOn / 1000),
       acoesPn: Math.round(t.acoesPn / 1000),
     })),
+    // Com liquidez de verdade a camada `giro` reprova o numero publicado: a
+    // empresa "teria" 111 mil acoes e o papel negociou 1,2 milhao num dia.
+    picoDeVolumeEmAcoes: 1_200_000,
   });
 
-  it("os quatro multiplos que dividem por acao viram travessao", () => {
+  it("a contagem em milhares e corrigida e os multiplos voltam", () => {
     const i = indicadoresNaData(emMilhares, barras, "2026-09-15");
+    assert.equal(i.escalaCorrigida, true);
+    assert.equal(i.acoesConfiaveis, true);
+    assert.ok(i.precoLucro > 0);
+    assert.ok(i.precoValorPatrimonial > 0);
+    assert.ok(i.valorDeMercado > 0);
+  });
+
+  it("corrigida, ela da o mesmo numero da contagem certa", () => {
+    const certa = indicadoresNaData(dados(), barras, "2026-09-15");
+    const corrigida = indicadoresNaData(emMilhares, barras, "2026-09-15");
+    // 1 parte em mil de folga: dividir por 1000 e arredondar perde o resto.
+    perto(corrigida.precoLucro, certa.precoLucro, certa.precoLucro / 1000);
+    perto(
+      corrigida.precoValorPatrimonial,
+      certa.precoValorPatrimonial,
+      certa.precoValorPatrimonial / 1000,
+    );
+    assert.equal(certa.escalaCorrigida, false);
+  });
+
+  it("o que a correcao nao explica continua recusado", () => {
+    // 1 acao declarada: x1000 da 1.000, que ainda nao passa no piso.
+    const lixo = dados({
+      trimestres: SERIE.map((t) => ({
+        ...t,
+        acoesEmCirculacao: 1,
+        acoesOn: 1,
+        acoesPn: 0,
+      })),
+    });
+    const i = indicadoresNaData(lixo, barras, "2026-09-15");
     assert.equal(i.acoesConfiaveis, false);
+    assert.equal(i.escalaCorrigida, false);
     assert.equal(i.precoLucro, null);
     assert.equal(i.precoValorPatrimonial, null);
     assert.equal(i.evEbitda, null);
     assert.equal(i.valorDeMercado, null);
   });
 
-  it("o que nao depende de acao continua valendo", () => {
-    const i = indicadoresNaData(emMilhares, barras, "2026-09-15");
+  it("recusada, o que nao depende de acao continua valendo", () => {
+    const lixo = dados({
+      trimestres: SERIE.map((t) => ({ ...t, acoesEmCirculacao: 1, acoesOn: 1, acoesPn: 0 })),
+    });
+    const i = indicadoresNaData(lixo, barras, "2026-09-15");
     perto(i.retornoSobrePatrimonio, 266_559_000 / 1_998_822_000);
     perto(i.margemLiquida, 266_559_000 / 5_233_765_000);
     perto(i.liquidezCorrente, 2.386);
     perto(i.dividendYield, 6.47680215548 / 57.48);
     assert.equal(i.trimestre.receita12m, 5_233_765_000);
-    assert.equal(i.trimestre.patrimonioLiquido, 1_998_822_000);
+  });
+});
+
+describe("valorDeMercado e as classes", () => {
+  it("empresa de classe unica sem preco classificado usa o do papel aberto", () => {
+    // 51 dos 447 tickers estao sem classe no banco: a B3 nao deu o ISIN. Sem
+    // esta saida, EMBR3 e JBSS3 ficariam sem valor de mercado.
+    const soOn = { ...DOIS_T26, acoesOn: 740_465_000, acoesPn: 0 };
+    const vazio = { on: {}, pn: {} };
+    assert.equal(valorDeMercado(soOn, vazio, "2026-09-15", 86.15), 740_465_000 * 86.15);
+    // Sem o preco do papel nao ha de onde tirar: continua nulo.
+    assert.equal(valorDeMercado(soOn, vazio, "2026-09-15", null), null);
+  });
+
+  it("classe irrelevante nao bloqueia a conta", () => {
+    // A Sabesp declara UMA acao preferencial ao lado de 3,5 bilhoes de ON.
+    const sabesp = { ...DOIS_T26, acoesOn: 3_506_830_477, acoesPn: 1 };
+    const soOn = { on: { "2026-09-15": 26.92 }, pn: {} };
+    perto(
+      valorDeMercado(sabesp, soOn, "2026-09-15"),
+      3_506_830_477 * 26.92,
+      1,
+    );
+  });
+
+  it("duas classes de verdade e uma sem preco continua nulo", () => {
+    const soOn = { on: { "2026-09-15": 55.4 }, pn: {} };
+    assert.equal(valorDeMercado(DOIS_T26, soOn, "2026-09-15", 57.48), null);
   });
 });

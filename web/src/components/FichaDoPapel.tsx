@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AnelDoDesvio } from "@/components/AnelDoDesvio";
-import { Grafico } from "@/components/Grafico";
+import { COR_DO_BALANCO, Grafico } from "@/components/Grafico";
 import { PainelDeFundamentos } from "@/components/PainelDeFundamentos";
 import type { Direcao } from "@/lib/alertas";
 import { PainelDeAlerta } from "@/components/PainelDeAlerta";
@@ -299,10 +299,27 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
 
         {/* Grafico */}
         <section className="cartao flex min-w-0 flex-col gap-4 p-4 md:p-5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
-          <div className="flex flex-col gap-0.5">
+          <div className="flex flex-col gap-1">
             <h2 className="text-[18px] font-extrabold">Gráfico diário</h2>
-            <p className="text-[13px] font-semibold text-tinta-3">
-              {barras.length} pregões{parcial ? " e a cotação de hoje" : ""} · candle do evento em dourado
+            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-tinta-3">
+              <span>
+                {barras.length} pregões{parcial ? " e a cotação de hoje" : ""}
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="h-2.5 w-1.5 rounded-[1px] bg-evento" />
+                candle do evento
+              </span>
+              {/* As marcas de balanco apareciam no candle sem nada dizendo o
+                  que eram. A cor vem do proprio grafico, para nao divergir. */}
+              {publicacoes.length > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <span
+                    className="h-2 w-2 rounded-full"
+                    style={{ background: COR_DO_BALANCO }}
+                  />
+                  balanço publicado
+                </span>
+              )}
             </p>
           </div>
 

@@ -1,6 +1,6 @@
 "use client";
 
-import { type ReactNode, useMemo } from "react";
+import { type ReactNode, useMemo, useState } from "react";
 import {
   indicadoresNaData,
   type Indicadores,
@@ -21,6 +21,10 @@ type Props = {
   /** Pregao que a ficha esta mostrando. */
   data: string;
 };
+
+/** Largura do balao do trimestre, em pixels -- o clamp precisa dela para
+ *  prender o balao dentro do grafico nas colunas das pontas. */
+const LARGURA_DO_BALAO = 168;
 
 const corDaDirecao = (v: number | null) =>
   (v ?? 0) >= 0 ? "text-alta" : "text-baixa";
@@ -58,56 +62,284 @@ function Grupo({ titulo, children }: { titulo: string; children: ReactNode }) {
   );
 }
 
-/**
- * Receita e lucro dos ultimos trimestres, lado a lado.
- *
- * Barra de lucro negativo desce abaixo da linha: prejuizo nao e uma barra
- * pequena, e outra direcao.
- */
-function MiniSerie({ indicadores }: { indicadores: Indicadores }) {
-  const serie = indicadores.serie;
-  if (serie.length < 2) return null;
+type BarraDoGrafico = {
+  valor: number | null;
+  /** Classe de fundo quando o valor e positivo. */
+  cor: string;
+  /** Classe de fundo quando e negativo. Sem ela, vale `cor` nos dois lados. */
+  corNegativa?: string;
+};
 
-  const valores = serie.flatMap((t) => [t.receitaTri ?? 0, t.lucroTri ?? 0]);
-  const teto = Math.max(...valores.map(Math.abs), 1);
+type Coluna = {
+  chave: string;
+  /** O que o trimestre diz, para o leitor de tela e para o rotulo do toque. */
+  descricao: string;
+  rotulo: string;
+  valores: { nome: string; texto: string }[];
+  barras: BarraDoGrafico[];
+};
+
+/**
+ * Barras de trimestre com a linha do zero no lugar certo.
+ *
+ * Valor negativo desce ABAIXO da linha. Prejuizo nao e um lucro pequeno pintado
+ * de vermelho -- e a outra direcao, e o grafico tem de mostrar isso. Por isso a
+ * altura acima e abaixo da linha e proporcional ao maior positivo e ao maior
+ * negativo da serie: a linha do zero flutua conforme o dado.
+ *
+ * Serve tanto para receita/lucro quanto para divida/EBITDA, e em divida o
+ * negativo e caixa liquido -- bom, nao ruim. Por isso a cor de cada lado e de
+ * quem chama, e nao uma regra fixa aqui dentro.
+ */
+function BarrasComZero({
+  colunas,
+  altura = 72,
+  selecionada,
+  aoSelecionar,
+}: {
+  colunas: Coluna[];
+  altura?: number;
+  selecionada: string | null;
+  aoSelecionar: (chave: string | null) => void;
+}) {
+  const valores = colunas.flatMap((c) => c.barras.map((b) => b.valor ?? 0));
+  const teto = Math.max(0, ...valores);
+  const piso = Math.min(0, ...valores);
+  const amplitude = teto - piso || 1;
+  const acima = (teto / amplitude) * 100;
+
+  const fatia = (b: BarraDoGrafico, lado: "cima" | "baixo") => {
+    const v = b.valor;
+    if (v === null || v === 0) return { altura: 0, cor: "" };
+    if (lado === "cima") {
+      return v > 0 && teto > 0
+        ? { altura: (v / teto) * 100, cor: b.cor }
+        : { altura: 0, cor: "" };
+    }
+    return v < 0 && piso < 0
+      ? { altura: (v / piso) * 100, cor: b.corNegativa ?? b.cor }
+      : { altura: 0, cor: "" };
+  };
 
   return (
-    <div className="flex flex-col gap-1.5 pt-3">
-      <div className="flex items-end gap-1" aria-hidden>
-        {serie.map((t) => (
-          <div
-            key={t.dtFim}
-            className="flex flex-1 flex-col items-center gap-[2px]"
-          >
-            <div className="flex h-12 w-full items-end justify-center gap-[2px]">
-              <span
-                className="w-1/2 rounded-t-[2px] bg-acento/70"
-                style={{
-                  height: `${(Math.abs(t.receitaTri ?? 0) / teto) * 100}%`,
-                }}
-              />
-              <span
-                className={`w-1/2 rounded-t-[2px] ${(t.lucroTri ?? 0) >= 0 ? "bg-alta" : "bg-baixa"}`}
-                style={{
-                  height: `${(Math.abs(t.lucroTri ?? 0) / teto) * 100}%`,
-                }}
-              />
-            </div>
+    <div className="flex items-stretch gap-1" style={{ height: altura }}>
+      {colunas.map((coluna) => (
+        <button
+          key={coluna.chave}
+          type="button"
+          aria-label={coluna.descricao}
+          aria-pressed={selecionada === coluna.chave}
+          onClick={() =>
+            aoSelecionar(selecionada === coluna.chave ? null : coluna.chave)
+          }
+          // No desktop o gesto natural e o ponteiro; o clique e o foco ficam
+          // para teclado. No celular nada disso aparece -- ver o comentario do
+          // balao --, mas o botao continua, porque o `aria-label` dele e como o
+          // leitor de tela da os valores do trimestre em qualquer largura.
+          onMouseEnter={() => aoSelecionar(coluna.chave)}
+          onMouseLeave={() => aoSelecionar(null)}
+          onFocus={() => aoSelecionar(coluna.chave)}
+          onBlur={() => aoSelecionar(null)}
+          className={`flex flex-1 flex-col rounded-[3px] transition-colors ${
+            selecionada === coluna.chave ? "lg:bg-selecao" : ""
+          }`}
+        >
+          <div className="flex w-full items-end gap-[2px]" style={{ height: `${acima}%` }}>
+            {coluna.barras.map((b, i) => {
+              const f = fatia(b, "cima");
+              return (
+                <span
+                  key={`${coluna.chave}-cima-${i}`}
+                  className={`flex-1 rounded-t-[2px] ${f.cor}`}
+                  style={{ height: `${f.altura}%` }}
+                />
+              );
+            })}
           </div>
-        ))}
+          <span className="h-px w-full shrink-0 bg-tinta-3/40" />
+          <div className="flex w-full items-start gap-[2px]" style={{ height: `${100 - acima}%` }}>
+            {coluna.barras.map((b, i) => {
+              const f = fatia(b, "baixo");
+              return (
+                <span
+                  key={`${coluna.chave}-baixo-${i}`}
+                  className={`flex-1 rounded-b-[2px] ${f.cor}`}
+                  style={{ height: `${f.altura}%` }}
+                />
+              );
+            })}
+          </div>
+        </button>
+      ))}
+    </div>
+  );
+}
+
+function Legenda({ itens }: { itens: { cor: string; nome: string }[] }) {
+  return (
+    <span className="flex items-center gap-2.5">
+      {itens.map((i) => (
+        <span key={i.nome} className="flex items-center gap-1">
+          <span className={`h-2 w-2 rounded-[2px] ${i.cor}`} /> {i.nome}
+        </span>
+      ))}
+    </span>
+  );
+}
+
+/**
+ * Os trimestres em grafico, com um seletor entre resultado e endividamento.
+ *
+ * O de endividamento poe divida liquida e EBITDA de 12 meses lado a lado de
+ * proposito: e a leitura visual da alavancagem, que a razao no rodape confirma
+ * em numero. Divida negativa e caixa liquido e desce em verde, porque ali para
+ * baixo e bom -- o contrario do prejuizo.
+ *
+ * Em banco o seletor nem aparece: nao ha divida liquida nem EBITDA no sentido
+ * usual, e uma aba vazia so confundiria.
+ */
+function GraficosDoTrimestre({ indicadores }: { indicadores: Indicadores }) {
+  const [grafico, setGrafico] = useState<"resultado" | "endividamento">(
+    "resultado",
+  );
+  const [selecionada, setSelecionada] = useState<string | null>(null);
+  const serie = indicadores.serie;
+
+  const temEndividamento =
+    !indicadores.ehBanco &&
+    serie.some((t) => t.dividaLiquida !== null || t.ebitda12m !== null);
+
+  if (serie.length < 2) return null;
+  const ver = temEndividamento ? grafico : "resultado";
+
+  const colunas: Coluna[] =
+    ver === "resultado"
+      ? serie.map((t) => ({
+          chave: t.dtFim,
+          rotulo: t.rotulo,
+          valores: [
+            { nome: "receita", texto: dinheiro(t.receitaTri) },
+            { nome: "lucro", texto: dinheiro(t.lucroTri) },
+          ],
+          descricao: `${t.rotulo}: receita ${dinheiro(t.receitaTri)}, lucro ${dinheiro(t.lucroTri)}`,
+          barras: [
+            { valor: t.receitaTri, cor: "bg-acento/70" },
+            { valor: t.lucroTri, cor: "bg-alta", corNegativa: "bg-baixa" },
+          ],
+        }))
+      : serie.map((t) => ({
+          chave: t.dtFim,
+          rotulo: t.rotulo,
+          valores: [
+            { nome: "dívida líq.", texto: dinheiro(t.dividaLiquida) },
+            { nome: "EBITDA 12m", texto: dinheiro(t.ebitda12m) },
+          ],
+          descricao: `${t.rotulo}: dívida líquida ${dinheiro(t.dividaLiquida)}, EBITDA de 12 meses ${dinheiro(t.ebitda12m)}`,
+          barras: [
+            {
+              valor: t.dividaLiquida,
+              cor: "bg-baixa/80",
+              corNegativa: "bg-alta/80",
+            },
+            { valor: t.ebitda12m, cor: "bg-acento/70" },
+          ],
+        }));
+
+  // Trocar de grafico nao pode deixar uma selecao do outro para tras.
+  const aberta = colunas.some((c) => c.chave === selecionada) ? selecionada : null;
+  const detalhe = colunas.find((c) => c.chave === aberta);
+  const indiceAberto = colunas.findIndex((c) => c.chave === aberta);
+
+  const legenda =
+    ver === "resultado"
+      ? [
+          { cor: "bg-acento/70", nome: "receita" },
+          { cor: "bg-alta", nome: "lucro" },
+        ]
+      : [
+          { cor: "bg-baixa/80", nome: "dívida líq." },
+          { cor: "bg-acento/70", nome: "EBITDA 12m" },
+        ];
+
+  const ultimo = serie[serie.length - 1];
+  const alavancagem =
+    ultimo.dividaLiquida !== null && ultimo.ebitda12m !== null && ultimo.ebitda12m > 0
+      ? ultimo.dividaLiquida / ultimo.ebitda12m
+      : null;
+
+  return (
+    <div className="flex flex-col gap-2 pt-3">
+      {temEndividamento && (
+        <div className="flex items-center gap-1" role="tablist" aria-label="Qual gráfico">
+          {(["resultado", "endividamento"] as const).map((chave) => (
+            <button
+              key={chave}
+              type="button"
+              role="tab"
+              aria-selected={ver === chave}
+              onClick={() => setGrafico(chave)}
+              className={`rounded-full px-2.5 py-1 text-[11px] font-bold transition-colors ${
+                ver === chave ? "bg-selecao text-acento" : "text-tinta-3 hover:text-tinta"
+              }`}
+            >
+              {chave === "resultado" ? "Resultado" : "Endividamento"}
+            </button>
+          ))}
+        </div>
+      )}
+
+      <div className="relative">
+        {detalhe && (
+          <div
+            className="pointer-events-none absolute bottom-full z-10 mb-1.5 hidden w-[168px] -translate-x-1/2 rounded-lg bg-painel px-2.5 py-1.5 text-[11px] font-semibold shadow-lg ring-1 ring-linha lg:block"
+            // So no desktop: em 390px o balao cobriria o grafico que ele
+            // explica. La o dado sai pelo `aria-label` da coluna e pelos
+            // numeros da tabela de resultados, que ja estao logo acima.
+            //
+            // Centrado na coluna, mas preso dentro do grafico. O limite e meia
+            // largura do balao, em PIXEL: um clamp em porcentagem nao sabe o
+            // tamanho dele, e a coluna da direita fica a 360px na ficha.
+            style={{
+              left: `clamp(${LARGURA_DO_BALAO / 2}px, ${((indiceAberto + 0.5) / colunas.length) * 100}%, calc(100% - ${LARGURA_DO_BALAO / 2}px))`,
+            }}
+            role="status"
+          >
+            <span className="num block pb-0.5 font-extrabold">
+              {detalhe.rotulo}
+            </span>
+            {detalhe.valores.map((v) => (
+              <span key={v.nome} className="flex justify-between gap-3">
+                <span className="text-tinta-3">{v.nome}</span>
+                <span className="num font-extrabold">{v.texto}</span>
+              </span>
+            ))}
+          </div>
+        )}
+        <BarrasComZero
+          colunas={colunas}
+          selecionada={aberta}
+          aoSelecionar={setSelecionada}
+        />
       </div>
+
       <div className="flex items-center justify-between text-[10px] font-semibold text-tinta-3">
         <span>{serie[0].rotulo}</span>
-        <span className="flex items-center gap-2.5">
-          <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-[2px] bg-acento/70" /> receita
-          </span>
-          <span className="flex items-center gap-1">
-            <span className="h-2 w-2 rounded-[2px] bg-alta" /> lucro
-          </span>
-        </span>
-        <span>{serie[serie.length - 1].rotulo}</span>
+        <Legenda itens={legenda} />
+        <span>{ultimo.rotulo}</span>
       </div>
+      <p className="hidden text-[10px] font-semibold text-tinta-3 lg:block">
+        Passe o ponteiro numa coluna para ver os valores do trimestre.
+      </p>
+
+      {ver === "endividamento" && (
+        <p className="text-[11px] leading-relaxed text-tinta-3">
+          {alavancagem === null
+            ? "Dívida líquida sobre EBITDA: não dá para calcular neste trimestre."
+            : `Dívida líquida sobre EBITDA de 12 meses: ${numero(alavancagem, 2)}× em ${ultimo.rotulo}.`}
+          {(ultimo.dividaLiquida ?? 0) < 0 &&
+            " A barra abaixo da linha é caixa líquido: a empresa tem mais caixa que dívida."}
+        </p>
+      )}
     </div>
   );
 }
@@ -203,6 +435,13 @@ export function PainelDeFundamentos({ dados, barras, data }: Props) {
         </p>
       )}
 
+      {indicadores.escalaCorrigida && (
+        <p className="pt-2 text-[11px] leading-relaxed text-tinta-3">
+          A CVM publicou a quantidade de ações desta empresa em milhares.
+          Corrigida e reconferida antes de entrar nas contas.
+        </p>
+      )}
+
       <Grupo titulo="Rentabilidade">
         <Celula
           rotulo="ROE"
@@ -284,7 +523,7 @@ export function PainelDeFundamentos({ dados, barras, data }: Props) {
             </span>
           </div>
         </div>
-        <MiniSerie indicadores={indicadores} />
+        <GraficosDoTrimestre indicadores={indicadores} />
       </div>
 
       <p className="pb-3 text-[11px] leading-relaxed text-tinta-3">

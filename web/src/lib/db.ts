@@ -421,7 +421,7 @@ export async function fundamentos(
   if (empresa.rows.length === 0) return null;
   const { cd_cvm, nome, setor_cvm, classe } = empresa.rows[0];
 
-  const [trimestres, proventos, irmaos] = await Promise.all([
+  const [trimestres, proventos, irmaos, pico] = await Promise.all([
     conexao().query(
       `SELECT f.dt_fim, f.rotulo, f.origem, f.publicado_em, f.layout,
               f.receita_tri, f.ebitda_tri, f.lucro_tri,
@@ -464,6 +464,16 @@ export async function fundamentos(
         WHERE b.trade_date IN (SELECT trade_date FROM janela)`,
       [ticker, cd_cvm, sessoes],
     ),
+    // O maior volume em acoes de QUALQUER papel da empresa no ultimo ano. E a
+    // prova contra a contagem de acoes da CVM: nenhuma empresa negocia num dia
+    // mais acoes do que tem em circulacao.
+    conexao().query(
+      `SELECT MAX(b.volume_shares) AS pico
+         FROM volume_scanner.daily_bars b
+         JOIN volume_scanner.empresa_tickers t USING (ticker)
+        WHERE t.cd_cvm = $1 AND b.trade_date > CURRENT_DATE - INTERVAL '1 year'`,
+      [cd_cvm],
+    ),
   ]);
 
   return {
@@ -498,6 +508,7 @@ export async function fundamentos(
       valor: num(r.valor) ?? 0,
     })),
     precosPorClasse: precosPorClasse(irmaos.rows),
+    picoDeVolumeEmAcoes: num(pico.rows[0]?.pico),
   };
 }
 

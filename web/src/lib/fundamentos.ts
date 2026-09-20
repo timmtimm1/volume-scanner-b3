@@ -33,6 +33,8 @@ export type Indicadores = {
   /** Pregao a que esses numeros se referem. */
   data: string;
   ehBanco: boolean;
+  /** Falso quando a contagem de acoes da CVM nao passou na conferencia. */
+  acoesConfiaveis: boolean;
   precoLucro: number | null;
   precoValorPatrimonial: number | null;
   evEbitda: number | null;
@@ -132,6 +134,47 @@ export function valorDeMercado(
 }
 
 /**
+ * O piso do valor de mercado sobre o patrimonio dos controladores.
+ *
+ * A empresa inteira valendo menos de 2% do proprio patrimonio nao acontece.
+ * Quando a conta da isso, quem esta errado e o numero de acoes, nao o mercado.
+ * Medido na base inteira: os papeis com a escala certa nao descem de 0,063, e
+ * os com a escala errada nao passam de 0,006. O corte cai no vao entre os dois.
+ */
+const PISO_DO_VALOR_SOBRE_PATRIMONIO = 0.02;
+
+/**
+ * Da para confiar na contagem de acoes da CVM?
+ *
+ * O `composicao_capital` da CVM nao tem coluna de escala, e cerca de um terco
+ * das empresas declara a quantidade em MILHARES. Nada no arquivo distingue uma
+ * da outra, entao a contagem so vale quando sobrevive a duas conferencias:
+ *
+ * - **A prova.** A empresa nao pode ter negociado num unico pregao mais acoes
+ *   do que tem em circulacao. Nao e estimativa, e impossibilidade -- mas so
+ *   alcanca quem tem liquidez.
+ * - **A plausibilidade.** O valor de mercado nao pode ser uma fracao minuscula
+ *   do patrimonio. Alcanca os iliquidos, que a prova nao pega.
+ *
+ * Falhando qualquer uma, tudo que divide por acao vira `null`. Um numero mil
+ * vezes errado e pior que um travessao.
+ */
+export function acoesConfiaveis(
+  trimestre: Trimestre,
+  mercado: number | null,
+  picoDeVolumeEmAcoes: number | null,
+): boolean {
+  const acoes = trimestre.acoesEmCirculacao;
+  if (acoes === null || acoes <= 0) return false;
+  if (picoDeVolumeEmAcoes !== null && picoDeVolumeEmAcoes > acoes) return false;
+
+  // Patrimonio negativo nao serve de regua: quem decide e so a prova acima.
+  const patrimonio = trimestre.patrimonioLiquido;
+  if (mercado === null || patrimonio === null || patrimonio <= 0) return true;
+  return mercado / patrimonio >= PISO_DO_VALOR_SOBRE_PATRIMONIO;
+}
+
+/**
  * Tudo que a aba mostra para um pregao.
  *
  * `null` quando nao ha trimestre publicado ate a data ou nao ha fechamento
@@ -147,14 +190,25 @@ export function indicadoresNaData(
   if (trimestre === null || barra === undefined) return null;
 
   const preco = barra.close;
-  const acoes = trimestre.acoesEmCirculacao;
   const ehBanco = trimestre.layout === "financeiro";
+
+  // Tudo que divide por acao passa por aqui primeiro. Reprovada a contagem, os
+  // quatro multiplos que dependem dela ficam em `null` -- e so eles: receita,
+  // lucro, patrimonio, ROE, margem, liquidez e dividend yield nao dividem por
+  // acao nenhuma e seguem valendo.
+  const mercadoBruto = valorDeMercado(trimestre, dados.precosPorClasse, data);
+  const confiaveis = acoesConfiaveis(
+    trimestre,
+    mercadoBruto,
+    dados.picoDeVolumeEmAcoes,
+  );
+  const acoes = confiaveis ? trimestre.acoesEmCirculacao : null;
+  const mercado = confiaveis ? mercadoBruto : null;
 
   const lucroPorAcao = razao(trimestre.lucro12m, acoes, { positivo: true });
   const valorPatrimonialPorAcao = razao(trimestre.patrimonioLiquido, acoes, {
     positivo: true,
   });
-  const mercado = valorDeMercado(trimestre, dados.precosPorClasse, data);
   const empresa =
     mercado === null ? null : mercado + (trimestre.dividaLiquida ?? 0);
 
@@ -176,6 +230,7 @@ export function indicadoresNaData(
     preco,
     data,
     ehBanco,
+    acoesConfiaveis: confiaveis,
     precoLucro: razao(preco, lucroPorAcao, { positivo: true }),
     precoValorPatrimonial: razao(preco, valorPatrimonialPorAcao, {
       positivo: true,

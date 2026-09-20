@@ -246,14 +246,17 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
   fica guardado em `trade_snapshots`, gravado pelo job noturno, e o resumo diário
   no Telegram ganha o bloco **Seus trades** com a posição de cada trade aberto e
   dos encerrados no pregão. Sem custos de corretagem e sem proventos, por enquanto.
-- **Fundamentos da CVM (em construção).** A carga já traz para o banco os
-  balanços trimestrais e anuais de cada empresa negociada (ITR e DFP dos dados
-  abertos da CVM), com a data em que cada um foi entregue, e os proventos em
-  dinheiro de cada papel — dividendo e juros sobre capital próprio, por classe,
-  porque a ON e a PN recebem valores diferentes. Em cima disso, o trimestre já
-  calculado: receita, EBITDA e lucro do trimestre e dos últimos 12 meses,
-  patrimônio dos controladores, dívida líquida e liquidez. Ainda não aparece no
-  site: a aba na ficha do papel é a última fase.
+- **Fundamentos da CVM.** A carga traz para o banco os balanços trimestrais e
+  anuais de cada empresa negociada (ITR e DFP dos dados abertos da CVM), com a
+  data em que cada um foi entregue, e os proventos em dinheiro de cada papel —
+  dividendo e juros sobre capital próprio, por classe, porque a ON e a PN
+  recebem valores diferentes. Em cima disso, o trimestre já calculado: receita,
+  EBITDA e lucro do trimestre e dos últimos 12 meses, patrimônio dos
+  controladores, dívida líquida e liquidez. Na ficha do papel isso vira a aba
+  **Fundamentos**, com os múltiplos calculados **na data que a ficha está
+  mostrando**: abrindo a ficha por um evento de março, o P/L é o de março, com o
+  balanço que já era público naquele dia. As datas de entrega viram marca no
+  gráfico, para dar para ver se o volume anômalo veio logo depois do resultado.
 - **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
   logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
   toques medem o movimento entre dois pontos e quantos pregões ele levou.
@@ -783,6 +786,25 @@ pareceriam complexas demais para o problema.
   ETFs e um recibo de subscrição. Ligar pelo prefixo do ticker resolveria e
   está fora de questão: na B3, o emissor "EMBR" é a EMBRAST, e não a Embraer.
   Melhor ficar sem fundamentos do que mostrar o balanço de outra empresa.
+- **Um terço das empresas declara as ações em milhares, e a CVM não diz qual
+  delas.** O `composicao_capital` não tem coluna de escala: a Unipar informa
+  113.173.265 ações e a Afluente informa 63.085, que são 63.085.000. Nada no
+  arquivo separa as duas. Sem tratar isso, P/L, P/VP, EV/EBITDA e valor de
+  mercado sairiam **mil vezes errados** em um terço da base — a Afluente
+  apareceria valendo R$ 461,8 mil. Por isso a contagem passa por duas
+  conferências antes de valer:
+
+  - **a prova**, que é impossibilidade e não estimativa: nenhuma empresa
+    negocia num único pregão mais ações do que tem em circulação;
+  - **a plausibilidade**, para os ilíquidos que a prova não alcança: a empresa
+    inteira não vale menos de 2% do próprio patrimônio.
+
+  Reprovando em qualquer uma, os quatro múltiplos que dividem por ação viram
+  travessão e a ficha diz por quê. Receita, lucro, EBITDA, patrimônio, ROE,
+  margem, liquidez e dividend yield não dependem da contagem e continuam. Hoje
+  isso recusa 145 dos 438 papéis. O corte de 2% cai num vão largo da base: os
+  papéis com a escala certa não descem de 0,063 e os com a escala errada não
+  passam de 0,006.
 - **O rompimento só vê o preço do instante da checagem**, a cada 15 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.

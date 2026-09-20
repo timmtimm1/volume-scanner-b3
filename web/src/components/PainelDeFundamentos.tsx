@@ -192,6 +192,14 @@ export function PainelDeFundamentos({ dados, barras, data }: Props) {
         />
       </Grupo>
 
+      {!indicadores.acoesConfiaveis && (
+        <p className="pt-2 text-[11px] leading-relaxed text-tinta-3">
+          A CVM não declara em que escala esta empresa informou a quantidade de
+          ações, e a contagem não passou na conferência. Os múltiplos que
+          dividem por ação ficam de fora — o resto do balanço vale.
+        </p>
+      )}
+
       <Grupo titulo="Rentabilidade">
         <Celula
           rotulo="ROE"

@@ -4,6 +4,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  acoesConfiaveis,
   indicadoresNaData,
   proventosDeDozeMeses,
   trimestreNaData,
@@ -76,6 +77,7 @@ const dados = (extra = {}) => ({
     on: { "2026-09-15": 55.4, "2026-05-20": 50.0 },
     pn: { "2026-09-15": 57.48, "2026-05-20": 52.0 },
   },
+  picoDeVolumeEmAcoes: 1_200_000,
   ...extra,
 });
 
@@ -225,5 +227,81 @@ describe("variacaoAnual", () => {
 
   it("sem o ano anterior nao ha comparacao", () => {
     assert.equal(variacaoAnual(10, null), null);
+  });
+});
+
+describe("acoesConfiaveis", () => {
+  // O `composicao_capital` da CVM nao tem coluna de escala, e cerca de um terco
+  // das empresas declara a quantidade de acoes em milhares. Estes testes sao os
+  // dois jeitos de flagrar isso, com numeros que existem na base.
+  const mercado = 111_622_153 * 57.48;
+
+  it("a Unipar passa: negocia menos do que tem, e vale mais que o patrimonio", () => {
+    assert.equal(acoesConfiaveis(DOIS_T26, mercado, 1_200_000), true);
+  });
+
+  it("a prova: negociar num pregao mais acoes do que existem reprova", () => {
+    // O caso do papel liquido, como PCAR3: 492.547 acoes declaradas e
+    // 57.588.900 negociadas num dia so.
+    const emMilhares = { ...DOIS_T26, acoesEmCirculacao: 111_622 };
+    assert.equal(acoesConfiaveis(emMilhares, mercado, 1_200_000), false);
+  });
+
+  it("a plausibilidade: no iliquido, o valor de mercado minusculo reprova", () => {
+    // O caso do AFLT3: pouca liquidez, entao a prova nao alcanca -- mas a
+    // empresa inteira "valendo" 0,1% do proprio patrimonio denuncia a escala.
+    const emMilhares = { ...DOIS_T26, acoesEmCirculacao: 111_622 };
+    const mercadoMil = 111_622 * 57.48;
+    assert.equal(acoesConfiaveis(emMilhares, mercadoMil, 5_700), false);
+  });
+
+  it("patrimonio negativo nao serve de regua: so a prova decide", () => {
+    const semPatrimonio = { ...DOIS_T26, patrimonioLiquido: -100_000_000 };
+    assert.equal(acoesConfiaveis(semPatrimonio, mercado, 1_200_000), true);
+    assert.equal(acoesConfiaveis(semPatrimonio, mercado, 999_999_999), false);
+  });
+
+  it("sem contagem de acoes nao ha o que confiar", () => {
+    assert.equal(
+      acoesConfiaveis({ ...DOIS_T26, acoesEmCirculacao: null }, mercado, 1_200_000),
+      false,
+    );
+  });
+
+  it("papel sem barra no ano perde a prova, mas nao a plausibilidade", () => {
+    assert.equal(acoesConfiaveis(DOIS_T26, mercado, null), true);
+    const emMilhares = { ...DOIS_T26, acoesEmCirculacao: 111_622 };
+    assert.equal(acoesConfiaveis(emMilhares, 111_622 * 57.48, null), false);
+  });
+});
+
+describe("indicadoresNaData com a contagem de acoes reprovada", () => {
+  // Um terco da base cai aqui. O que divide por acao sai; o resto fica.
+  const emMilhares = dados({
+    trimestres: SERIE.map((t) => ({
+      ...t,
+      acoesEmCirculacao: Math.round(t.acoesEmCirculacao / 1000),
+      acoesOn: Math.round(t.acoesOn / 1000),
+      acoesPn: Math.round(t.acoesPn / 1000),
+    })),
+  });
+
+  it("os quatro multiplos que dividem por acao viram travessao", () => {
+    const i = indicadoresNaData(emMilhares, barras, "2026-09-15");
+    assert.equal(i.acoesConfiaveis, false);
+    assert.equal(i.precoLucro, null);
+    assert.equal(i.precoValorPatrimonial, null);
+    assert.equal(i.evEbitda, null);
+    assert.equal(i.valorDeMercado, null);
+  });
+
+  it("o que nao depende de acao continua valendo", () => {
+    const i = indicadoresNaData(emMilhares, barras, "2026-09-15");
+    perto(i.retornoSobrePatrimonio, 266_559_000 / 1_998_822_000);
+    perto(i.margemLiquida, 266_559_000 / 5_233_765_000);
+    perto(i.liquidezCorrente, 2.386);
+    perto(i.dividendYield, 6.47680215548 / 57.48);
+    assert.equal(i.trimestre.receita12m, 5_233_765_000);
+    assert.equal(i.trimestre.patrimonioLiquido, 1_998_822_000);
   });
 });

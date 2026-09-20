@@ -130,4 +130,10 @@ export type Fundamentos = {
    * R$ 55,40 e a UNIP6, R$ 57,48.
    */
   precosPorClasse: { on: Record<string, number>; pn: Record<string, number> };
+  /**
+   * O maior volume em ACOES que um papel da empresa negociou num pregao da
+   * janela. Serve de prova contra a contagem de acoes: a empresa nao pode ter
+   * menos acoes em circulacao do que negociou num dia so.
+   */
+  picoDeVolumeEmAcoes: number | null;
 };

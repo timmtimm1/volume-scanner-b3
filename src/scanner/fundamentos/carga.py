@@ -389,6 +389,7 @@ def atualizar_fundamentos(
     *,
     agora: datetime | None = None,
     forcar: bool = False,
+    com_b3: bool = True,
     cache: Path = DEFAULT_CACHE,
     pausa_b3: float = PAUSA_B3,
 ) -> RelatorioFundamentos:
@@ -397,6 +398,17 @@ def atualizar_fundamentos(
     Falha num arquivo nao impede os outros: cada (tipo, ano) roda isolado e as
     falhas ficam no relatorio -- quem decide se isso e motivo de sair com erro
     e o chamador (o CLI sai 1 se `relatorio.teve_falha`).
+
+    `com_b3=False` pula cadastro e proventos: so a CVM (balancos) e o
+    recalculo dos trimestres. A CVM publica ITR e DFP por trimestre, nao por
+    dia -- rodar a parte da B3 numa cadencia diaria persegue um dado que so
+    muda a cada tres meses. `scanner fundamentos atualizar --sem-b3` e o que o
+    pregao roda; a parte da B3 fica para `fundamentos-b3.yml`, semanal.
+
+    A excecao e o proprio `_mapear_tickers`: ele so recorre a B3 para o ticker
+    que o FCA nao declara (raro, e so os pendentes), e sem essa ligacao nem o
+    balanco de um papel recem-chegado tem como aparecer na ficha. Fica de fora
+    do corte -- e barato, e nao pode esperar uma semana.
     """
     momento = agora if agora is not None else datetime.now(UTC)
     relatorio = RelatorioFundamentos()
@@ -435,14 +447,17 @@ def atualizar_fundamentos(
                 relatorio=relatorio,
             )
 
+    _recalcular_trimestres(engine, relatorio)
+
+    if not com_b3:
+        return relatorio
+
     # Proventos vem da B3, nao da CVM: entram depois dos balancos e nunca
     # impedem que eles sejam gravados.
     corte_semana = momento - timedelta(days=config.dias_para_rechecar_empresa)
     corte_dia = momento - timedelta(hours=config.horas_para_rechecar_proventos)
     if forcar:
         corte_semana = corte_dia = momento
-
-    _recalcular_trimestres(engine, relatorio)
 
     _detalhar_empresas(engine, momento, corte_semana, pausa=pausa_b3, relatorio=relatorio)
     _proventos_recentes(engine, momento, corte_dia, pausa=pausa_b3, relatorio=relatorio)

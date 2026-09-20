@@ -111,26 +111,32 @@ jobs:
         # do rebuild -- e nao depois -- porque o site le o banco no build, e
         # uma falha aqui nao pode deixar o build seguinte com dado pela metade.
         #
-        # O teto de tempo e o que garante isso na pratica. `continue-on-error`
-        # cobre a falha do passo, mas nao o job inteiro estourar os 30 minutos:
-        # em 19/09/2026 a carga ficou 29min36s de pe, o job foi cancelado, e o
-        # rebuild da Vercel -- o passo seguinte -- nem chegou a rodar. O pregao
-        # estava gravado no banco havia meia hora e o site ficou parado no build
-        # anterior ate alguem rodar o manual. Uma passada boa leva ~7 minutos.
+        # `--sem-b3`: so a CVM (balancos) e o recalculo dos trimestres. Este
+        # passo roda a cada pregao, e a B3 nao faz sentido nessa cadencia --
+        # ela nao publica balanco nem provento todo dia, e o cadastro/proventos
+        # ficam para o fundamentos-b3.yml, semanal. Sem essa consulta, o passo
+        # ficou rapido e sem a variancia de antes: em 19/09/2026, antes deste
+        # corte, a carga ficou 29min36s de pe, o job foi cancelado nos 30
+        # minutos do teto, e o rebuild da Vercel -- o passo seguinte -- nem
+        # chegou a rodar. O pregao estava gravado no banco havia meia hora e o
+        # site ficou parado no build anterior ate alguem rodar o manual.
         #
-        # Cortar no meio e seguro: a carga grava empresa por empresa e marca
-        # cada uma como consultada, entao a proxima passada continua de onde
-        # esta; e `gravar_trimestres` troca a tabela inteira numa transacao so,
-        # que ou entra ou nao entra.
+        # O teto de tempo continua existindo por seguranca (a CVM tambem pode
+        # ficar lenta), mas agora e so rede de protecao: `continue-on-error`
+        # cobre a falha do passo, e o teto cobre o job inteiro nao travar
+        # esperando por ele. Cortar no meio e seguro: a carga grava documento
+        # por documento e `gravar_trimestres` troca a tabela inteira numa
+        # transacao so, que ou entra ou nao entra.
         #
         # `--forcar` (so pelo pregao manual) reprocessa os zips mesmo sem
-        # mudanca na CVM. E o caminho de uma correcao no parser chegar ao
-        # dado ja gravado: sem ele, documento cujo arquivo nao mudou nunca e
-        # relido, e ITR de 2022 nao muda mais. Demora bem mais que os 15
-        # minutos do passo normal, por isso o teto sobe junto.
+        # mudanca na CVM. E o caminho de uma correcao no parser chegar ao dado
+        # ja gravado: sem ele, documento cujo arquivo nao mudou nunca e relido,
+        # e ITR de 2022 nao muda mais. Como nao toca a B3, continua rapido
+        # (~2 minutos localmente, para 5 anos de ITR/DFP) e nao precisa de teto
+        # proprio.
         continue-on-error: true
-        timeout-minutes: ${{ inputs.fundamentos_forcar && 45 || 15 }}
-        run: uv run --no-sync scanner fundamentos atualizar $FUNDAMENTOS_FORCAR
+        timeout-minutes: 10
+        run: uv run --no-sync scanner fundamentos atualizar --sem-b3 $FUNDAMENTOS_FORCAR
 
       - name: Avisar no Telegram se os fundamentos falharam
         if: ${{ steps.fundamentos.outcome == 'failure' && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}

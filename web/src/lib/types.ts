@@ -2,6 +2,11 @@
 
 export type Evento = {
   ticker: string;
+  /**
+   * Nome comercial da empresa, para o ticker nao ficar sozinho na tela.
+   * Nulo em papel sem empresa ligada: ETF, recibo, codigo que saiu da bolsa.
+   */
+  empresa: string | null;
   tradeDate: string; // ISO, AAAA-MM-DD
   /** O maior z entre as janelas: o que decide o alerta. */
   zLog: number;
@@ -32,7 +37,15 @@ export type Evento = {
 /** O que a tabela do historico mostra. So isso vai para o navegador. */
 export type LinhaDoHistorico = Pick<
   Evento,
-  "ticker" | "tradeDate" | "zLog" | "rvol" | "retDay" | "zExcess" | "avgTicket" | "volumeFinancial"
+  | "ticker"
+  | "empresa"
+  | "tradeDate"
+  | "zLog"
+  | "rvol"
+  | "retDay"
+  | "zExcess"
+  | "avgTicket"
+  | "volumeFinancial"
 >;
 
 export type Barra = {

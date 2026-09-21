@@ -10,6 +10,7 @@ export default async function Historico() {
   // dobro de campos, e a pagina chegava a 689 KB com 400 eventos.
   const linhas: LinhaDoHistorico[] = eventos.map((e) => ({
     ticker: e.ticker,
+    empresa: e.empresa,
     tradeDate: e.tradeDate,
     zLog: e.zLog,
     rvol: e.rvol,

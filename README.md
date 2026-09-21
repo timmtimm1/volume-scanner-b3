@@ -257,6 +257,18 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
   mostrando**: abrindo a ficha por um evento de março, o P/L é o de março, com o
   balanço que já era público naquele dia. As datas de entrega viram marca no
   gráfico, para dar para ver se o volume anômalo veio logo depois do resultado.
+- **O nome da empresa ao lado do ticker.** O cadastro da CVM já vinha no banco
+  desde a primeira fase dos fundamentos, mas ficava só lá: a tela mostrava
+  `AHEB5` e nada mais. Agora o nome comercial aparece no scanner, no histórico e
+  na ficha, e a busca do histórico acha por ele — procurar "petrobras" traz
+  PETR3 e PETR4.
+
+  **Nome longo não entra.** Razão social de 63 caracteres ocupa duas linhas para
+  dizer o que o ticker já diz, então acima de 34 caracteres a tela fica só com o
+  ticker — é o que cabe na coluna mais estreita, e 260 das 321 empresas com
+  papel negociando passam. A busca continua olhando o nome inteiro: a
+  "MERCANTIL FINANCEIRA S.A. CRÉDITO, FINANCIAMENTO E INVESTIMENTO" não aparece
+  na lista, mas procurar "mercantil" acha MERC3.
 - **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
   logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
   toques medem o movimento entre dois pontos e quantos pregões ele levou.

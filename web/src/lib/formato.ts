@@ -97,3 +97,30 @@ export function reaisComSinal(v: number): string {
   const sinal = v >= 0 ? "+" : "−";
   return `${sinal}${reais(Math.abs(v))}`;
 }
+
+/**
+ * Quantos caracteres do nome da empresa cabem antes de ele virar ruido.
+ *
+ * E a largura da coluna mais estreita que mostra nome (a do historico, 176px a
+ * 11px). Com este corte nada trunca la, e a mediana da base -- 17 caracteres --
+ * passa folgada.
+ */
+const MAXIMO_DO_NOME = 34;
+
+/**
+ * O nome da empresa quando vale a pena mostrar, senao `null`.
+ *
+ * Razao social longa nao informa: "MERCANTIL FINANCEIRA S.A. CREDITO,
+ * FINANCIAMENTO E INVESTIMENTO" ocupa duas linhas para dizer o que "MERC3" ja
+ * diz. Nesses casos o ticker fica sozinho, que e como era antes.
+ *
+ * Hoje 260 das 321 empresas com papel negociando passam no corte. O filtro de
+ * busca do historico continua olhando o nome INTEIRO: procurar "mercantil" tem
+ * de achar MERC3 mesmo que a tela mostre so o ticker.
+ */
+export function nomeDaEmpresa(nome: string | null | undefined): string | null {
+  if (!nome) return null;
+  const limpo = nome.trim();
+  if (!limpo || limpo.length > MAXIMO_DO_NOME) return null;
+  return limpo;
+}

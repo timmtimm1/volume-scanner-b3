@@ -11,6 +11,7 @@ import {
   dinheiro,
   leituraDoTicket,
   multiplo,
+  nomeDaEmpresa,
   numero,
   percentual,
   proporcao,
@@ -303,7 +304,12 @@ export function PainelDoScanner({ pregao, eventos, distribuicao, barras, limiarD
                         {e.ticker}
                         {e.notificado && <span className="h-2 w-2 rounded-full bg-evento" title="notificado no Telegram" />}
                       </span>
-                      <span className="num text-[11px] font-semibold text-tinta-3">janela {e.zJanela}d</span>
+                      {/* O nome no lugar da janela: qual janela deu o z ja
+                          esta no anel ao lado, e "AHEB5" sozinho nao diz nada.
+                          Nome longo nao entra -- ai a janela volta. */}
+                      <span className="truncate text-[11px] font-semibold text-tinta-3">
+                        {nomeDaEmpresa(e.empresa) ?? `janela ${e.zJanela}d`}
+                      </span>
                     </span>
                     <AnelDoDesvio z={e.zLog} tamanho={48} espessura={5} fonte={12} />
                     <FaixaDeVolume barras={barras[e.ticker] ?? []} diaDoEvento={e.tradeDate} />
@@ -332,6 +338,11 @@ export function PainelDoScanner({ pregao, eventos, distribuicao, barras, limiarD
                         <ChipDeVariacao valor={e.retDay} />
                         {e.notificado && <span className="h-2 w-2 rounded-full bg-evento" title="notificado no Telegram" />}
                       </div>
+                      {nomeDaEmpresa(e.empresa) && (
+                        <span className="truncate text-[12px] font-semibold text-tinta-2">
+                          {nomeDaEmpresa(e.empresa)}
+                        </span>
+                      )}
                       <span className="num truncate text-[12px] font-semibold text-tinta-3">
                         {multiplo(e.rvol)} o normal · {dinheiro(e.volumeFinancial)}
                       </span>
@@ -355,6 +366,11 @@ export function PainelDoScanner({ pregao, eventos, distribuicao, barras, limiarD
             </span>
             <div className="flex min-w-0 flex-1 flex-col">
               <span className="text-[22px] font-extrabold leading-tight">{previa.ticker}</span>
+              {nomeDaEmpresa(previa.empresa) && (
+                <span className="truncate text-[13px] font-bold text-tinta-2">
+                  {nomeDaEmpresa(previa.empresa)}
+                </span>
+              )}
               <span className="num truncate text-[12px] font-semibold text-tinta-3">
                 {leituraDoTicket(previa.avgTicket, previa.ticketZ, previa.tradesCount) ?? `ticket ${reais(previa.avgTicket, 0)}`}
                 {previa.ticketZ !== null && ` · ticket z ${numero(previa.ticketZ, 1)}`}

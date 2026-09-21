@@ -13,6 +13,7 @@ import { candleParcial, diaNaB3, horaNaB3 } from "@/lib/candle-de-hoje";
 import { LIMIAR_DO_ALERTA } from "@/lib/config";
 import {
   data as fmtData,
+  nomeDaEmpresa,
   dinheiro,
   leituraDaFaixa,
   leituraDoTicket,
@@ -213,6 +214,10 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
     painelDeFundamentos !== null && (evento === null || aba === "fundamentos");
   const comAbas = evento !== null && painelDeFundamentos !== null;
 
+  // Nome so quando ele informa: razao social longa nao cabe e nao diz mais que
+  // o ticker. Papel sem empresa ligada (ETF, recibo) tambem fica sem.
+  const nome = nomeDaEmpresa(fundamentos?.empresa);
+
   const faixa = leituraDaFaixa(evento?.pos252 ?? null);
   const ticket = leituraDoTicket(
     evento?.avgTicket ?? null,
@@ -253,6 +258,11 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
             </span>
             <div className="min-w-0 flex-1">
               <h1 className="text-[26px] font-extrabold leading-none tracking-tight">{ticker}</h1>
+              {nome && (
+                <p className="mt-1 truncate text-[14px] font-bold text-tinta-2">
+                  {nome}
+                </p>
+              )}
               <p className="num mt-1 text-[13px] font-semibold text-tinta-3">
                 {evento ? `Pregão de ${fmtData(evento.tradeDate)}` : "sem evento no período"}
               </p>

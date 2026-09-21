@@ -2,7 +2,15 @@
 
 import Link from "next/link";
 import { useMemo, useState } from "react";
-import { data as fmtData, dinheiro, multiplo, numero, percentual, reais } from "@/lib/formato";
+import {
+  data as fmtData,
+  dinheiro,
+  multiplo,
+  nomeDaEmpresa,
+  numero,
+  percentual,
+  reais,
+} from "@/lib/formato";
 import type { LinhaDoHistorico } from "@/lib/types";
 
 /**
@@ -56,7 +64,12 @@ export function TabelaDoHistorico({ eventos, limiarDoAlerta, minimo }: Props) {
     const filtrados = eventos.filter(
       (e) =>
         e.zLog >= corte &&
-        (!alvo || e.ticker.includes(alvo)) &&
+        // Procurar "petrobras" tem de achar PETR3 e PETR4: quem nao decorou o
+        // ticker sabe o nome. Olha o nome INTEIRO, e nao o que a tela mostra:
+        // razao social longa fica fora da lista, mas continua achavel.
+        (!alvo ||
+          e.ticker.includes(alvo) ||
+          (e.empresa ?? "").toUpperCase().includes(alvo)) &&
         (!desde || e.tradeDate >= desde) &&
         (!atePeriodo || e.tradeDate <= atePeriodo),
     );
@@ -102,7 +115,7 @@ export function TabelaDoHistorico({ eventos, limiarDoAlerta, minimo }: Props) {
 
         <div className="grid gap-3 rounded-2xl bg-painel-2 p-3.5 sm:grid-cols-2 lg:grid-cols-[180px_auto_minmax(220px,1fr)_auto] lg:items-end">
           <label className="flex flex-col gap-1.5">
-            <span className="rotulo">Papel</span>
+            <span className="rotulo">Papel ou empresa</span>
             <input
               type="text"
               value={busca}
@@ -166,7 +179,7 @@ export function TabelaDoHistorico({ eventos, limiarDoAlerta, minimo }: Props) {
         </div>
       ) : (
         <section className="cartao overflow-hidden p-2 md:p-3">
-          <div className="hidden grid-cols-[104px_96px_92px_72px_84px_120px_110px_1fr] gap-2 px-3 py-2 md:grid">
+          <div className="hidden grid-cols-[104px_176px_92px_72px_84px_120px_110px_1fr] gap-2 px-3 py-2 md:grid">
             <span className="rotulo">Pregão</span>
             <span className="rotulo">Papel</span>
             <button
@@ -198,10 +211,18 @@ export function TabelaDoHistorico({ eventos, limiarDoAlerta, minimo }: Props) {
               <Link
                 key={`${e.ticker}-${e.tradeDate}`}
                 href={`/papel/${e.ticker}?data=${e.tradeDate}`}
-                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl px-3 py-2.5 transition-colors hover:bg-painel-2 md:grid-cols-[104px_96px_92px_72px_84px_120px_110px_1fr] md:gap-2"
+                // `md:min-h-[52px]`: com nome a linha tem duas alturas, sem nome tem
+                // uma. Sem o piso, a lista fica com um ritmo irregular que
+                // parece defeito -- e so 61 das 321 empresas ficam sem nome.
+                className="grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl px-3 py-2.5 transition-colors hover:bg-painel-2 md:min-h-[52px] md:grid-cols-[104px_176px_92px_72px_84px_120px_110px_1fr] md:gap-2"
               >
-                <span className="order-1 text-[15px] font-extrabold md:order-2 md:text-[14px]">
-                  {e.ticker}
+                <span className="order-1 flex min-w-0 flex-col md:order-2">
+                  <span className="text-[15px] font-extrabold md:text-[14px]">{e.ticker}</span>
+                  {nomeDaEmpresa(e.empresa) && (
+                    <span className="truncate text-[11px] font-semibold text-tinta-3">
+                      {nomeDaEmpresa(e.empresa)}
+                    </span>
+                  )}
                 </span>
                 <span
                   className={`num order-2 text-right text-[16px] font-extrabold md:order-3 md:text-[14px] ${corDoZ(e.zLog)}`}

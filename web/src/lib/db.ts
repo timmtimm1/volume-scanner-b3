@@ -24,6 +24,18 @@ import { Pool } from "pg";
 import { PISO_DE_VOLUME, UNIVERSO, Z_MINIMO_DO_SITE } from "./config";
 import type { Barra, Evento, FaixaDeDesvio, Fundamentos, Papel, Pregao, Universo } from "./types";
 
+/**
+ * Como o papel se chama, em SQL -- uma so definicao para toda consulta.
+ *
+ * Vale o nome comercial ("PETROBRAS"), e nao o da CVM ("PETROLEO BRASILEIRO
+ * S.A. - PETROBRAS"): a lista cabe em 390px e ninguem le razao social. 29 das
+ * 321 empresas nao tem comercial preenchido, e ai o da CVM serve.
+ *
+ * Papel sem empresa ligada -- ETF, recibo de subscricao, codigo que saiu da
+ * bolsa -- fica `null`, e a tela mostra so o ticker.
+ */
+const NOME_DA_EMPRESA = `COALESCE(NULLIF(TRIM(emp.nome_comercial), ''), emp.nome)`;
+
 let pool: Pool | null = null;
 
 /**
@@ -82,6 +94,7 @@ type LinhaEvento = {
   trades_censored: boolean;
   features: Record<string, number | null> | null;
   notificado: boolean;
+  empresa: string | null;
 };
 
 /**
@@ -129,7 +142,8 @@ async function lerEventos(
      SELECT m.ticker, m.trade_date, m.z_log, m.window_size, m.z_robust, m.rvol,
             b.close, b.volume_financial, b.trades_count, b.trades_censored,
             COALESCE(f.features, e.features) AS features,
-            (e.id IS NOT NULL AND e.notified_at IS NOT NULL) AS notificado
+            (e.id IS NOT NULL AND e.notified_at IS NOT NULL) AS notificado,
+            ${NOME_DA_EMPRESA} AS empresa
        FROM chaves k
        JOIN volume_scanner.volume_metrics m
          ON m.ticker = k.ticker AND m.trade_date = k.trade_date
@@ -139,6 +153,8 @@ async function lerEventos(
          ON e.ticker = k.ticker AND e.trade_date = k.trade_date
        LEFT JOIN volume_scanner.daily_features f
          ON f.ticker = k.ticker AND f.trade_date = k.trade_date
+       LEFT JOIN volume_scanner.empresa_tickers et ON et.ticker = k.ticker
+       LEFT JOIN volume_scanner.empresas emp ON emp.cd_cvm = et.cd_cvm
       WHERE m.z_log IS NOT NULL
       ORDER BY k.trade_date DESC, k.z_max DESC, m.window_size`,
     valores,
@@ -154,6 +170,7 @@ async function lerEventos(
       const f = r.features ?? {};
       ev = {
         ticker: r.ticker,
+        empresa: r.empresa,
         tradeDate: data,
         zLog: z,
         zJanela: r.window_size,
@@ -412,7 +429,8 @@ export async function fundamentos(
   trimestresDesejados = 12,
 ): Promise<Fundamentos | null> {
   const empresa = await conexao().query(
-    `SELECT e.cd_cvm, e.nome, e.setor_cvm, t.classe
+    `SELECT e.cd_cvm, e.setor_cvm, t.classe,
+            COALESCE(NULLIF(TRIM(e.nome_comercial), ''), e.nome) AS nome
        FROM volume_scanner.empresa_tickers t
        JOIN volume_scanner.empresas e USING (cd_cvm)
       WHERE t.ticker = $1`,

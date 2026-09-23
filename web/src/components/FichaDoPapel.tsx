@@ -1,11 +1,11 @@
 "use client";
 
+import dynamic from "next/dynamic";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AnelDoDesvio } from "@/components/AnelDoDesvio";
 import { COR_DO_BALANCO, Grafico } from "@/components/Grafico";
-import { PainelDeFundamentos } from "@/components/PainelDeFundamentos";
 import type { Direcao } from "@/lib/alertas";
 import { PainelDeAlerta } from "@/components/PainelDeAlerta";
 import { PainelDeTrade } from "@/components/PainelDeTrade";
@@ -36,6 +36,23 @@ type Props = {
   /** Nulo em papel sem empresa ligada -- um ETF, ou um codigo que saiu da bolsa. */
   fundamentos: Fundamentos | null;
 };
+
+/**
+ * A aba Fundamentos so e montada quando alguem a abre.
+ *
+ * A ficha comeca sempre na aba Evento (ver `aba`, abaixo), mas o codigo do
+ * painel de fundamentos -- indicadores, mini-graficos e a tabela de trimestres
+ * -- ia no pacote inicial de toda ficha, inclusive das que ninguem clica.
+ *
+ * `ssr` fica ligado de proposito. Papel sem evento abre direto nos fundamentos,
+ * e com `ssr: false` esse caso perderia o conteudo do HTML e mostraria um vazio
+ * ate o JavaScript chegar -- exatamente na ficha em que o painel e a tela
+ * inteira. Ligado, o HTML continua completo e o pedaco de codigo so e baixado
+ * quando de fato entra em cena.
+ */
+const PainelDeFundamentos = dynamic(() =>
+  import("@/components/PainelDeFundamentos").then((m) => m.PainelDeFundamentos),
+);
 
 /** Onde a barra de cada janela fecha: 8σ ocupa a largura toda. */
 const TETO_DAS_JANELAS = 8;

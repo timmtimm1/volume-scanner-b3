@@ -20,7 +20,7 @@ from typing import Any, Literal
 from sqlalchemy import Engine
 
 from scanner.calendar import hoje_na_b3
-from scanner.cotacoes.base import Cotacao, ProvedorDeCotacoes
+from scanner.cotacoes.base import Cota, Cotacao, ProvedorDeCotacoes
 
 Direcao = Literal["acima", "abaixo"]
 DIRECOES: tuple[Direcao, ...] = ("acima", "abaixo")
@@ -67,6 +67,12 @@ class RelatorioDeChecagem:
     # E o que deixa visivel um fornecedor que parou de responder: sem isto, a
     # brapi recusou todas as checagens por dias e o log so dizia "0 dispararam".
     fontes: tuple[tuple[str, int], ...] = ()
+    # Quanto sobrou do plano de cada fornecedor que diz, ex.: (("brapi", Cota),).
+    # O `fontes` acima mostra quem parou de responder; este mostra quem esta
+    # PRESTES a parar. Sao 36 passadas por pregao contra 15 mil requisicoes por
+    # mes no plano gratuito da brapi: a conta fica apertada sem ninguem avisar,
+    # e a brapi manda o numero em toda resposta.
+    cotas: tuple[tuple[str, Cota], ...] = ()
 
     def summary(self) -> str:
         """Uma linha para log e CLI."""
@@ -75,9 +81,14 @@ class RelatorioDeChecagem:
         fontes = (
             " (" + ", ".join(f"{nome} {n}" for nome, n in self.fontes) + ")" if self.fontes else ""
         )
+        cotas = (
+            "; cota " + ", ".join(f"{nome} {c.resumo()}" for nome, c in self.cotas)
+            if self.cotas
+            else ""
+        )
         return (
             f"{self.ativos} alertas ativos, {self.consultados} papeis consultados{fontes}"
-            f"{faltou}{velhas}, {self.disparados} dispararam"
+            f"{faltou}{velhas}, {self.disparados} dispararam{cotas}"
         )
 
 
@@ -185,4 +196,8 @@ def checar_rompimentos(
         disparados=enviados,
         velhas=len(recebidas) - len(cotacoes),
         fontes=tuple(sorted(Counter(c.fonte for c in cotacoes.values()).items())),
+        # Lido DEPOIS da consulta: e a cota que sobrou por causa desta passada.
+        # `getattr` e nao atributo direto porque `ProvedorDeCotacoes` e um
+        # Protocol e nem todo fornecedor tem plano -- o Yahoo nao tem.
+        cotas=tuple(getattr(provedor, "cotas", ())),
     )

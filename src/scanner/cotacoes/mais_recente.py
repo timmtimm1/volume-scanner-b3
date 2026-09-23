@@ -6,7 +6,7 @@ import logging
 from collections.abc import Sequence
 from dataclasses import dataclass, field
 
-from scanner.cotacoes.base import Cotacao, ProvedorDeCotacoes
+from scanner.cotacoes.base import Cota, Cotacao, ProvedorDeCotacoes
 
 logger = logging.getLogger(__name__)
 
@@ -33,6 +33,21 @@ class ProvedorMaisRecente:
     @property
     def nome(self) -> str:
         return "+".join(p.nome for p in self.provedores)
+
+    @property
+    def cotas(self) -> tuple[tuple[str, Cota], ...]:
+        """A cota de cada fornecedor que reporta uma, por nome.
+
+        Nao entra no Protocol: o Yahoo nao tem plano nem cota, e exigir o
+        atributo de todo mundo obrigaria um fornecedor sem contrato a fingir que
+        tem um. Quem reporta, reporta; quem nao reporta, some da lista.
+        """
+        encontradas = []
+        for provedor in self.provedores:
+            cota = getattr(provedor, "cota", None)
+            if isinstance(cota, Cota) and not cota.vazia:
+                encontradas.append((provedor.nome, cota))
+        return tuple(encontradas)
 
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
         escolhidas: dict[str, Cotacao] = {}

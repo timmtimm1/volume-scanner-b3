@@ -10,14 +10,14 @@ codigo antigo de um papel renomeado ficaria sem cotacao, em silencio.
 from __future__ import annotations
 
 import logging
-from collections.abc import Sequence
-from dataclasses import dataclass
+from collections.abc import Mapping, Sequence
+from dataclasses import dataclass, field
 from datetime import datetime
 from decimal import Decimal, InvalidOperation
 
 import httpx
 
-from scanner.cotacoes.base import Cotacao, ticker_valido
+from scanner.cotacoes.base import Cota, Cotacao, ticker_valido
 
 logger = logging.getLogger(__name__)
 
@@ -35,6 +35,50 @@ TIMEOUT_SECONDS = 15.0
 # 10/09 a 14/09 -- o Yahoo cobriu, e ninguem viu.
 LOTE_PADRAO = 1
 
+# A brapi manda dois pares de cabecalho de limite. Os `ratelimit-*` sao a
+# janela curta -- 20 por minuto no gratuito, medido em 23/09/2026 -- e os
+# `x-ratelimit-*` sao a cota do plano, 15 mil por mes no gratuito. E a do plano
+# que interessa aqui: a checagem roda 36 vezes por pregao e o risco real e
+# acabar o mes, nao estourar o minuto.
+COTA_RESTANTE = "x-ratelimit-remaining"
+COTA_LIMITE = "x-ratelimit-limit"
+
+# Abaixo disto o aviso sobe de INFO para WARNING. Sao 36 passadas por pregao e
+# ~21 pregoes por mes: com menos de mil requisicoes sobrando, um unico papel a
+# mais na lista de alertas ja nao cabe ate o fim do ciclo.
+COTA_BAIXA = 1_000
+
+
+def _inteiro(bruto: object) -> int | None:
+    """Cabecalho que nao veio, ou veio com texto, nao vira cota."""
+    if not isinstance(bruto, str):
+        return None
+    try:
+        return int(bruto.strip())
+    except ValueError:
+        return None
+
+
+def ler_cota(cabecalhos: Mapping[str, str]) -> Cota:
+    """A cota do plano, como a brapi a anuncia na resposta.
+
+    Vale para resposta boa e para recusa: o 429 tambem carrega os cabecalhos, e
+    e justamente ali que saber o numero importa.
+    """
+    return Cota(_inteiro(cabecalhos.get(COTA_RESTANTE)), _inteiro(cabecalhos.get(COTA_LIMITE)))
+
+
+@dataclass
+class _UltimaCota:
+    """Caixa mutavel para um cliente congelado.
+
+    `BrapiClient` e `frozen=True` de proposito -- ninguem deve trocar o token no
+    meio de uma execucao. A cota, ao contrario, muda a cada resposta. Uma caixa
+    mutavel guarda a ultima sem abrir o resto do objeto para escrita.
+    """
+
+    valor: Cota = field(default_factory=Cota)
+
 
 @dataclass(frozen=True)
 class BrapiClient:
@@ -43,6 +87,18 @@ class BrapiClient:
     token: str
     lote: int = LOTE_PADRAO
     nome: str = "brapi"
+    # `compare=False` e `repr=False`: a cota e estado observado, nao identidade
+    # do cliente. Dois clientes com o mesmo token continuam iguais.
+    _cota: _UltimaCota = field(default_factory=_UltimaCota, compare=False, repr=False)
+
+    @property
+    def cota(self) -> Cota:
+        """A cota do plano, pela ultima resposta que a informou.
+
+        Resposta sem os cabecalhos nao apaga o que ja se sabia: um numero de
+        cinco minutos atras informa, e `Cota()` vazia nao informa nada.
+        """
+        return self._cota.valor
 
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
         # Ticker invalido nem sai daqui: ele iria no parametro da URL.
@@ -62,17 +118,34 @@ class BrapiClient:
             resposta = httpx.get(
                 BASE_URL, params=params, headers=cabecalhos, timeout=TIMEOUT_SECONDS
             )
+            self._anotar_cota(resposta)
             resposta.raise_for_status()
             dados = resposta.json()
         except httpx.HTTPStatusError as exc:
             # O status diz o motivo: 401 e token, 402/429 e cota, 400 e lote.
             # Antes so o nome da excecao aparecia, e a falha ficou dias sem causa.
-            logger.warning("[brapi] %s recusado com HTTP %s", tickers, exc.response.status_code)
+            logger.warning(
+                "[brapi] %s recusado com HTTP %s (cota %s)",
+                tickers,
+                exc.response.status_code,
+                self.cota.resumo(),
+            )
             return {}
         except (httpx.HTTPError, ValueError) as exc:
             logger.warning("[brapi] falha ao buscar %s: %s", tickers, type(exc).__name__)
             return {}
         return extrair(dados)
+
+    def _anotar_cota(self, resposta: httpx.Response) -> None:
+        """Guarda a cota da resposta e avisa quando ela fica curta."""
+        cota = ler_cota(resposta.headers)
+        if cota.vazia:
+            return
+        self._cota.valor = cota
+        if cota.restantes is not None and cota.restantes <= COTA_BAIXA:
+            logger.warning("[brapi] cota baixa: %s requisicoes restantes", cota.resumo())
+        else:
+            logger.info("[brapi] cota %s", cota.resumo())
 
 
 def _hora(bruto: object) -> datetime | None:

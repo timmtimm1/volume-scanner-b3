@@ -18,7 +18,15 @@ import pytest
 
 from scanner import cli
 from scanner.calendar import hoje_na_b3
-from scanner.cotacoes import BrapiClient, Cotacao, ProvedorMaisRecente, YahooClient, brapi, yahoo
+from scanner.cotacoes import (
+    BrapiClient,
+    Cota,
+    Cotacao,
+    ProvedorMaisRecente,
+    YahooClient,
+    brapi,
+    yahoo,
+)
 
 TOKEN = "token-de-teste-nao-e-real"
 HORA = datetime(2026, 9, 14, 16, 14, 30, tzinfo=UTC)
@@ -235,6 +243,103 @@ def test_empate_fica_com_o_primeiro_fornecedor() -> None:
 def test_um_fornecedor_quebrado_nao_impede_os_outros() -> None:
     provedor = ProvedorMaisRecente((Quebrado(), Fixo("yahoo", {"PETR4": HORA})))
     assert provedor.cotacoes(["PETR4", "VALE3"])["PETR4"].fonte == "yahoo"
+
+
+# --- A cota da brapi ------------------------------------------------------------
+
+
+def _resposta_com_cota(restantes: str | None, limite: str | None = "15000") -> httpx.Response:
+    cabecalhos = {}
+    if restantes is not None:
+        cabecalhos["x-ratelimit-remaining"] = restantes
+    if limite is not None:
+        cabecalhos["x-ratelimit-limit"] = limite
+    return httpx.Response(200, json={"results": []}, headers=cabecalhos)
+
+
+def test_cota_sai_dos_cabecalhos_da_resposta() -> None:
+    cota = brapi.ler_cota({"x-ratelimit-remaining": "14231", "x-ratelimit-limit": "15000"})
+    assert cota == Cota(14231, 15000)
+    assert cota.resumo() == "14.231/15.000"
+
+
+@pytest.mark.parametrize(
+    "cabecalhos",
+    [{}, {"x-ratelimit-remaining": "muitas"}, {"x-ratelimit-limit": ""}],
+)
+def test_cabecalho_ausente_ou_estranho_nao_vira_cota(cabecalhos: dict[str, str]) -> None:
+    """Fornecedor que muda o formato nao pode derrubar a checagem."""
+    assert brapi.ler_cota(cabecalhos).vazia
+
+
+def test_cota_parcial_ainda_serve() -> None:
+    assert brapi.ler_cota({"x-ratelimit-remaining": "7"}).resumo() == "7"
+    assert brapi.ler_cota({"x-ratelimit-limit": "15000"}).resumo() == "?/15.000"
+
+
+def test_cliente_guarda_a_cota_da_ultima_resposta(monkeypatch: pytest.MonkeyPatch) -> None:
+    respostas = iter([_resposta_com_cota("14231"), _resposta_com_cota("14230")])
+
+    monkeypatch.setattr(brapi.httpx, "get", _falso_get([], lambda url: next(respostas)))
+
+    cliente = BrapiClient(token=TOKEN)
+    assert cliente.cota.vazia
+    cliente.cotacoes(["PETR4", "VALE3"])
+    assert cliente.cota == Cota(14230, 15000)
+
+
+def test_cota_e_lida_tambem_quando_a_brapi_recusa(monkeypatch: pytest.MonkeyPatch) -> None:
+    """O 429 carrega o numero, e e nele que saber quanto sobrou importa."""
+    recusa = httpx.Response(
+        429,
+        json={"erro": "cota"},
+        headers={"x-ratelimit-remaining": "0", "x-ratelimit-limit": "15000"},
+    )
+    monkeypatch.setattr(brapi.httpx, "get", _falso_get([], lambda url: recusa))
+
+    cliente = BrapiClient(token=TOKEN)
+    assert cliente.cotacoes(["PETR4"]) == {}
+    assert cliente.cota == Cota(0, 15000)
+
+
+def test_cota_baixa_sobe_para_warning(
+    monkeypatch: pytest.MonkeyPatch, caplog: pytest.LogCaptureFixture
+) -> None:
+    monkeypatch.setattr(brapi.httpx, "get", _falso_get([], lambda url: _resposta_com_cota("40")))
+    with caplog.at_level(logging.INFO, logger="scanner.cotacoes.brapi"):
+        BrapiClient(token=TOKEN).cotacoes(["PETR4"])
+    assert [r.levelno for r in caplog.records] == [logging.WARNING]
+    assert "cota baixa" in caplog.text
+
+
+def test_a_cota_nao_muda_a_identidade_do_cliente() -> None:
+    """A caixa mutavel nao pode quebrar a igualdade da dataclass congelada."""
+    assert BrapiClient(token=TOKEN) == BrapiClient(token=TOKEN)
+
+
+def test_provedor_junta_as_cotas_de_quem_reporta() -> None:
+    cliente = BrapiClient(token=TOKEN)
+    provedor = ProvedorMaisRecente((cliente, YahooClient()))
+    assert provedor.cotas == ()
+
+    cliente._cota.valor = Cota(14231, 15000)
+    assert provedor.cotas == (("brapi", Cota(14231, 15000)),)
+
+
+def test_relatorio_mostra_a_cota_na_linha_de_log() -> None:
+    from scanner.rompimentos import RelatorioDeChecagem
+
+    relatorio = RelatorioDeChecagem(
+        ativos=4,
+        consultados=4,
+        sem_cotacao=0,
+        disparados=1,
+        fontes=(("yahoo", 4),),
+        cotas=(("brapi", Cota(14231, 15000)),),
+    )
+    assert relatorio.summary().endswith("; cota brapi 14.231/15.000")
+    # Sem cota reportada a linha fica exatamente como era antes.
+    assert "cota" not in RelatorioDeChecagem(4, 4, 0, 1, fontes=(("yahoo", 4),)).summary()
 
 
 # --- Montagem na CLI ------------------------------------------------------------

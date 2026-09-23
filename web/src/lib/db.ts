@@ -111,6 +111,17 @@ type LinhaEvento = {
  * (e aplica o limite, se houver), e a de fora traz TODAS as janelas desses
  * pares, para o "z por janela" da ficha nao perder nenhuma.
  *
+ * O corte do z entra ANTES do agrupamento, e nao num HAVING depois dele. E a
+ * mesma condicao: se o maior z do par passa de $2, existe pelo menos uma linha
+ * acima de $2 -- e o maior z daquele subconjunto e o mesmo maior z de todas as
+ * janelas. O HAVING obrigava o banco a agrupar os 83 mil pares do historico
+ * para descartar 81 mil logo em seguida, e a agregacao derramava para disco.
+ *
+ * Medido no Postgres local, tres rodadas cada, 140.973 barras e 321.548
+ * metricas: 875/1011/1317 ms com o HAVING, 150/212/215 ms com o corte antes.
+ * As linhas devolvidas sao as mesmas -- 2.989 nos dois casos, `EXCEPT` vazio
+ * nos dois sentidos.
+ *
  * `onde` filtra dentro de `chaves` e usa o alias `m`; seus parametros comecam
  * em $3 ($1 e o piso de volume, $2 o z minimo).
  */
@@ -133,9 +144,9 @@ async function lerEventos(
          JOIN volume_scanner.daily_bars b
            ON b.ticker = m.ticker AND b.trade_date = m.trade_date
         WHERE b.volume_financial >= $1
+          AND m.z_log >= $2
           AND ${onde}
         GROUP BY m.ticker, m.trade_date
-       HAVING MAX(m.z_log) >= $2
         ORDER BY m.trade_date DESC, z_max DESC
         ${corte}
      )

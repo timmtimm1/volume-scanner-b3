@@ -106,33 +106,78 @@ def sessions_stored(engine: Engine) -> int:
         )
 
 
+# As colunas que o calculo le. `volume_shares` NAO esta aqui: nem `metrics.py`
+# nem `features.py` a usam, e o unico lugar que precisa dela -- a prova contra a
+# contagem de acoes da CVM, na aba Fundamentos -- consulta o banco direto. Eram
+# 140 mil valores atravessando o Atlantico a cada execucao sem ninguem ler.
+BARRAS_DO_CALCULO = (
+    "ticker",
+    "trade_date",
+    "open",
+    "high",
+    "low",
+    "close",
+    "avg_price",
+    "volume_financial",
+    "trades_count",
+    "trades_censored",
+)
+
+# As mesmas que o codigo antigo convertia com `pd.to_numeric(...).astype(float)`
+# depois de ler. Declaradas antes, o `read_csv` ja entrega float e a conversao
+# extra some.
+_COLUNAS_FLOAT = ("open", "high", "low", "close", "avg_price", "volume_financial")
+
+
 def load_bars(engine: Engine, *, since: date | None = None) -> pd.DataFrame:
     """Barras completas para o calculo, em formato longo.
 
     O calculo precisa do historico inteiro mesmo em modo incremental: sem os N
     pregoes anteriores nao ha baseline.
+
+    A leitura vai por `COPY ... TO STDOUT`, e nao por `pd.read_sql`, pelo mesmo
+    motivo que a escrita ja ia por COPY: o caminho normal monta um objeto Python
+    por celula -- e `Numeric` vira `Decimal`, que depois e reconvertido para
+    float -- para 140 mil linhas, a cada execucao. Medido contra o Postgres
+    local, com as 140.973 barras do banco: 1,2s pelo `read_sql`, 0,36s pelo
+    COPY, repetido e com cache quente nos dois casos.
+    Contra o Neon, que fica em Sao Paulo enquanto o runner do Actions roda nos
+    EUA, a diferenca tende a ser maior -- o CSV poe menos bytes no fio --, mas
+    isso nao foi medido.
+
+    O DataFrame devolvido e igual ao de antes, coluna por coluna e tipo por
+    tipo, com a unica excecao de `volume_shares`, que saiu (ver
+    `BARRAS_DO_CALCULO`). `tests/test_repository_barras.py` compara os dois
+    caminhos contra a mesma tabela e exige igualdade.
     """
-    stmt = select(
-        DailyBar.ticker,
-        DailyBar.trade_date,
-        DailyBar.open,
-        DailyBar.high,
-        DailyBar.low,
-        DailyBar.close,
-        DailyBar.avg_price,
-        DailyBar.volume_shares,
-        DailyBar.volume_financial,
-        DailyBar.trades_count,
-        DailyBar.trades_censored,
+    # `trades_censored` sai como inteiro de proposito: o COPY em CSV escreve
+    # booleano como "t"/"f", que o `read_csv` leria como texto. O cast volta a
+    # bool logo abaixo.
+    colunas = ", ".join(
+        "trades_censored::int AS trades_censored" if coluna == "trades_censored" else coluna
+        for coluna in BARRAS_DO_CALCULO
     )
-    if since is not None:
-        stmt = stmt.where(DailyBar.trade_date >= since)
+    onde = " WHERE trade_date >= %s" if since is not None else ""
+    consulta = f"SELECT {colunas} FROM {SCHEMA}.daily_bars{onde}"
 
+    bruto = io.BytesIO()
     with engine.connect() as conn:
-        frame = pd.read_sql(stmt, conn)
+        raw = conn.connection.driver_connection
+        with raw.cursor() as cur:  # type: ignore[union-attr]
+            copia = cur.copy(
+                f"COPY ({consulta}) TO STDOUT WITH (FORMAT CSV, HEADER)",
+                (since,) if since is not None else None,
+            )
+            with copia as fluxo:
+                for bloco in fluxo:
+                    bruto.write(bloco)
+    bruto.seek(0)
 
-    for column in ("open", "high", "low", "close", "avg_price", "volume_financial"):
-        frame[column] = pd.to_numeric(frame[column], errors="coerce").astype(float)
+    frame = pd.read_csv(bruto, dtype=dict.fromkeys(_COLUNAS_FLOAT, "float64"))
+    # `date`, e nao `Timestamp`: e o que o `read_sql` devolvia, e o resto do
+    # pipeline compara `trade_date` com `datetime.date` em varios pontos.
+    frame["trade_date"] = pd.to_datetime(frame["trade_date"], format="%Y-%m-%d").dt.date
+    frame["trades_censored"] = frame["trades_censored"].astype(bool)
     return frame
 
 

@@ -10,13 +10,14 @@ adaptador por fornecedor. O que junta os fornecedores e `ProvedorMaisRecente`,
 que pergunta a todos e fica com a cotacao de hora mais nova.
 """
 
-from scanner.cotacoes.base import Cotacao, ProvedorDeCotacoes
+from scanner.cotacoes.base import Cota, Cotacao, ProvedorDeCotacoes
 from scanner.cotacoes.brapi import BrapiClient
 from scanner.cotacoes.mais_recente import ProvedorMaisRecente
 from scanner.cotacoes.yahoo import YahooClient
 
 __all__ = [
     "BrapiClient",
+    "Cota",
     "Cotacao",
     "ProvedorDeCotacoes",
     "ProvedorMaisRecente",

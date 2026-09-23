@@ -48,6 +48,35 @@ class Cotacao:
     hora: datetime
 
 
+@dataclass(frozen=True)
+class Cota:
+    """Quanto sobrou do plano do fornecedor, quando ele diz nos cabecalhos.
+
+    A brapi manda isto em TODA resposta -- inclusive nas que recusa. Ate agora
+    o codigo jogava fora, e o unico jeito de saber que a cota tinha acabado era
+    o alerta parar de chegar. `RelatorioDeChecagem` agora carrega isto para o
+    log da checagem.
+
+    Os dois numeros sao independentes e nem sempre vem juntos: `restantes` sem
+    `limite` ainda serve, e o contrario tambem.
+    """
+
+    restantes: int | None = None
+    limite: int | None = None
+
+    @property
+    def vazia(self) -> bool:
+        return self.restantes is None and self.limite is None
+
+    def resumo(self) -> str:
+        """`14.231/15.000`, `14.231` ou `?`, conforme o que o fornecedor disse."""
+        if self.restantes is None:
+            return "?" if self.limite is None else f"?/{self.limite:,}".replace(",", ".")
+        if self.limite is None:
+            return f"{self.restantes:,}".replace(",", ".")
+        return f"{self.restantes:,}/{self.limite:,}".replace(",", ".")
+
+
 class ProvedorDeCotacoes(Protocol):
     """O que todo fornecedor precisa saber fazer."""
 

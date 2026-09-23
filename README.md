@@ -1000,6 +1000,183 @@ no resumo, e a consulta do corte da poda feita duas vezes. O resto do minuto é
 preparar o runner e conversar com o Neon, que fica em São Paulo enquanto o
 runner roda nos EUA.
 
+### Segunda rodada: o site e a leitura das barras (23/09/2026)
+
+A primeira rodada olhou o cálculo. Esta olhou o que estava em volta dele: a
+consulta que o site faz no build, o que ele manda para o celular, e a viagem das
+barras do banco até o pandas. Ponto de restauração antes de tudo na tag
+`v0.4-antes-das-otimizacoes`.
+
+Todas as medidas abaixo são contra o Postgres local, com a carga real de 426
+pregões (140.973 barras, 321.548 métricas), repetidas três vezes com cache
+quente. **Nenhuma delas muda um número na tela** — a última coluna diz como isso
+foi verificado.
+
+| Mudança | Antes | Depois | Ganho | Verificação |
+|---|---|---|---|---|
+| Consulta do histórico: corte do z antes do `GROUP BY` | 875 / 1011 / 1317 ms | 150 / 212 / 215 ms | **−80%** | `EXCEPT` vazio nos dois sentidos, 2.989 linhas iguais |
+| Payload do `/historico` (comprimido, o que o 4G baixa) | 73,0 KB | 50,9 KB | **−30%** | teste compara a string formatada antes e depois |
+| `load_bars`: `COPY` em vez de `pd.read_sql` | 1,2 s | 0,36 s | **3,4×** | `assert_frame_equal` nas 140.973 barras |
+| Pregão inteiro (`scanner daily --dry-run`) | 5,3 – 5,8 s | 4,6 s | −14% | o mesmo comando, mesmo pregão |
+| JS inicial da ficha (comprimido) | 249,4 KB | 246,9 KB | −1% | 4,5 KB movidos para carregamento sob demanda |
+
+#### A consulta do histórico agrupava tudo para jogar quase tudo fora
+
+`lerEventos`, em `web/src/lib/db.ts`, escolhia os pares (papel, pregão) com
+`HAVING MAX(m.z_log) >= 3`. Isso obriga o Postgres a agrupar os 83 mil pares do
+histórico inteiro e só então descartar 81 mil deles. O plano mostrava a conta:
+
+```
+HashAggregate  rows=1577   Rows Removed by Filter: 81750
+  Batches: 5  Disk Usage: 3456kB          ← a agregação derramava para disco
+  Hash Join  rows=239169
+    Seq Scan on volume_metrics  rows=321548
+    Seq Scan on daily_bars      rows=90742
+```
+
+O corte agora entra no `WHERE`, antes do agrupamento. É a **mesma** condição
+escrita antes em vez de depois: se o maior z de um par passa de 3, então existe
+pelo menos uma linha daquele par acima de 3 — e o maior z entre as linhas acima
+de 3 é o mesmo maior z entre todas as janelas. Nada de aproximação, é a
+definição de máximo.
+
+A prova ficou registrada porque esta é a mudança com mais chance de estar
+sutilmente errada: as duas versões rodaram contra o mesmo banco e o `EXCEPT` nos
+dois sentidos voltou vazio, com 2.989 linhas de cada lado.
+
+Isso vale em toda tela que usa eventos — scanner, histórico e cada uma das 310
+fichas do build.
+
+#### O `/historico` mandava 18 dígitos para exibir 2 casas
+
+A Tela 3 mostra 100 linhas por vez, mas os 1.000 eventos viajam inteiros: os
+filtros de papel, período e faixa de z valem sobre todos, e isso é proposital.
+O que não precisava viajar era a precisão que nenhuma célula mostra.
+
+Três campos da linha saem de `daily_features`, que guarda o contexto num JSONB
+de `float64`. Eles chegavam com a representação inteira do double:
+
+```
+antes : "zExcess": 4.348801362190244, "avgTicket": 570.6269113149847, "retDay": 0.03412345678901234
+depois: "zExcess": 4.3488,            "avgTicket": 571,                "retDay": 0.0341
+```
+
+A tela escreve `4,35`, `R$ 571` e `+3,4%` nos dois casos. A regra é sempre o
+dobro do que a célula mostra, e `lib/historico.test.mjs` a verifica comparando a
+string formatada antes e depois do arredondamento.
+
+Os outros três números (`zLog`, `rvol`, `volumeFinancial`) **não** foram
+tocados: vêm de colunas `NUMERIC` e já chegam quantizados pelo banco, então
+arredondar não economizaria um byte. `zLog` tem um motivo a mais — ele é
+comparado com o limiar de 6σ em dois lugares da tabela (a cor da linha e o
+contador do cabeçalho), e cortá-lo para as 2 casas da tela faria um 5,996 virar
+6,00: um evento que o Telegram nunca notificou apareceria como se tivesse
+cruzado.
+
+| | cru | comprimido |
+|---|---|---|
+| `historico.rsc` (o dado) | 221,9 → 185,3 KB | 61,4 → **39,9 KB** |
+| `historico.html` (primeira visita) | 389,3 → 352,7 KB | 73,0 → **50,9 KB** |
+
+#### As barras vinham do banco uma célula de cada vez
+
+`pd.read_sql` monta um objeto Python por célula. As colunas `Numeric` viram
+`Decimal`, que o código convertia de volta para `float` na linha seguinte — 140
+mil vezes, a cada execução do pregão.
+
+A escrita já ia por `COPY` desde a primeira rodada, pelo mesmo motivo. A leitura
+agora também: `COPY (SELECT ...) TO STDOUT WITH (FORMAT CSV)` e `read_csv` com
+os tipos declarados. 1,2 s → 0,36 s.
+
+Duas sutilezas ficaram registradas em `tests/test_repository_barras.py`, porque
+as duas quebram em silêncio:
+
+- o `COPY` em CSV escreve booleano como `t`/`f`, que o `read_csv` leria como
+  texto — daí o `trades_censored::int` na consulta e o `astype(bool)` depois;
+- `trade_date` continua sendo `datetime.date`, e não `Timestamp`, porque o
+  pipeline compara essa coluna com `date` em vários pontos.
+
+O teste também cobre nulo em `avg_price` e em `trades_count`: coluna com nulo
+troca de tipo no `read_csv`, e sem uma linha assim o teste passaria sem tocar no
+caso que quebra.
+
+`volume_shares` saiu da leitura. Nem `metrics.py` nem `features.py` a usam, e o
+único lugar que precisa dela — a prova contra a contagem de ações da CVM, na aba
+Fundamentos — consulta o banco direto. Eram 140 mil valores atravessando o
+Atlântico a cada execução sem ninguém ler.
+
+O ganho no pregão inteiro é menor que o da leitura isolada (0,8 s de 5,5 s)
+porque o cálculo dos z-scores, que a primeira rodada já otimizou, continua sendo
+a maior parte. Contra o Neon a diferença tende a ser maior — o CSV põe menos
+bytes no fio e não há `Decimal` para desserializar —, mas **isso não foi
+medido**: as duas pontas aqui estão na mesma máquina.
+
+#### A aba Fundamentos ia no pacote de toda ficha
+
+A ficha abre sempre na aba Evento. O código do painel de fundamentos —
+indicadores, mini-gráficos e a tabela de trimestres, 1.065 linhas com o
+`lib/fundamentos.ts` — ia no pacote inicial de todas as 310 fichas, inclusive
+das que ninguém clica. Com `next/dynamic` ele virou um pedaço separado, baixado
+só quando a aba abre.
+
+O ganho é pequeno e honesto: 2,5 KB comprimidos a menos no carregamento inicial,
+com 4,5 KB movidos para sob demanda. Vale as três linhas porque também é menos
+JavaScript para o celular interpretar, e não custa risco nenhum.
+
+O `ssr` fica **ligado** de propósito. Papel sem evento abre direto nos
+fundamentos, e com `ssr: false` esse caso perderia o conteúdo do HTML e mostraria
+um vazio até o JavaScript chegar — exatamente na ficha em que o painel é a tela
+inteira.
+
+#### A cota da brapi agora aparece antes de acabar
+
+Isto não acelera nada; fecha um ponto cego. A brapi manda em **toda** resposta,
+inclusive nas que recusa, quanto sobrou do plano — e o código jogava fora. A
+conta é apertada: a checagem de rompimentos roda 36 vezes por pregão, com uma
+requisição por papel no plano gratuito, contra 15 mil requisições por mês. São
+`36 × papéis × 21 pregões` por mês, o que estoura a cota em torno de 19 alertas
+ativos — e o único sintoma seria o alerta parar de chegar.
+
+Agora a linha da checagem termina com o número:
+
+```
+4 alertas ativos, 4 papeis consultados (brapi 1, yahoo 3), 1 dispararam; cota brapi 14.231/15.000
+```
+
+Abaixo de mil requisições restantes o aviso sobe de `INFO` para `WARNING`. O
+Yahoo não aparece porque não tem plano nem cota: o `ProvedorMaisRecente` junta a
+cota de quem reporta uma e ignora quem não reporta, sem obrigar um fornecedor sem
+contrato a fingir que tem um.
+
+Junto veio uma correção que o teste desta mudança expôs: o `env.py` do Alembic
+chamava `fileConfig` com o padrão `disable_existing_loggers=True`, que **desliga
+todo logger já existente** — inclusive os `scanner.*`. Em produção cada comando
+roda no próprio processo e isso nunca apareceu; na suíte, qualquer teste de banco
+apagava o log de todos os que rodassem depois.
+
+### O que ficou na lista e não foi feito
+
+Da análise que gerou esta rodada, quatro itens continuam abertos. Os três
+primeiros são sobre a cota da brapi e valem mais que tudo que foi feito acima,
+mas mexem em comportamento e por isso não entraram no mesmo commit:
+
+1. **Interromper o lote da brapi no primeiro 401/429.** `BrapiClient.cotacoes`
+   itera os papéis e segue em frente quando um falha. Com token vencido e 20
+   alertas, são 20 requisições cobradas por passada, 720 por dia.
+2. **Consultar a brapi só quando o Yahoo não trouxe cotação de hoje.** No plano
+   gratuito o dado da brapi atualiza a cada 30 minutos e o do Yahoo atrasa ~15:
+   o `ProvedorMaisRecente` compara as horas e descarta a resposta da brapi quase
+   sempre. Isso muda qual fonte ganha, e o comentário do `mais_recente.py`
+   precisa ser reescrito junto.
+3. **`/api/cotacao`: porteiro no banco em vez do Yahoo, e as duas consultas em
+   paralelo.** O site já sabe quais papéis existem; uma consulta de 5 ms
+   substitui uma ida ao Yahoo de ~300 ms, e aí os dois fornecedores podem ser
+   consultados ao mesmo tempo. Com `force-static` + `revalidate`, a rota passa a
+   sair do CDN.
+4. **Paralelizar o Yahoo na checagem de rompimentos.** Hoje são N requisições em
+   série por fornecedor. A brapi não pode ser paralelizada no gratuito
+   (`x-brapi-concurrency-limit: 1`), o Yahoo pode.
+
 ## Segredos
 
 Banco e Telegram vêm **só de variável de ambiente** (`SCANNER_*`), nunca do repo.

@@ -13,7 +13,14 @@ from scanner.storage.models import SCHEMA, Base
 config = context.config
 
 if config.config_file_name is not None:
-    fileConfig(config.config_file_name)
+    # `disable_existing_loggers=False` e o padrao do `fileConfig` invertido de
+    # proposito. Com o padrao (True), carregar a configuracao de log do
+    # alembic.ini DESLIGA todo logger que ja exista -- inclusive os `scanner.*`.
+    # Em producao cada comando roda no proprio processo e isso nunca aparecia;
+    # na suite de testes, qualquer teste de banco (que migra) apagava o log de
+    # todos os que rodassem depois. E o log e o unico lugar onde a cota da brapi
+    # aparece antes de a checagem terminar.
+    fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 # Respeita uma URL ja definida pelo chamador (os testes apontam para o banco
 # isolado); so cai no ambiente quando ninguem definiu nada.

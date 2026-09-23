@@ -1,24 +1,14 @@
 import { TabelaDoHistorico } from "@/components/TabelaDoHistorico";
 import { LIMIAR_DO_ALERTA, Z_MINIMO_DO_SITE } from "@/lib/config";
 import { eventosDoHistorico } from "@/lib/db";
-import type { LinhaDoHistorico } from "@/lib/types";
+import { linhaDoHistorico } from "@/lib/historico";
 
 export default async function Historico() {
   const eventos = await eventosDoHistorico();
 
-  // So os campos que a tabela usa vao para o navegador. O Evento inteiro tem o
-  // dobro de campos, e a pagina chegava a 689 KB com 400 eventos.
-  const linhas: LinhaDoHistorico[] = eventos.map((e) => ({
-    ticker: e.ticker,
-    empresa: e.empresa,
-    tradeDate: e.tradeDate,
-    zLog: e.zLog,
-    rvol: e.rvol,
-    retDay: e.retDay,
-    zExcess: e.zExcess,
-    avgTicket: e.avgTicket,
-    volumeFinancial: e.volumeFinancial,
-  }));
+  // `linhaDoHistorico` corta o evento ao que a tabela usa e tira a precisao que
+  // nenhuma celula mostra. O porque de cada campo esta em `lib/historico.ts`.
+  const linhas = eventos.map(linhaDoHistorico);
 
   return (
     <TabelaDoHistorico

@@ -1223,9 +1223,76 @@ para ele, o alerta ainda pode disparar com preço da véspera. É bem mais estre
 que antes — precisa das duas coisas ao mesmo tempo —, e a alternativa seria o
 alerta não existir naquela passada.
 
+#### Quando o Yahoo responde, mas sobre ontem
+
+Consequência direta da mudança acima, notada em produção no mesmo dia: às 10:47
+o Yahoo devolveu para VIVA3 um instantâneo do fechamento de 22/09 — preço 22,78,
+volume 0, hora 17:05 da véspera. Um minuto depois já estava normal.
+
+O app se comportou certo: como o dia da cotação era 22/09 e a última barra do
+COTAHIST também é 22/09, o gráfico não desenhou nada. Nenhuma guarda nova
+precisou agir — a condição que já existia bastou.
+
+Mas `candleDeHoje` e `ProvedorMaisRecente` tratam "o Yahoo respondeu" como
+resposta final, e uma cotação de ontem **não é** uma resposta à pergunta "qual é
+o preço de hoje". Nesse minuto a brapi não foi consultada, e o efeito é:
+
+- a ficha fica sem candle parcial;
+- na checagem de rompimentos aquele papel não é avaliado naquela passada, porque
+  `cotacoes_de_hoje` descarta a cotação por ser de outro dia.
+
+**A troca é deliberada e, na nossa leitura, a certa**: antes a brapi cobriria o
+buraco, mas com o carimbo falso — ou seja, o alerta era avaliado com o preço da
+véspera. Perder uma passada e tentar de novo em 15 minutos é melhor que disparar
+errado. Fica registrado porque é comportamento novo, não porque esteja obviamente
+errado.
+
+**Quatro saídas, na ordem em que eu tentaria:**
+
+1. **Medir antes de consertar.** A instrumentação já existe:
+   `RelatorioDeChecagem.velhas` conta exatamente as cotações que chegaram e não
+   eram de hoje, e a linha da checagem imprime "N de outro dia ignoradas". Ler
+   os logs do `rompimentos.yml` por algumas semanas diz se isto acontece uma vez
+   por mês ou toda manhã — e o custo de qualquer conserto abaixo só se justifica
+   sabendo disso.
+
+2. **Trocar o endpoint da brapi por `/api/v2/stocks/historical`.** É a correção
+   de raiz, e a única que devolveria a brapi ao jogo em vez de contornar o
+   problema. Testado em 23/09/2026: ele devolve série OHLCV **datada**, e o
+   primeiro ponto é o parcial de hoje — `date` de 23/09/2026 00:00 BRT, com
+   máxima e mínima idênticas às do Yahoo no mesmo instante. A data sai do dado,
+   não do relógio, que é justamente o que falta no `quote`.
+
+   *Ressalva:* a data é a da sessão à meia-noite, então passaríamos a saber
+   **qual pregão**, mas não **de quando dentro dele** — a mensagem do alerta
+   diria "parcial de hoje" em vez de uma hora. Custo de cota igual (1
+   requisição), e o plano gratuito permite até 3 meses de histórico.
+
+3. **Tratar "respondeu sobre outro dia" como não ter respondido.** Na primeira
+   passada do `ProvedorMaisRecente`, só contam as cotações cujo dia na B3 é o de
+   hoje; o resto cai para a reserva. Mudança pequena. *Risco:* sozinha, ela
+   devolve a vez à brapi exatamente nos papéis em que o carimbo falso causa
+   dano — só vale junto da saída 2 ou da 4.
+
+4. **Levar a guarda da cópia para a camada de fornecedor.** Hoje o teste "é
+   idêntico à última barra fechada" vive no gráfico. Movido para um invólucro
+   em volta do fornecedor de hora duvidosa, o alerta ganharia a mesma proteção,
+   e aí a saída 3 ficaria segura. *Custo:* o `checar_rompimentos` passaria a ler
+   a última barra dos papéis que vigia — consulta barata, mas é uma dependência
+   nova entre `cotacoes/` e o banco, que hoje não existe de propósito.
+   *Limite:* um papel pode legitimamente negociar exatamente no OHLC da véspera;
+   é raro, e o custo seria um alerta atrasado, não um alerta errado.
+
+**Descartada:** usar `regularMarketPreviousClose` da brapi como marcador de
+sessão. Parecia o caminho óbvio — se o "fechamento anterior" que ela informa for
+o de anteontem, o instantâneo é de ontem. Mas em 23/09/2026 a brapi devolveu
+`regularMarketPreviousClose` de 49,58 para PETR4 com preço 49,59, enquanto o
+fechamento real de 22/09 foi 48,35: o campo é o tick anterior, não o fechamento
+da sessão anterior. Não serve.
+
 ### O que ficou na lista e não foi feito
 
-Três itens continuam abertos:
+Além da questão acima, três itens continuam abertos:
 
 1. **Interromper o lote da brapi no primeiro 401/429.** `BrapiClient.cotacoes`
    itera os papéis e segue em frente quando um falha. Com token vencido e 20

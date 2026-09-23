@@ -6,8 +6,11 @@ anterior. Serve para o alerta de volume. Alerta de rompimento precisa do oposto
 pasta existe separada de `ingest/`.
 
 O desenho veio do `portfolio-api`: um contrato (`ProvedorDeCotacoes`) e um
-adaptador por fornecedor. O que junta os fornecedores e `ProvedorMaisRecente`,
-que pergunta a todos e fica com a cotacao de hora mais nova.
+adaptador por fornecedor. O que junta os fornecedores e `ProvedorMaisRecente`:
+entre os que medem a hora do negocio, fica com a cotacao de hora mais nova; os
+que carimbam o relogio da resposta -- hoje, a brapi -- entram so para preencher
+o que os primeiros nao souberam responder. O porque esta em
+`ProvedorDeCotacoes.hora_e_do_negocio`.
 """
 
 from scanner.cotacoes.base import Cota, Cotacao, ProvedorDeCotacoes

@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 from collections.abc import Callable, Sequence
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import UTC, date, datetime
 from decimal import Decimal
 from typing import Any
@@ -203,10 +203,16 @@ def test_yahoo_papel_inexistente_nao_vira_cotacao(monkeypatch: pytest.MonkeyPatc
 
 @dataclass(frozen=True)
 class Fixo:
+    """Fornecedor de mentira. `hora_e_do_negocio` como o de verdade declara."""
+
     nome: str
     horas: dict[str, datetime]
+    hora_e_do_negocio: bool = True
+    # Para quem chegou a ser perguntado, e por quais papeis.
+    pedidos: list[list[str]] = field(default_factory=list)
 
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
+        self.pedidos.append(list(tickers))
         return {
             t: Cotacao(t, Decimal("10"), self.nome, self.horas[t])
             for t in tickers
@@ -217,32 +223,88 @@ class Fixo:
 @dataclass(frozen=True)
 class Quebrado:
     nome: str = "quebrado"
+    hora_e_do_negocio: bool = True
 
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
         raise RuntimeError("bug no adaptador")
 
 
 def test_fica_com_a_cotacao_de_hora_mais_nova_independente_da_ordem() -> None:
+    """Entre relogios que medem a mesma coisa, a hora mais nova ganha."""
     cedo = datetime(2026, 9, 14, 15, 45, tzinfo=UTC)
     tarde = datetime(2026, 9, 14, 16, 0, tzinfo=UTC)
-    brapi_lenta = Fixo("brapi", {"PETR4": cedo, "VALE3": tarde})
-    yahoo_rapido = Fixo("yahoo", {"PETR4": tarde, "VALE3": cedo})
+    um = Fixo("um", {"PETR4": cedo, "VALE3": tarde})
+    outro = Fixo("outro", {"PETR4": tarde, "VALE3": cedo})
 
-    escolhidas = ProvedorMaisRecente((brapi_lenta, yahoo_rapido)).cotacoes(["PETR4", "VALE3"])
+    escolhidas = ProvedorMaisRecente((um, outro)).cotacoes(["PETR4", "VALE3"])
 
-    assert escolhidas["PETR4"].fonte == "yahoo"
-    assert escolhidas["VALE3"].fonte == "brapi"
+    assert escolhidas["PETR4"].fonte == "outro"
+    assert escolhidas["VALE3"].fonte == "um"
 
 
 def test_empate_fica_com_o_primeiro_fornecedor() -> None:
-    primeiro = Fixo("brapi", {"PETR4": HORA})
-    segundo = Fixo("yahoo", {"PETR4": HORA})
-    assert ProvedorMaisRecente((primeiro, segundo)).cotacoes(["PETR4"])["PETR4"].fonte == "brapi"
+    primeiro = Fixo("primeiro", {"PETR4": HORA})
+    segundo = Fixo("segundo", {"PETR4": HORA})
+    assert ProvedorMaisRecente((primeiro, segundo)).cotacoes(["PETR4"])["PETR4"].fonte == "primeiro"
 
 
 def test_um_fornecedor_quebrado_nao_impede_os_outros() -> None:
     provedor = ProvedorMaisRecente((Quebrado(), Fixo("yahoo", {"PETR4": HORA})))
     assert provedor.cotacoes(["PETR4", "VALE3"])["PETR4"].fonte == "yahoo"
+
+
+# --- Hora nao confiavel: a reserva ----------------------------------------------
+
+
+def test_hora_nao_confiavel_nao_ganha_de_quem_respondeu() -> None:
+    """O caso de 23/09/2026: a brapi carimba "agora" e venceria por isso.
+
+    Com dado da vespera carimbado como agora, a versao antiga -- que comparava
+    todas as horas -- escolhia a brapi e o alerta podia disparar com o preco de
+    ontem. Agora ela nem disputa.
+    """
+    agora = datetime(2026, 9, 23, 13, 19, 30, tzinfo=UTC)
+    ultimo_negocio = datetime(2026, 9, 23, 13, 10, 14, tzinfo=UTC)
+    brapi = Fixo("brapi", {"VIVA3": agora}, hora_e_do_negocio=False)
+    yahoo = Fixo("yahoo", {"VIVA3": ultimo_negocio})
+
+    escolhidas = ProvedorMaisRecente((brapi, yahoo)).cotacoes(["VIVA3"])
+
+    assert escolhidas["VIVA3"].fonte == "yahoo"
+    assert escolhidas["VIVA3"].hora == ultimo_negocio
+
+
+def test_a_reserva_so_e_perguntada_pelo_que_faltou() -> None:
+    """Preencher ausencia e o que ela ainda faz bem -- e gasta menos cota."""
+    brapi = Fixo("brapi", {"PETR4": HORA, "VALE3": HORA}, hora_e_do_negocio=False)
+    yahoo = Fixo("yahoo", {"PETR4": HORA})
+
+    escolhidas = ProvedorMaisRecente((brapi, yahoo)).cotacoes(["PETR4", "VALE3"])
+
+    assert escolhidas["PETR4"].fonte == "yahoo"
+    assert escolhidas["VALE3"].fonte == "brapi"
+    # O papel que o Yahoo respondeu nao chega a ser pedido a brapi.
+    assert brapi.pedidos == [["VALE3"]]
+
+
+def test_reserva_nao_e_consultada_quando_nada_falta() -> None:
+    """Nenhuma requisicao, nao uma requisicao descartada."""
+    brapi = Fixo("brapi", {"PETR4": HORA}, hora_e_do_negocio=False)
+    yahoo = Fixo("yahoo", {"PETR4": HORA})
+
+    ProvedorMaisRecente((brapi, yahoo)).cotacoes(["PETR4"])
+
+    assert brapi.pedidos == []
+
+
+def test_so_reserva_ainda_responde() -> None:
+    """Sem nenhum fornecedor de hora confiavel, a reserva cobre tudo.
+
+    E o que acontece se o Yahoo cair: melhor um preco com hora duvidosa do que
+    alerta nenhum. A hora vai na mensagem para quem le saber de quando e.
+    """
+    brapi = Fixo("brapi", {"PETR4": HORA}, hora_e_do_negocio=False)
+    assert ProvedorMaisRecente((brapi,)).cotacoes(["PETR4"])["PETR4"].fonte == "brapi"
 
 
 # --- A cota da brapi ------------------------------------------------------------

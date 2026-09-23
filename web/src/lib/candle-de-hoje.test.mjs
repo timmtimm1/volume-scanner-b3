@@ -4,13 +4,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import {
-  candleParcial,
-  diaNaB3,
-  horaNaB3,
-  maisRecente,
-  montarCandle,
-} from "./candle-de-hoje.ts";
+import { candleParcial, diaNaB3, horaNaB3, montarCandle } from "./candle-de-hoje.ts";
 
 const HORA = new Date("2026-09-14T16:14:30Z"); // 13:14 em Brasilia
 
@@ -24,13 +18,14 @@ const campos = (extra = {}) => ({
   ...extra,
 });
 
-const barra = (tradeDate) => ({
+const barra = (tradeDate, ohlc = {}) => ({
   tradeDate,
   open: 10,
   high: 10,
   low: 10,
   close: 10,
   volumeFinancial: 1,
+  ...ohlc,
 });
 
 describe("montarCandle", () => {
@@ -81,25 +76,8 @@ describe("montarCandle", () => {
   });
 });
 
-describe("maisRecente", () => {
-  const cedo = montarCandle("ALPA4", "brapi", campos({ hora: new Date("2026-09-14T15:45:00Z") }));
-  const tarde = montarCandle("ALPA4", "yahoo", campos({ hora: new Date("2026-09-14T16:00:00Z") }));
-
-  it("fica com a de hora mais nova, em qualquer ordem", () => {
-    assert.equal(maisRecente(cedo, tarde), tarde);
-    assert.equal(maisRecente(tarde, cedo), tarde);
-  });
-
-  it("empate fica com a primeira, e ausencia com a outra", () => {
-    const outra = { ...cedo, fonte: "yahoo" };
-    assert.equal(maisRecente(cedo, outra), cedo);
-    assert.equal(maisRecente(null, tarde), tarde);
-    assert.equal(maisRecente(cedo, null), cedo);
-    assert.equal(maisRecente(null, null), null);
-  });
-});
-
 describe("candleParcial", () => {
+  // 14/09/2026 e uma segunda-feira; 13:14 em Brasilia.
   const hoje = montarCandle("ALPA4", "yahoo", campos());
 
   it("aparece quando o COTAHIST ainda nao trouxe o pregao", () => {
@@ -107,13 +85,102 @@ describe("candleParcial", () => {
   });
 
   it("some quando o pregao ja esta no grafico oficial", () => {
-    // Antes da abertura, fim de semana ou feriado: a ultima cotacao e de um
-    // pregao que ja tem barra oficial.
     assert.equal(candleParcial([barra("2026-09-14")], hoje), null);
   });
 
   it("sem cotacao nao ha candle; sem barras, aparece", () => {
     assert.equal(candleParcial([barra("2026-09-11")], null), null);
     assert.equal(candleParcial([], hoje), hoje);
+  });
+
+  describe("copia da ultima barra fechada", () => {
+    // O caso real de 23/09/2026: a brapi devolveu o pregao fechado de 22/09
+    // inteiro carimbado como 23/09 as 10:19, e a ficha desenhou os dois
+    // candles iguais, lado a lado.
+    const viva3 = montarCandle("VIVA3", "brapi", {
+      preco: 22.78,
+      abertura: 23.76,
+      maxima: 23.79,
+      minima: 22.12,
+      volume: 9265200,
+      hora: new Date("2026-09-23T13:19:30Z"),
+    });
+    const fechado = barra("2026-09-22", { open: 23.76, high: 23.79, low: 22.12, close: 22.78 });
+
+    it("nao desenha quando os quatro precos batem", () => {
+      assert.equal(candleParcial([fechado], viva3), null);
+    });
+
+    it("desenha assim que qualquer um dos quatro anda", () => {
+      // O parcial de verdade do mesmo papel na mesma manha, pelo Yahoo.
+      const real = montarCandle("VIVA3", "yahoo", {
+        preco: 22.62,
+        abertura: 22.6,
+        maxima: 22.75,
+        minima: 22.59,
+        volume: 9400,
+        hora: new Date("2026-09-23T13:08:53Z"),
+      });
+      assert.notEqual(candleParcial([fechado], real), null);
+    });
+
+    it("um centavo de diferenca ja e movimento", () => {
+      const andou = { ...viva3, close: 22.79 };
+      assert.equal(candleParcial([fechado], andou), andou);
+    });
+
+    it("barra sem abertura nao esconde o candle", () => {
+      // Papel com um negocio so no dia: nulo nunca e igual a um preco, entao a
+      // comparacao falha e o candle passa. Na duvida, desenhar.
+      const semAbertura = barra("2026-09-22", {
+        open: null,
+        high: 23.79,
+        low: 22.12,
+        close: 22.78,
+      });
+      assert.equal(candleParcial([semAbertura], viva3), viva3);
+    });
+
+    it("compara com duas casas, a precisao da B3", () => {
+      // O banco guarda NUMERIC(18,4): 22.7800 e o mesmo 22,78 do candle.
+      const comQuatroCasas = barra("2026-09-22", {
+        open: 23.76,
+        high: 23.79,
+        low: 22.12,
+        close: 22.78,
+      });
+      assert.equal(candleParcial([comQuatroCasas], viva3), null);
+    });
+  });
+
+  describe("fim de semana", () => {
+    // 26/09/2026 e sabado, 27/09 e domingo. A cotacao guardada e a de sexta,
+    // mas a brapi a carimba com o relogio de agora -- e "sabado > sexta" era
+    // verdade, entao o candle de sabado aparecia.
+    const sabado = montarCandle("ALPA4", "brapi", {
+      ...campos(),
+      hora: new Date("2026-09-26T14:00:00Z"),
+    });
+    const domingo = montarCandle("ALPA4", "brapi", {
+      ...campos(),
+      hora: new Date("2026-09-27T14:00:00Z"),
+    });
+
+    it("nao existe pregao no sabado nem no domingo", () => {
+      assert.equal(candleParcial([barra("2026-09-25")], sabado), null);
+      assert.equal(candleParcial([barra("2026-09-25")], domingo), null);
+    });
+
+    it("vale mesmo sem barra nenhuma no grafico", () => {
+      assert.equal(candleParcial([], sabado), null);
+    });
+
+    it("a sexta seguinte continua aparecendo", () => {
+      const sexta = montarCandle("ALPA4", "yahoo", {
+        ...campos(),
+        hora: new Date("2026-09-25T14:00:00Z"),
+      });
+      assert.notEqual(candleParcial([barra("2026-09-24")], sexta), null);
+    });
   });
 });

@@ -81,6 +81,31 @@ class ProvedorDeCotacoes(Protocol):
     """O que todo fornecedor precisa saber fazer."""
 
     @property
+    def hora_e_do_negocio(self) -> bool:
+        """Se `Cotacao.hora` e a hora do ultimo negocio, e nao a de agora.
+
+        Isto nao e detalhe de implementacao, e o que decide se a cotacao pode
+        ser comparada com outra ou usada para dizer "este preco e de hoje".
+
+        Medido em 23/09/2026, com o mercado aberto: PETR4, VALE3 e ITUB4 pedidos
+        a brapi as 10:23:30 voltaram os tres com `regularMarketTime` de
+        13:23:30.000Z -- identico ao segundo, igual ao instante da resposta. No
+        mesmo momento, VIVA3 voltou com abertura, maxima, minima, fechamento e
+        volume EXATAMENTE iguais ao pregao ja fechado de 22/09, carimbado como
+        23/09 as 10:19. O Yahoo, no mesmo instante, deu 10:10:14 -- a hora do
+        ultimo negocio de verdade -- e o parcial correto.
+
+        Ou seja: a brapi carimba o relogio da resposta, nao o do negocio. Em
+        papel liquido o dado esta fresco e isso nao faz mal; em papel de giro
+        menor, antes da abertura, no fim de semana e no feriado, ela serve dado
+        velho dizendo que e de agora.
+
+        Fornecedor que responde `False` aqui nao entra na disputa por hora mais
+        nova: ele so e consultado para o que os outros nao souberam responder.
+        """
+        ...
+
+    @property
     def nome(self) -> str:
         """Como o fornecedor se identifica nos logs e no aviso de disparo.
 

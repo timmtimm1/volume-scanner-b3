@@ -826,12 +826,25 @@ pareceriam complexas demais para o problema.
   vezes com 403/404 no meio do caminho — daí os dois horários de disparo
   (21:30 + 07:40) em vez de um único horário fixo.
 - **Cotação de preço não é tempo real.** Isso vale só para os alertas de
-  rompimento — a única parte do sistema que não vem do COTAHIST oficial; o
-  scan de volume usa dado de fechamento, sem esse problema. A brapi gratuita
-  atrasa cerca de 30 minutos, o Yahoo cerca de 15. `ProvedorMaisRecente`
-  consulta os dois fornecedores e fica, por papel, com a cotação de hora mais
-  nova — sem isso, a brapi, que vem primeiro na ordem de preferência, sempre
-  venceria mesmo estando mais atrasada que o Yahoo.
+  rompimento e para o candle parcial da ficha — as únicas partes do sistema que
+  não vêm do COTAHIST oficial; o scan de volume usa dado de fechamento, sem
+  esse problema. O Yahoo atrasa cerca de 15 minutos.
+- **A hora que a brapi informa é a da resposta, não a do negócio.** Isto é pior
+  que atraso, porque não dá para medir. Verificado em 23/09/2026, com o mercado
+  aberto: PETR4, VALE3 e ITUB4 pedidos às 10:23:30 voltaram os três com
+  `regularMarketTime` de `13:23:30.000Z` — idêntico ao segundo, igual ao
+  instante da resposta. No mesmo momento, VIVA3 voltou com abertura, máxima,
+  mínima, fechamento e volume **exatamente iguais** ao pregão já fechado de
+  22/09 (23,76 / 23,79 / 22,12 / 22,78 / 9.265.200), carimbado como 23/09 às
+  10:19. O Yahoo, no mesmo instante, deu 10:10:14 — a hora do último negócio —
+  e o parcial correto.
+
+  Em papel líquido o dado está fresco e o carimbo falso não faz mal. Em papel
+  de giro menor, antes da abertura, no fim de semana e no feriado, ela serve
+  dado velho dizendo que é de agora. Por isso a brapi é **reserva**: consultada
+  só para o papel que o Yahoo não respondeu, e fora da disputa por hora mais
+  nova — comparar horas só significa alguma coisa entre relógios que medem a
+  mesma coisa. A regra está em `ProvedorDeCotacoes.hora_e_do_negocio`.
 - **Sem `SCANNER_BRAPI_TOKEN`, só o Yahoo responde.** O plano gratuito da
   brapi aceita 1 papel por requisição; sem o token, a brapi fica de fora da
   consulta e a leitura de preço passa a ter uma única fonte.
@@ -1154,27 +1167,75 @@ todo logger já existente** — inclusive os `scanner.*`. Em produção cada com
 roda no próprio processo e isso nunca apareceu; na suíte, qualquer teste de banco
 apagava o log de todos os que rodassem depois.
 
+### O relógio da brapi, e por que ela virou reserva (23/09/2026)
+
+Isto não é desempenho — é correção, e entrou depois porque só apareceu quando
+alguém olhou a ficha de um papel de giro menor numa manhã de pregão. O gráfico
+mostrava o candle de hoje como uma **cópia exata** do candle de ontem, colado ao
+lado dele.
+
+A causa não era o app copiar nada. É que **a brapi carimba a cotação com a hora
+da resposta, não com a hora do negócio** — a medição está em
+[Dificuldades conhecidas](#dificuldades-conhecidas). O `ProvedorMaisRecente`
+escolhia pela hora mais nova, a brapi sempre dizia "agora", e por isso ela
+vencia **toda** disputa, inclusive servindo o pregão fechado da véspera.
+
+O sintoma visível era o gráfico, mas o problema sério era outro:
+`cotacoes_de_hoje` decide se uma cotação vale pela hora dela. Com o carimbo
+falso, **o fechamento de ontem passava como preço de hoje e podia disparar um
+alerta de rompimento** por um movimento que ainda não tinha acontecido.
+
+Três mudanças, da raiz para a superfície:
+
+1. **A hora virou parte do contrato do fornecedor.**
+   `ProvedorDeCotacoes.hora_e_do_negocio` diz se `Cotacao.hora` é a hora do
+   negócio. O Yahoo responde `True`, a brapi `False`. `ProvedorMaisRecente`
+   passou a fazer duas passadas: quem mede a hora do negócio disputa por hora
+   mais nova; quem não mede é consultado **depois e só para o que faltou**. O
+   mesmo no site, em `cotacao.ts`.
+
+   De quebra, isto era o item 2 da lista de pendências da rodada anterior: com a
+   brapi só na reserva, o consumo da cota cai para perto de zero. Mas o motivo
+   de fazer agora foi a correção, não a economia.
+
+2. **O gráfico não desenha um parcial idêntico à última barra fechada.**
+   Pregão em andamento não reproduz a abertura, a máxima, a mínima **e** o
+   fechamento do dia anterior ao centavo. Quando os quatro batem, o que chegou é
+   o dia anterior servido de novo.
+
+   Comparar os quatro, e não só o fechamento, não é excesso de zelo: na manhã em
+   que isso foi corrigido, o preço real de VIVA3 às 10:17 era **22,78 — o mesmo
+   fechamento de ontem** —, mas com abertura 22,60 e máxima 22,86. Um teste que
+   olhasse só o fechamento teria escondido um candle verdadeiro.
+
+3. **O gráfico não desenha candle em sábado nem domingo.** Com o carimbo de
+   "agora", `sábado > sexta` era verdade e o candle de fim de semana aparecia.
+   Feriado **não** tem lista aqui de propósito: o calendário da B3 mora em
+   `scanner/calendar.py`, e uma segunda cópia no TypeScript seria uma segunda
+   verdade que um dia diverge. Feriado cai na condição 2, que é mais geral.
+
+As condições 2 e 3 continuam valendo mesmo com a raiz corrigida: elas não
+dependem de qual fornecedor respondeu nem de a hora ser honesta, e é o gráfico
+que o usuário lê para decidir.
+
+**Risco que sobra:** se o Yahoo cair para um papel *e* a brapi servir dado velho
+para ele, o alerta ainda pode disparar com preço da véspera. É bem mais estreito
+que antes — precisa das duas coisas ao mesmo tempo —, e a alternativa seria o
+alerta não existir naquela passada.
+
 ### O que ficou na lista e não foi feito
 
-Da análise que gerou esta rodada, quatro itens continuam abertos. Os três
-primeiros são sobre a cota da brapi e valem mais que tudo que foi feito acima,
-mas mexem em comportamento e por isso não entraram no mesmo commit:
+Três itens continuam abertos:
 
 1. **Interromper o lote da brapi no primeiro 401/429.** `BrapiClient.cotacoes`
    itera os papéis e segue em frente quando um falha. Com token vencido e 20
-   alertas, são 20 requisições cobradas por passada, 720 por dia.
-2. **Consultar a brapi só quando o Yahoo não trouxe cotação de hoje.** No plano
-   gratuito o dado da brapi atualiza a cada 30 minutos e o do Yahoo atrasa ~15:
-   o `ProvedorMaisRecente` compara as horas e descarta a resposta da brapi quase
-   sempre. Isso muda qual fonte ganha, e o comentário do `mais_recente.py`
-   precisa ser reescrito junto.
-3. **`/api/cotacao`: porteiro no banco em vez do Yahoo, e as duas consultas em
-   paralelo.** O site já sabe quais papéis existem; uma consulta de 5 ms
-   substitui uma ida ao Yahoo de ~300 ms, e aí os dois fornecedores podem ser
-   consultados ao mesmo tempo. Com `force-static` + `revalidate`, a rota passa a
-   sair do CDN.
-4. **Paralelizar o Yahoo na checagem de rompimentos.** Hoje são N requisições em
-   série por fornecedor. A brapi não pode ser paralelizada no gratuito
+   alertas, são 20 requisições cobradas por passada, 720 por dia. Vale menos
+   agora que a brapi é reserva, mas o desperdício continua lá.
+2. **`/api/cotacao` servida do CDN.** Com `force-static` + `revalidate`, a rota
+   para de invocar uma função por visita. Um porteiro no banco (o site já sabe
+   quais papéis existem) também evitaria a ida ao Yahoo para ticker inventado.
+3. **Paralelizar o Yahoo na checagem de rompimentos.** Hoje são N requisições em
+   série. A brapi não pode ser paralelizada no gratuito
    (`x-brapi-concurrency-limit: 1`), o Yahoo pode.
 
 ## Segredos

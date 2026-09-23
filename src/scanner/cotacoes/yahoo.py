@@ -29,6 +29,10 @@ class YahooClient:
     """Uma requisicao por papel, sem token. Medido em 14/09: ~15 min de atraso."""
 
     nome: str = "yahoo"
+    # `regularMarketTime` do Yahoo e a hora do ultimo negocio: em 23/09/2026,
+    # 10:10:14 para um papel cujo ultimo negocio tinha sido aquele. Por isso ele
+    # entra na disputa por hora mais nova.
+    hora_e_do_negocio: bool = True
 
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
         encontradas: dict[str, Cotacao] = {}

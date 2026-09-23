@@ -3,16 +3,25 @@
  *
  * Roda so na rota /api/cotacao: o token da brapi nunca chega ao navegador.
  *
- * Mesma regra dos alertas de preco no Python: consulta Yahoo e brapi e fica com
- * a cotacao de hora mais nova. Medido em 14/09/2026, o Yahoo atrasa ~15 minutos;
- * a brapi gratuita, pela propria brapi, ~30.
+ * Mesma regra dos alertas de preco no Python (`ProvedorMaisRecente`): o Yahoo
+ * responde, e a brapi so e consultada para o que ele nao soube responder.
  *
- * Cada resposta fica 5 minutos no cache de dados do Next, por papel. Abrir a
- * mesma ficha varias vezes, ou deixa-la aberta, nao gasta requisicao a mais --
- * a cota gratuita da brapi e de 15 mil por mes, dividida com os alertas.
+ * A regra mudou em 23/09/2026 e o motivo nao e velocidade, e honestidade do
+ * relogio. A brapi carimba `regularMarketTime` com a hora da RESPOSTA, nao a do
+ * negocio: naquele dia, com o mercado aberto, ela devolveu para VIVA3 a
+ * abertura, maxima, minima, fechamento e volume exatos do pregao ja fechado de
+ * 22/09, carimbados como 23/09 as 10:19. O Yahoo, no mesmo instante, deu
+ * 10:10:14 -- a hora do ultimo negocio -- e o parcial correto de hoje.
+ *
+ * Enquanto a escolha era "a de hora mais nova", a brapi vencia sempre, com dado
+ * velho, e a ficha desenhava um candle de hoje que era copia do de ontem.
+ *
+ * Cada resposta fica 5 minutos no cache de dados do Next, por papel. Com a
+ * brapi so na reserva, a cota gratuita de 15 mil por mes praticamente nao e
+ * mais tocada pelo site.
  */
 
-import { type CandleDeHoje, maisRecente, montarCandle } from "./candle-de-hoje";
+import { type CandleDeHoje, montarCandle } from "./candle-de-hoje";
 
 const CACHE_SEGUNDOS = 300;
 
@@ -100,19 +109,23 @@ async function daBrapi(ticker: string, token: string): Promise<CandleDeHoje | nu
 }
 
 /**
- * O candle mais recente que os fornecedores conhecem para o papel.
+ * O candle de hoje do papel: o Yahoo, e a brapi so quando ele nao responde.
  *
- * O Yahoo vai primeiro e serve de porteiro: se ele diz que o papel nao existe,
- * a brapi nem e consultada. A rota e publica, e sem isso qualquer um gastaria a
- * cota da brapi pedindo tickers inventados -- o Yahoo nao cobra por consulta.
+ * O Yahoo tambem serve de porteiro: se ele diz que o papel nao existe, a brapi
+ * nem e consultada. A rota e publica, e sem isso qualquer um gastaria a cota da
+ * brapi pedindo tickers inventados -- o Yahoo nao cobra por consulta.
+ *
+ * Nao ha mais comparacao de horas aqui. Comparar so faz sentido entre relogios
+ * que medem a mesma coisa, e o da brapi mede outra (ver o topo do arquivo).
+ * Quando ela responde, e porque o Yahoo nao respondeu -- e ai um preco com hora
+ * duvidosa vale mais que nenhum. A hora aparece na ficha ao lado da fonte, para
+ * quem olha saber de quando e.
  */
 export async function candleDeHoje(ticker: string): Promise<CandleDeHoje | null> {
   const yahoo = await doYahoo(ticker);
   if (yahoo.inexistente) return null;
+  if (yahoo.candle) return yahoo.candle;
 
   const token = process.env.SCANNER_BRAPI_TOKEN;
-  const brapi = token ? await daBrapi(ticker, token) : null;
-
-  // brapi na primeira posicao: em empate de hora, fica a fonte com contrato.
-  return maisRecente(brapi, yahoo.candle);
+  return token ? await daBrapi(ticker, token) : null;
 }

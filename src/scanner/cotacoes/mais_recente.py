@@ -13,16 +13,26 @@ logger = logging.getLogger(__name__)
 
 @dataclass(frozen=True)
 class ProvedorMaisRecente:
-    """Pergunta a todos os fornecedores e fica, por papel, com a cotacao mais nova.
+    """Fica, por papel, com a cotacao mais nova de quem tem hora confiavel.
 
-    Substitui o encadeamento que pedia ao segundo so o que o primeiro nao
-    respondeu. Aquilo resolvia falta de dado, mas nao atraso: com a brapi na
-    frente, uma resposta de 30 minutos atras ganhava de uma de 15 so por ter
-    chegado primeiro na fila. Alerta de preco precisa do preco mais atual que
-    se consegue, e a unica forma de saber qual e comparar as horas.
+    Duas passadas, e a ordem nao e capricho:
 
-    Empate fica com o fornecedor que vem antes na tupla: e a ordem de
-    preferencia, e a brapi, que tem contrato, vai na frente.
+    1. Os fornecedores cujo `hora` e a hora do negocio disputam entre si por
+       hora mais nova. Comparar horas so significa alguma coisa entre relogios
+       que medem a mesma coisa.
+    2. Os de hora nao confiavel sao consultados DEPOIS, e so para os papeis que
+       ninguem da primeira passada soube responder. Eles nao disputam: entram
+       para preencher ausencia, que e o que ainda sabem fazer bem.
+
+    Isto substitui a versao que perguntava a todos e comparava as horas de
+    todos. Aquilo pressupunha que a hora era honesta em toda parte, e em
+    23/09/2026 ficou provado que nao e: a brapi carimba o relogio da resposta,
+    nao o do negocio (a medicao esta em `ProvedorDeCotacoes.hora_e_do_negocio`).
+    Com isso ela ganhava TODA disputa, inclusive servindo o pregao fechado da
+    vespera -- e um alerta de rompimento podia disparar com o preco de ontem,
+    porque `cotacoes_de_hoje` decide pela hora.
+
+    Empate na primeira passada fica com o fornecedor que vem antes na tupla.
 
     A falha de um fornecedor nunca derruba os outros. Se todos falharem,
     devolve o que tiver, possivelmente nada -- quem chama trata a ausencia.
@@ -49,22 +59,51 @@ class ProvedorMaisRecente:
                 encontradas.append((provedor.nome, cota))
         return tuple(encontradas)
 
+    def _perguntar(
+        self, provedor: ProvedorDeCotacoes, tickers: Sequence[str]
+    ) -> dict[str, Cotacao]:
+        """Uma consulta, com a falha contida no fornecedor que a causou."""
+        if not tickers:
+            return {}
+        try:
+            return provedor.cotacoes(tickers)
+        # Rede de seguranca ampla de proposito: mesmo que um adaptador deixe
+        # escapar algo inesperado, a falha de UM fornecedor nao pode impedir os
+        # seguintes -- silencio por bug de parser seria indistinguivel de
+        # "nada rompeu".
+        except Exception:
+            logger.exception("[cotacoes] provedor %s falhou", provedor.nome)
+            return {}
+
     def cotacoes(self, tickers: Sequence[str]) -> dict[str, Cotacao]:
         escolhidas: dict[str, Cotacao] = {}
+
+        # 1a passada: quem mede a hora do negocio disputa por hora mais nova.
         for provedor in self.provedores:
-            try:
-                novas = provedor.cotacoes(tickers)
-            # Rede de seguranca ampla de proposito: mesmo que um adaptador deixe
-            # escapar algo inesperado, a falha de UM fornecedor nao pode impedir
-            # os seguintes -- silencio por bug de parser seria indistinguivel de
-            # "nada rompeu".
-            except Exception:
-                logger.exception("[cotacoes] provedor %s falhou", provedor.nome)
+            if not provedor.hora_e_do_negocio:
                 continue
-            for ticker, cotacao in novas.items():
+            for ticker, cotacao in self._perguntar(provedor, tickers).items():
                 atual = escolhidas.get(ticker)
                 if atual is None or cotacao.hora > atual.hora:
                     escolhidas[ticker] = cotacao
+
+        # 2a passada: os de hora nao confiavel, so para o que ficou sem resposta.
+        # Pedir menos papeis tambem gasta menos cota, mas o motivo de estarem
+        # aqui e a hora, nao o preco da requisicao.
+        for provedor in self.provedores:
+            if provedor.hora_e_do_negocio:
+                continue
+            faltando = [t for t in tickers if t not in escolhidas]
+            if not faltando:
+                break
+            reserva = self._perguntar(provedor, faltando)
+            if reserva:
+                logger.info(
+                    "[cotacoes] %s respondeu por %s (reserva: hora nao confiavel)",
+                    provedor.nome,
+                    sorted(reserva),
+                )
+            escolhidas.update(reserva)
 
         faltaram = [t for t in tickers if t not in escolhidas]
         if faltaram:

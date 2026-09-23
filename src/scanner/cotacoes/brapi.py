@@ -87,6 +87,11 @@ class BrapiClient:
     token: str
     lote: int = LOTE_PADRAO
     nome: str = "brapi"
+    # A hora da brapi e a da resposta, nao a do negocio -- ver
+    # `ProvedorDeCotacoes.hora_e_do_negocio`, que traz a medicao. Com `False`
+    # aqui ela deixa de disputar por hora e vira reserva: consultada so para o
+    # papel que o Yahoo nao soube responder.
+    hora_e_do_negocio: bool = False
     # `compare=False` e `repr=False`: a cota e estado observado, nao identidade
     # do cliente. Dois clientes com o mesmo token continuam iguais.
     _cota: _UltimaCota = field(default_factory=_UltimaCota, compare=False, repr=False)

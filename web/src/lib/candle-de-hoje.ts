@@ -108,31 +108,73 @@ export function montarCandle(
   };
 }
 
-/**
- * Das duas cotacoes, a de hora mais nova. Empate fica com a primeira.
- *
- * As horas saem de `toISOString`, entao comparar o texto e comparar o instante.
- */
-export function maisRecente(
-  primeira: CandleDeHoje | null,
-  segunda: CandleDeHoje | null,
-): CandleDeHoje | null {
-  if (!primeira) return segunda;
-  if (!segunda) return primeira;
-  return segunda.hora > primeira.hora ? segunda : primeira;
+/** Duas casas, a precisao da B3 -- a mesma que `montarCandle` da ao candle. */
+function duasCasas(v: number | null): number | null {
+  return v === null ? null : Math.round(v * 100) / 100;
 }
 
 /**
- * O candle so e desenhado se for de um pregao que o COTAHIST ainda nao trouxe.
+ * Se o "parcial" e, campo a campo, a barra que ja esta no grafico.
  *
- * Antes da abertura, no fim de semana ou num feriado, a "ultima cotacao" e de
- * um pregao que ja esta no grafico com o dado oficial -- e ele vence.
+ * Pregao em andamento nao reproduz a abertura, a maxima, a minima E o
+ * fechamento do pregao anterior ao centavo. Quando os quatro batem, o que
+ * chegou nao e um parcial: e o dia anterior servido de novo.
+ *
+ * `open`, `high` e `low` da barra podem ser nulos (papel com um negocio so no
+ * dia). Nulo nunca e igual a um preco, entao a comparacao falha e o candle
+ * passa -- na duvida, desenhar e melhor que esconder dado real.
+ */
+function ehCopiaDa(candle: CandleDeHoje, barra: Barra): boolean {
+  return (
+    duasCasas(barra.open) === candle.open &&
+    duasCasas(barra.high) === candle.high &&
+    duasCasas(barra.low) === candle.low &&
+    duasCasas(barra.close) === candle.close
+  );
+}
+
+/** Sabado ou domingo. Sem lista de feriados: ver `candleParcial`. */
+function ehFimDeSemana(dia: string): boolean {
+  const [ano, mes, d] = dia.split("-").map(Number);
+  const semana = new Date(ano, mes - 1, d).getDay();
+  return semana === 0 || semana === 6;
+}
+
+/**
+ * O candle so e desenhado se for mesmo um pregao em andamento.
+ *
+ * Tres condicoes, e cada uma existe por um motivo diferente:
+ *
+ * 1. **Depois do ultimo pregao que o COTAHIST trouxe.** Se o dia oficial ja
+ *    esta no grafico, o dado oficial vence.
+ * 2. **Num dia que pode ser pregao.** Sabado e domingo saem por aritmetica de
+ *    data. Feriado NAO tem lista aqui de proposito: o calendario da B3 mora em
+ *    `scanner/calendar.py`, e uma segunda copia no TypeScript seria uma segunda
+ *    verdade que um dia diverge. Feriado cai na condicao 3, que e mais geral.
+ * 3. **Diferente da ultima barra fechada.** E a guarda que pega o resto: antes
+ *    da abertura, no feriado, e no papel de giro menor cuja cotacao ainda nao
+ *    andou hoje.
+ *
+ * A condicao 3 nasceu em 23/09/2026. A brapi carimba a cotacao com a hora da
+ * RESPOSTA, nao com a do negocio, e naquela manha devolveu para VIVA3 o pregao
+ * fechado de 22/09 inteiro -- 23,76 / 23,79 / 22,12 / 22,78 -- dizendo que era
+ * de 23/09 as 10:19. A ficha desenhava isso como o candle de hoje: uma copia
+ * exata do candle anterior, ao lado dele.
+ *
+ * A raiz disso foi corrigida em `cotacao.ts` (a brapi virou reserva), mas a
+ * guarda fica: ela nao depende de qual fornecedor respondeu nem de a hora ser
+ * honesta, e e o grafico que o usuario le para decidir.
  */
 export function candleParcial(
   barras: Barra[],
   candle: CandleDeHoje | null,
 ): CandleDeHoje | null {
   if (!candle) return null;
-  const ultimo = barras.at(-1)?.tradeDate;
-  return ultimo === undefined || candle.dia > ultimo ? candle : null;
+  if (ehFimDeSemana(candle.dia)) return null;
+
+  const ultima = barras.at(-1);
+  if (ultima === undefined) return candle;
+  if (candle.dia <= ultima.tradeDate) return null;
+  if (ehCopiaDa(candle, ultima)) return null;
+  return candle;
 }

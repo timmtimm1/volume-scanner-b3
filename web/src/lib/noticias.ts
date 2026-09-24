@@ -147,7 +147,16 @@ const NAO_NOTICIA =
 const PALAVRAS_MINIMAS = 4;
 
 const PROMOCAO =
-  /\b(ofertas?|cupom|desconto|promoç|a partir de R\$|milheiro|pontos \+|b[ôo]nus na|transfer[êe]ncia de pontos)/i;
+  /\b(ofertas?|cupom|desconto|promoç|a partir de R\$|milheiro|pontos \+|b[ôo]nus na transfer|transfer[êe]ncia de pontos)/i;
+
+/**
+ * "Oferta" e "desconto" que sao mercado, nao loja. Oferta de acoes (follow-on,
+ * OPA) e causa classica de volume anomalo, e a manchete costuma citar a
+ * empresa sem o ticker: "Vivara anuncia oferta de ações de R$ 1 bi" caia como
+ * promocao antes desta excecao.
+ */
+const OFERTA_DE_MERCADO =
+  /\boferta (pública|publica|de ações|de acoes|subsequente|primária|primaria|secundária|secundaria|de aquisição|de aquisicao|de recompra|restrita)|follow-on|\bOPA\b|com desconto de \d/i;
 
 /**
  * Os `q` das buscas no Google Noticias, que a rota faz em paralelo e junta.
@@ -366,7 +375,9 @@ export function motivoDoDescarte(n: Noticia, id: Identidade): MotivoDeDescarte |
   }
   if (NAO_NOTICIA.test(n.titulo)) return "nao-e-noticia";
   if (n.titulo.trim().split(/\s+/).length < PALAVRAS_MINIMAS) return "nao-e-noticia";
-  if (PROMOCAO.test(n.titulo) && !temTicker) return "promocao";
+  if (PROMOCAO.test(n.titulo) && !temTicker && !OFERTA_DE_MERCADO.test(n.titulo)) {
+    return "promocao";
+  }
   return motivoDaFonte(n, temTicker);
 }
 

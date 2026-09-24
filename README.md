@@ -799,8 +799,8 @@ Quem dispara os workflows é o cron-job.org, não o agendador do GitHub
    **Actions: Read and write**.
 2. No cron-job.org, crie um job para cada entrada de
    [`.github/cron-externo.yml`](.github/cron-externo.yml) — `daily-noite`,
-   `daily-manha` e `rompimentos` —, no fuso **America/Sao_Paulo**, com o `cron`
-   de lá:
+   `daily-manha`, `rompimentos` e `fundamentos-b3` —, no fuso
+   **America/Sao_Paulo**, com o `cron` de lá:
    - URL: `https://api.github.com/repos/SEU-USUARIO/SEU-REPO/actions/workflows/ARQUIVO.yml/dispatches`,
      com o `workflow` da entrada no lugar de `ARQUIVO.yml`
    - Método `POST`, corpo `{"ref":"main"}`
@@ -983,7 +983,7 @@ A ficha de cada papel tem uma aba **Notícias** com as manchetes recentes sobre 
 1. **Não é a empresa.** A manchete precisa ter o ticker ou o nome. Antes de procurar o nome, saem expressões que usam a mesma palavra ("Vale do Paraíba", "Área Azul", "Itaú BBA" comentando outra ação). Nome todo em minúscula não conta ("vale a pena", "fachada de azul").
 2. **Nome comum fora da imprensa financeira**, como explicado acima.
 3. **Não é notícia**: página de cotação, fórum, boletim de análise gráfica, manchete de menos de 4 palavras.
-4. **Promoção**: passagem, cupom, milheiro, desconto, a menos que a manchete cite o ticker.
+4. **Promoção**: passagem, cupom, milheiro, desconto, a menos que a manchete cite o ticker — ou seja sobre o mercado, não a loja: "oferta de ações", "oferta subsequente/pública/de aquisição", follow-on, OPA e "com desconto de N%" não contam como promoção.
 5. **Fonte fora da imprensa**: prefeitura, tribunal, universidade, blog de milhas. Site desconhecido só passa se citar o ticker e for `.br`.
 
 Depois, a mesma história contada por várias fontes vira uma linha só, com "+4 fontes". O rodapé da aba mostra quantas manchetes foram descartadas e por quê, para dar para julgar se o filtro está cortando demais.
@@ -1254,7 +1254,7 @@ Três mudanças, da raiz para a superfície:
    "agora", `sábado > sexta` era verdade e o candle de fim de semana aparecia.
    Feriado **não** tem lista aqui de propósito: o calendário da B3 mora em
    `scanner/calendar.py`, e uma segunda cópia no TypeScript seria uma segunda
-   verdade que um dia diverge. Feriado cai na condição 2, que é mais geral.
+   verdade que um dia diverge. Feriado cai na condição 3, que é mais geral.
 
 As condições 2 e 3 continuam valendo mesmo com a raiz corrigida: elas não
 dependem de qual fornecedor respondeu nem de a hora ser honesta, e é o gráfico

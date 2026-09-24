@@ -322,6 +322,19 @@ describe("motivoDoDescarte", () => {
     );
   });
 
+  it("oferta de acoes, desconto de preco e bonus de PLR sao mercado, nao promocao", () => {
+    const casos = [
+      ["Vivara anuncia oferta de ações de R$ 1 bi", "VIVA3", "infomoney.com.br"],
+      ["Sabesp: oferta subsequente atrai demanda de investidores", "SBSP3", "g1.globo.com"],
+      ["Ações da Gol Linhas Aéreas negociam com desconto de 40%", "GOLL4", "valor.globo.com"],
+      ["Petrobras aprova bônus na PLR dos empregados", "PETR4", "valor.globo.com"],
+      ["Localiza faz follow-on e ações recuam na bolsa", "RENT3", "moneytimes.com.br"],
+    ];
+    for (const [titulo, ticker, dominio] of casos) {
+      assert.equal(motivoDoDescarte(noticia(titulo, "x", dominio), identidadeDoPapel(ticker)), null, titulo);
+    }
+  });
+
   it("titulo curto e pagina de cotacao nao sao noticia", () => {
     const alpargatas = identidadeDoPapel("ALPA4");
     for (const [titulo, dominio] of [

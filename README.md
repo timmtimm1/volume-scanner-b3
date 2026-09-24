@@ -14,8 +14,9 @@ O sistema **detecta e apresenta**.
 
 ## Índice
 
+- [Como funciona, ponta a ponta](#como-funciona-ponta-a-ponta)
 - [O que torna a leitura possível: o ticket médio](#o-que-torna-a-leitura-possível-o-ticket-médio)
-- [A regra mecânica](#a-regra-mecânica)
+- [A regra](#a-regra)
 - [Métricas](#métricas)
 - [O alerta](#o-alerta)
 - [Stack](#stack)
@@ -173,8 +174,8 @@ GitHub Actions o Neon — se o seu PC estiver desligado, ele funciona igual.
 ## Comandos
 
 Os comandos abaixo rodam o código e carregam os dados
-(`.github/workflows/pregao.yml`): carga, métricas, alerta, resumo e poda, na ordem certa,
-lendo o banco uma vez só.
+(`.github/workflows/pregao.yml`): carga, métricas, alerta, snapshot dos trades,
+resumo e poda, na ordem certa, lendo o banco uma vez só.
 
 ```bash
 scanner daily --date today            # processa o pregão de hoje
@@ -286,10 +287,13 @@ As telas de dado — scanner, histórico, papéis e cada ficha — são **estát
 As consultas rodam no build, o Actions dispara o rebuild depois do scan, e é o
 que faz abrir instantâneo no 4G.
 
-Só roda no servidor o que depende de quem está olhando ou do preço de agora:
-`/api/auth` (login), `/api/alertas` e `/api/trades` (exigem login), as páginas
-`/alertas` e `/trades` (mostram só o convite para entrar sem login) e
-`/api/cotacao` (o candle de hoje, com cache de 5 minutos por papel).
+Só roda no servidor o que depende de quem está olhando, do preço de agora ou de
+algo que muda mais rápido que o rebuild diário: `/api/auth` (login),
+`/api/alertas` e `/api/trades` (exigem login), as páginas `/alertas` e
+`/trades` (mostram só o convite para entrar sem login), `/api/cotacao` (o
+candle de hoje, com cache de 5 minutos por papel) e `/api/noticias/[ticker]`
+(as manchetes da aba Notícias, com cache de 30 minutos — pública, completa a
+ficha depois que ela já abriu do CDN).
 Quem abre a ficha pelo link do Telegram recebe a página pronta e o candle chega
 depois.
 
@@ -389,8 +393,11 @@ papel de R$ 20 a folga é de 0,05%.
 Postgres, schema `volume_scanner` (isolado do `public`, para não colidir com outro
 projeto no mesmo banco). Sem chaves estrangeiras entre as tabelas de mercado — a ligação é por
 `(ticker, trade_date)`, não por relação declarada no banco, porque a poda apaga barras
-antigas e os eventos ficam. A exceção são os trades: operação e snapshot não existem
-sem o trade, e apagar o trade apaga os dois.
+antigas e os eventos ficam. Os trades (operação e snapshot não existem sem o
+trade) e as tabelas da CVM (empresa_tickers, proventos, cvm_documentos,
+cvm_resultados, cvm_balancos e fundamentos_trimestre, todas com `ON DELETE
+CASCADE` a partir de `empresas` ou `cvm_documentos`) são a exceção: nelas a
+ligação é chave estrangeira de verdade, e apagar a ponta apaga o resto.
 
 ```mermaid
 erDiagram
@@ -792,8 +799,8 @@ Quem dispara os workflows é o cron-job.org, não o agendador do GitHub
    **Actions: Read and write**.
 2. No cron-job.org, crie um job para cada entrada de
    [`.github/cron-externo.yml`](.github/cron-externo.yml) — `daily-noite`,
-   `daily-manha` e `rompimentos` —, no fuso **America/Sao_Paulo**, com o `cron`
-   de lá:
+   `daily-manha`, `rompimentos` e `fundamentos-b3` —, no fuso
+   **America/Sao_Paulo**, com o `cron` de lá:
    - URL: `https://api.github.com/repos/SEU-USUARIO/SEU-REPO/actions/workflows/ARQUIVO.yml/dispatches`,
      com o `workflow` da entrada no lugar de `ARQUIVO.yml`
    - Método `POST`, corpo `{"ref":"main"}`
@@ -976,7 +983,7 @@ A ficha de cada papel tem uma aba **Notícias** com as manchetes recentes sobre 
 1. **Não é a empresa.** A manchete precisa ter o ticker ou o nome. Antes de procurar o nome, saem expressões que usam a mesma palavra ("Vale do Paraíba", "Área Azul", "Itaú BBA" comentando outra ação). Nome todo em minúscula não conta ("vale a pena", "fachada de azul").
 2. **Nome comum fora da imprensa financeira**, como explicado acima.
 3. **Não é notícia**: página de cotação, fórum, boletim de análise gráfica, manchete de menos de 4 palavras.
-4. **Promoção**: passagem, cupom, milheiro, desconto, a menos que a manchete cite o ticker.
+4. **Promoção**: passagem, cupom, milheiro, desconto, a menos que a manchete cite o ticker. "Oferta" e "desconto" de mercado não contam: "oferta de ações", "oferta subsequente/pública/de aquisição", follow-on, OPA e "com desconto de N%" são o tipo de notícia que explica volume anômalo.
 5. **Fonte fora da imprensa**: prefeitura, tribunal, universidade, blog de milhas. Site desconhecido só passa se citar o ticker e for `.br`.
 
 Depois, a mesma história contada por várias fontes vira uma linha só, com "+4 fontes". O rodapé da aba mostra quantas manchetes foram descartadas e por quê, para dar para julgar se o filtro está cortando demais.
@@ -1247,7 +1254,7 @@ Três mudanças, da raiz para a superfície:
    "agora", `sábado > sexta` era verdade e o candle de fim de semana aparecia.
    Feriado **não** tem lista aqui de propósito: o calendário da B3 mora em
    `scanner/calendar.py`, e uma segunda cópia no TypeScript seria uma segunda
-   verdade que um dia diverge. Feriado cai na condição 2, que é mais geral.
+   verdade que um dia diverge. Feriado cai na condição 3, que é mais geral.
 
 As condições 2 e 3 continuam valendo mesmo com a raiz corrigida: elas não
 dependem de qual fornecedor respondeu nem de a hora ser honesta, e é o gráfico

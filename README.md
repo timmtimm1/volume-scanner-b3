@@ -983,7 +983,7 @@ A ficha de cada papel tem uma aba **Notícias** com as manchetes recentes sobre 
 1. **Não é a empresa.** A manchete precisa ter o ticker ou o nome. Antes de procurar o nome, saem expressões que usam a mesma palavra ("Vale do Paraíba", "Área Azul", "Itaú BBA" comentando outra ação). Nome todo em minúscula não conta ("vale a pena", "fachada de azul").
 2. **Nome comum fora da imprensa financeira**, como explicado acima.
 3. **Não é notícia**: página de cotação, fórum, boletim de análise gráfica, manchete de menos de 4 palavras.
-4. **Promoção**: passagem, cupom, milheiro, desconto, a menos que a manchete cite o ticker — ou seja sobre o mercado, não a loja: "oferta de ações", "oferta subsequente/pública/de aquisição", follow-on, OPA e "com desconto de N%" não contam como promoção.
+4. **Promoção**: passagem, cupom, milheiro, desconto, a menos que a manchete cite o ticker. "Oferta" e "desconto" de mercado não contam: "oferta de ações", "oferta subsequente/pública/de aquisição", follow-on, OPA e "com desconto de N%" são o tipo de notícia que explica volume anômalo.
 5. **Fonte fora da imprensa**: prefeitura, tribunal, universidade, blog de milhas. Site desconhecido só passa se citar o ticker e for `.br`.
 
 Depois, a mesma história contada por várias fontes vira uma linha só, com "+4 fontes". O rodapé da aba mostra quantas manchetes foram descartadas e por quê, para dar para julgar se o filtro está cortando demais.

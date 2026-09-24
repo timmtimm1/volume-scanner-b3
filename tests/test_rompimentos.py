@@ -128,14 +128,23 @@ def test_mensagem_diz_a_direcao_em_palavras() -> None:
 # --- Guarda de ticker ---------------------------------------------------------
 
 
-@pytest.mark.parametrize("bom", ["PETR4", "BPAC11", "VALE3", "TAEE11B"])
+@pytest.mark.parametrize("bom", ["PETR4", "BPAC11", "VALE3", "TAEE11B", "B3SA3", "B1003"])
 def test_ticker_valido_aceita_papel_da_b3(bom: str) -> None:
     assert ticker_valido(bom)
 
 
 @pytest.mark.parametrize(
     "ruim",
-    ["../../etc/passwd", "PETR4;rm -rf", "PETR4/../ITUB4", "", "petr4", "TOOLONGNAME1"],
+    [
+        "../../etc/passwd",
+        "PETR4;rm -rf",
+        "PETR4/../ITUB4",
+        "",
+        "petr4",
+        "TOOLONGNAME1",
+        "3B3SA3",
+        "B3S/3",
+    ],
 )
 def test_ticker_invalido_nao_chega_na_url(ruim: str) -> None:
     # Tickers vao no CAMINHO da URL dos fornecedores: um valor inesperado aqui

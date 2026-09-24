@@ -15,13 +15,16 @@ from datetime import datetime
 from decimal import Decimal
 from typing import Protocol
 
-# Ticker da B3: quatro letras, um ou dois digitos, as vezes uma letra de classe
-# (BPAC11, PETR4, TAEE11B). Os tickers vao no CAMINHO da URL dos fornecedores,
+# Ticker da B3: o codigo do emissor (quatro caracteres, o primeiro letra), um
+# ou dois digitos e as vezes uma letra de classe (BPAC11, PETR4, TAEE11B). O
+# emissor pode ter digito: a propria B3 negocia como B3SA3, e a B100 como
+# B1003 -- com "quatro letras", a ficha da B3SA3 dava 404 e alerta nela nunca
+# recebia cotacao. Os tickers vao no CAMINHO da URL dos fornecedores,
 # entao isto nao e capricho de formato: e o que impede que um valor vindo da
 # API do site altere a rota chamada. SSRF por interpolacao de caminho e falha
 # real, e o alerta e a primeira funcionalidade em que o usuario digita um
 # ticker que chega ate aqui.
-TICKER = re.compile(r"^[A-Z]{4}\d{1,2}[A-Z]?$")
+TICKER = re.compile(r"^[A-Z][A-Z0-9]{3}\d{1,2}[A-Z]?$")
 
 
 def ticker_valido(valor: str) -> bool:

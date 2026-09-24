@@ -14,8 +14,9 @@ O sistema **detecta e apresenta**.
 
 ## Índice
 
+- [Como funciona, ponta a ponta](#como-funciona-ponta-a-ponta)
 - [O que torna a leitura possível: o ticket médio](#o-que-torna-a-leitura-possível-o-ticket-médio)
-- [A regra mecânica](#a-regra-mecânica)
+- [A regra](#a-regra)
 - [Métricas](#métricas)
 - [O alerta](#o-alerta)
 - [Stack](#stack)
@@ -173,8 +174,8 @@ GitHub Actions o Neon — se o seu PC estiver desligado, ele funciona igual.
 ## Comandos
 
 Os comandos abaixo rodam o código e carregam os dados
-(`.github/workflows/pregao.yml`): carga, métricas, alerta, resumo e poda, na ordem certa,
-lendo o banco uma vez só.
+(`.github/workflows/pregao.yml`): carga, métricas, alerta, snapshot dos trades,
+resumo e poda, na ordem certa, lendo o banco uma vez só.
 
 ```bash
 scanner daily --date today            # processa o pregão de hoje
@@ -286,10 +287,13 @@ As telas de dado — scanner, histórico, papéis e cada ficha — são **estát
 As consultas rodam no build, o Actions dispara o rebuild depois do scan, e é o
 que faz abrir instantâneo no 4G.
 
-Só roda no servidor o que depende de quem está olhando ou do preço de agora:
-`/api/auth` (login), `/api/alertas` e `/api/trades` (exigem login), as páginas
-`/alertas` e `/trades` (mostram só o convite para entrar sem login) e
-`/api/cotacao` (o candle de hoje, com cache de 5 minutos por papel).
+Só roda no servidor o que depende de quem está olhando, do preço de agora ou de
+algo que muda mais rápido que o rebuild diário: `/api/auth` (login),
+`/api/alertas` e `/api/trades` (exigem login), as páginas `/alertas` e
+`/trades` (mostram só o convite para entrar sem login), `/api/cotacao` (o
+candle de hoje, com cache de 5 minutos por papel) e `/api/noticias/[ticker]`
+(as manchetes da aba Notícias, com cache de 30 minutos — pública, completa a
+ficha depois que ela já abriu do CDN).
 Quem abre a ficha pelo link do Telegram recebe a página pronta e o candle chega
 depois.
 
@@ -389,8 +393,11 @@ papel de R$ 20 a folga é de 0,05%.
 Postgres, schema `volume_scanner` (isolado do `public`, para não colidir com outro
 projeto no mesmo banco). Sem chaves estrangeiras entre as tabelas de mercado — a ligação é por
 `(ticker, trade_date)`, não por relação declarada no banco, porque a poda apaga barras
-antigas e os eventos ficam. A exceção são os trades: operação e snapshot não existem
-sem o trade, e apagar o trade apaga os dois.
+antigas e os eventos ficam. Os trades (operação e snapshot não existem sem o
+trade) e as tabelas da CVM (empresa_tickers, proventos, cvm_documentos,
+cvm_resultados, cvm_balancos e fundamentos_trimestre, todas com `ON DELETE
+CASCADE` a partir de `empresas` ou `cvm_documentos`) são a exceção: nelas a
+ligação é chave estrangeira de verdade, e apagar a ponta apaga o resto.
 
 ```mermaid
 erDiagram

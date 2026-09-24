@@ -32,6 +32,7 @@ O sistema **detecta e apresenta**.
 - [Deploy](#deploy)
 - [Recriar do zero](#recriar-do-zero)
 - [Dificuldades conhecidas](#dificuldades-conhecidas)
+- [Notícias na ficha](#notícias-na-ficha)
 - [Desempenho](#desempenho)
 - [Segredos](#segredos)
 
@@ -959,6 +960,40 @@ pareceriam complexas demais para o problema.
 - **O rompimento só vê o preço do instante da checagem**, a cada 15 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.
+
+## Notícias na ficha
+
+A ficha de cada papel tem uma aba **Notícias** com as manchetes recentes sobre a empresa, para ver de relance se o volume anômalo tem uma notícia por trás. É só manchete, fonte e link: o texto fica no site de cada veículo.
+
+**De onde vêm.** Do RSS do Google Notícias: gratuito, sem chave e não oficial. Ele já junta InfoMoney, Valor, Money Times, Seu Dinheiro, Exame, G1, Estadão e outros. Se o Google mudar o formato ou sair do ar, a aba mostra um aviso e o resto da ficha continua igual. A busca roda no servidor (`/api/noticias/[ticker]`) quando a ficha abre, e cada resultado fica 30 minutos em cache. A janela é de 7 dias; se vierem menos de 3 notícias (caso comum em papel pequeno), a busca é refeita com 30 dias.
+
+**O nome de cada empresa é escrito à mão** (`web/src/lib/nomes-na-imprensa.ts`, 321 empresas). Nenhuma fonte automática servia para a busca: o nome comercial da CVM está desatualizado (KROTON em vez de Cogna, PETRO RIO em vez de Prio, ESTACIO em vez de Yduqs, PONTO FRIO em vez de Casas Bahia) e o nome de pregão da B3 vem cortado em 12 letras (MAGAZ LUIZA, ITAUUNIBANCO, SID NACIONAL). Os tickers de cada empresa foram copiados de `empresa_tickers`, com todas as classes (PETR3 e PETR4 entram juntos), nunca deduzidos pelas 4 primeiras letras. Empresa nova, que chega pela carga semanal da B3, ainda não está na tabela: a busca usa só o ticker e o log avisa (`[noticias] XXXX3 fora da tabela de nomes`) para a linha ser acrescentada.
+
+**Nome ambíguo.** 107 empresas têm nome que também é palavra comum ou marca global: Vale, Azul, Light, Rumo, Tenda, Santander, Whirlpool. Para elas, manchete sem o ticker só conta se vier da imprensa financeira. E a busca do nome é separada, com o nome obrigatório na manchete (`intitle:`) e só em sites financeiros: com a busca aberta, "Rumo" trazia 100 manchetes de "rumo a…" e a Rumo nem chegava ao filtro (ficava com zero notícias). Separada, voltou com 12.
+
+**O filtro**, em camadas (`web/src/lib/noticias.ts`):
+
+1. **Não é a empresa.** A manchete precisa ter o ticker ou o nome. Antes de procurar o nome, saem expressões que usam a mesma palavra ("Vale do Paraíba", "Área Azul", "Itaú BBA" comentando outra ação). Nome todo em minúscula não conta ("vale a pena", "fachada de azul").
+2. **Nome comum fora da imprensa financeira**, como explicado acima.
+3. **Não é notícia**: página de cotação, fórum, boletim de análise gráfica, manchete de menos de 4 palavras.
+4. **Promoção**: passagem, cupom, milheiro, desconto, a menos que a manchete cite o ticker.
+5. **Fonte fora da imprensa**: prefeitura, tribunal, universidade, blog de milhas. Site desconhecido só passa se citar o ticker e for `.br`.
+
+Depois, a mesma história contada por várias fontes vira uma linha só, com "+4 fontes". O rodapé da aba mostra quantas manchetes foram descartadas e por quê, para dar para julgar se o filtro está cortando demais.
+
+Não existe filtro de "vocabulário de economia" para a imprensa geral. Medido contra 400 manchetes reais, ele jogava fora notícia de verdade sem jargão, como "Petrobras vai perfurar 3 novos poços" (G1).
+
+Medido em 24/09/2026 com o primeiro protótipo, antes da tabela das 321 empresas e da busca separada para nome ambíguo:
+
+| Papel | Manchetes | Passam | Notícias distintas | O que saiu |
+|---|---:|---:|---:|---|
+| PETR4 | 100 | 86 | 69 | fonte fora da imprensa |
+| VALE3 | 100 | 33 | 21 | 57 eram "Vale do…", "vale a pena" |
+| AZUL4 | 100 | 40 | 18 | 10 promoções, "Área Azul", "Setembro Azul" |
+| ITUB4 | 62 | 36 | 28 | página de cotação, fonte fora da imprensa |
+| MGLU3 | 48 | 14 | 10 | 9 promoções de loja |
+
+O ponto de restauração antes desta feature é a tag `v0.5-antes-das-noticias`.
 
 ## Desempenho
 

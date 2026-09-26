@@ -609,13 +609,16 @@ Em **Settings → Secrets and variables → Actions**:
 ### 4. O job diário
 
 `.github/workflows/pregao.yml` faz: migrations → carga do pregão → métricas →
-scan → snapshot dos trades → resumo → retenção → fundamentos da CVM → rebuild
-na Vercel.
+scan → snapshot dos trades → resumo → retenção → rebuild na Vercel →
+fundamentos da CVM → segundo rebuild, só se um zip da CVM mudou.
 
-O passo dos fundamentos não pode derrubar o pregão: ele roda com
-`continue-on-error`, tem teto de 10 minutos e aviso próprio no Telegram. Se a
-CVM estiver fora do ar, o alerta e o resumo saem do mesmo jeito, e a aba
-Fundamentos fica com os dados da véspera.
+O passo dos fundamentos não pode derrubar o pregão nem atrasar o site: ele
+roda com `continue-on-error`, tem teto de 10 minutos, aviso próprio no
+Telegram e vem depois do rebuild do pregão. Se a CVM estiver fora do ar, o
+alerta, o resumo e o site saem do mesmo jeito, e a aba Fundamentos fica com os
+dados anteriores. Em 26/09/2026, com os fundamentos antes do rebuild, a CVM
+segurou o passo pelos 10 minutos do teto e o site só começou a ser
+reconstruído 11 minutos depois de o resumo chegar no Telegram.
 
 **Esse passo roda só a parte da CVM (`--sem-b3`): baixar ITR/DFP e recalcular
 os trimestres.** É o que P/L, EV/EBITDA, dividend yield e o resto dos múltiplos

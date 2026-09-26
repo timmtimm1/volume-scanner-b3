@@ -414,16 +414,38 @@ def test_aviso_de_falha_nao_se_diz_teste(workflow: dict[Any, Any]) -> None:
 # --- Fundamentos (fundamentos fase 1) ----------------------------------------
 
 
-def test_fundamentos_roda_entre_o_pregao_e_a_vercel(workflow: dict[Any, Any]) -> None:
-    """Fundamentos nao pode impedir o alerta nem o rebuild -- por isso vem
-    depois do pregao (que ja gravou tudo que interessa ao alerta) e antes do
-    rebuild (que le o banco no build).
+def test_rebuild_do_pregao_nao_espera_os_fundamentos(workflow: dict[Any, Any]) -> None:
+    """O resumo sai no Telegram com o link do site: o rebuild vem logo depois
+    do pregao, e nao depois da CVM.
+
+    Em 26/09/2026 os fundamentos ficaram os 10 minutos do teto de pe e o site so
+    comecou a ser reconstruido 11 minutos depois do resumo. Os fundamentos
+    ganham um segundo rebuild, so quando um zip da CVM mudou de fato.
     """
     passos = _passos_do_job(workflow)
     ids = [p.get("id") for p in passos]
 
-    assert "fundamentos" in ids
-    assert ids.index("pregao") < ids.index("fundamentos") < ids.index("vercel")
+    assert ids.index("pregao") < ids.index("vercel") < ids.index("fundamentos")
+    assert ids.index("fundamentos") < ids.index("vercel_fundamentos")
+
+    (segundo,) = [p for p in passos if p.get("id") == "vercel_fundamentos"]
+    assert "steps.fundamentos.outputs.mudou == 'true'" in str(segundo["if"])
+    (fundamentos,) = [p for p in passos if p.get("id") == "fundamentos"]
+    run = str(fundamentos["run"])
+    assert "set -o pipefail" in run, "tee sem pipefail esconde a falha dos fundamentos"
+    assert "mudou=true" in run
+
+
+def test_avisos_dizem_a_data_do_pregao_e_nao_ultimo(workflow: dict[Any, Any]) -> None:
+    # "$PREGAO" e a palavra "ultimo"; o aviso de 26/09/2026 dizia "O pregao de ultimo".
+    passos = _passos_do_job(workflow)
+    (pregao,) = [p for p in passos if p.get("id") == "pregao"]
+    assert "data=" in str(pregao["run"])
+    avisos = [p for p in passos if "api.telegram.org" in str(p.get("run", ""))]
+    assert avisos
+    for aviso in avisos:
+        assert '"$DATA_PREGAO"' in str(aviso["run"])
+        assert "steps.pregao.outputs.data" in str(aviso.get("env", {}).get("DATA_PREGAO"))
 
 
 def test_fundamentos_nao_derruba_o_pregao(workflow: dict[Any, Any]) -> None:

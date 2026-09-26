@@ -26,7 +26,10 @@ import httpx
 import pandas as pd
 
 CHUNK_BYTES = 1 << 20
-TIMEOUT_SECONDS = 300.0
+# Por operacao (conectar, cada leitura), nao pelo download inteiro. Com 300s e
+# 3 tentativas, uma CVM travada consumia sozinha os 10 minutos do passo e o
+# processo morria sem imprimir nada (26/09/2026); com 60s vira falha no relatorio.
+TIMEOUT_SECONDS = 60.0
 LEITURA_CHUNKSIZE = 200_000
 
 TENTATIVAS_PADRAO = 3

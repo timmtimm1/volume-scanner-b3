@@ -95,6 +95,9 @@ jobs:
           uv run --no-sync scanner daily --date "$PREGAO" 2>&1 | tee /tmp/daily.log
           codigo=$?
           set -e
+          # A data de verdade do pregao, para os avisos: "$PREGAO" e "ultimo".
+          data=$(grep -oE '^\[4/7\] [0-9]{4}-[0-9]{2}-[0-9]{2}' /tmp/daily.log | tail -1 | cut -d' ' -f2 || true)
+          echo "data=${data:-$PREGAO}" >> "$GITHUB_OUTPUT"
           # 75 = o arquivo do pregao de hoje ainda nao saiu da B3. Nao e falha:
           # a passada das 07:40 processa. Marca o passo para pular o rebuild.
           if [ "$codigo" -eq 75 ]; then
@@ -104,12 +107,25 @@ jobs:
           fi
           exit "$codigo"
 
+      - name: Disparar rebuild na Vercel
+        id: vercel
+        # Logo depois do pregao, e nao depois dos fundamentos: o resumo ja saiu
+        # no Telegram com o link do site, e o site nao pode ficar esperando a
+        # CVM. Em 26/09/2026 o passo dos fundamentos ficou os 10 minutos do teto
+        # de pe e o rebuild so saiu 11 minutos depois do resumo.
+        # Adiado nao gravou nada: reconstruir o site so gastaria build.
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.pregao.outputs.adiado != 'true' }}
+        run: |
+          curl -sS -f --retry 3 --retry-delay 2 --retry-connrefused \
+            -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null
+
       - name: Fundamentos
         id: fundamentos
         # Nao pode impedir o alerta nem o rebuild: fundamentos e uma aba a
-        # mais na ficha do papel, nao o pipeline principal. O passo vem antes
-        # do rebuild -- e nao depois -- porque o site le o banco no build, e
-        # uma falha aqui nao pode deixar o build seguinte com dado pela metade.
+        # mais na ficha do papel, nao o pipeline principal. Por isso vem depois
+        # do rebuild do pregao, e so pede um segundo build quando um zip da CVM
+        # mudou de fato. Se o passo morrer no meio, esse segundo build nao sai
+        # e o site fica com os fundamentos anteriores, nunca com dado pela metade.
         #
         # `--sem-b3`: so a CVM (balancos) e o recalculo dos trimestres. Este
         # passo roda a cada pregao, e a B3 nao faz sentido nessa cadencia --
@@ -136,14 +152,24 @@ jobs:
         # proprio.
         continue-on-error: true
         timeout-minutes: 10
-        run: uv run --no-sync scanner fundamentos atualizar --sem-b3 $FUNDAMENTOS_FORCAR
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run --no-sync scanner fundamentos atualizar --sem-b3 $FUNDAMENTOS_FORCAR 2>&1 | tee /tmp/fundamentos.log
+          # So um zip novo da CVM muda o que o site mostra; "sem mudanca" nao
+          # justifica um segundo build.
+          if grep -q ': atualizado' /tmp/fundamentos.log; then
+            echo "mudou=true" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Avisar no Telegram se os fundamentos falharam
         if: ${{ steps.fundamentos.outcome == 'failure' && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
         shell: bash
+        env:
+          DATA_PREGAO: ${{ steps.pregao.outputs.data || env.PREGAO }}
         run: |
           texto=$(printf '⚠️ <b>Fundamentos não atualizaram</b>\nO pregão de %s foi processado normalmente; a aba Fundamentos segue com os dados anteriores.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
-            "$PREGAO" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+            "$DATA_PREGAO" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
 
           curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
             "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
@@ -152,10 +178,9 @@ jobs:
             -d disable_web_page_preview=true \
             --data-urlencode "text=$texto"
 
-      - name: Disparar rebuild na Vercel
-        id: vercel
-        # Adiado nao gravou nada: reconstruir o site so gastaria build.
-        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.pregao.outputs.adiado != 'true' }}
+      - name: Rebuild na Vercel com os fundamentos novos
+        id: vercel_fundamentos
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.fundamentos.outputs.mudou == 'true' }}
         run: |
           curl -sS -f --retry 3 --retry-delay 2 --retry-connrefused \
             -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null
@@ -171,6 +196,8 @@ jobs:
           RES_MIGRATIONS: ${{ steps.migrations.outcome }}
           RES_PREGAO: ${{ steps.pregao.outcome }}
           RES_VERCEL: ${{ steps.vercel.outcome }}
+          RES_VERCEL_FUNDAMENTOS: ${{ steps.vercel_fundamentos.outcome }}
+          DATA_PREGAO: ${{ steps.pregao.outputs.data || env.PREGAO }}
         run: |
           onde="passo desconhecido"
           if [ "$RES_DEPS" = failure ]; then
@@ -188,11 +215,13 @@ jobs:
             fi
           elif [ "$RES_VERCEL" = failure ]; then
             onde="rebuild na Vercel"
+          elif [ "$RES_VERCEL_FUNDAMENTOS" = failure ]; then
+            onde="rebuild na Vercel depois dos fundamentos"
           fi
 
           onde=$(printf '%s' "$onde" | tr -d '<>&')
           texto=$(printf '⚠️ <b>O scanner falhou</b>\nPregão de %s\nOnde: %s\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
-            "$PREGAO" "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+            "$DATA_PREGAO" "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
 
           curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
             "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \

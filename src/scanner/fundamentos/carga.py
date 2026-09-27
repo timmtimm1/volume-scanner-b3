@@ -9,7 +9,7 @@ from __future__ import annotations
 import hashlib
 import logging
 import time
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
 from dataclasses import dataclass, field
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
@@ -78,9 +78,19 @@ def _data_bonita(momento: datetime | None) -> str:
     return momento.strftime("%d/%m/%Y") if momento is not None else "data desconhecida"
 
 
+def _descartar(_linha: str) -> None:
+    return None
+
+
 @dataclass
 class RelatorioFundamentos:
-    """O que aconteceu numa passada de `atualizar_fundamentos`."""
+    """O que aconteceu numa passada de `atualizar_fundamentos`.
+
+    Cada linha anotada sai em `ao_registrar` na hora, e nao so no fim: em
+    26/09/2026 o passo foi morto no teto de 10 minutos sem imprimir nada, e em
+    27/09 a passada levou 43 minutos sem dizer onde. Com a linha na hora, o
+    carimbo de tempo do log mostra quanto durou cada etapa e onde parou.
+    """
 
     empresas_ligadas: int = 0
     tickers_ligados: int = 0
@@ -90,21 +100,33 @@ class RelatorioFundamentos:
     arquivos: list[str] = field(default_factory=list)
     proventos: list[str] = field(default_factory=list)
     falhas: list[str] = field(default_factory=list)
+    ao_registrar: Callable[[str], None] = field(default=_descartar, repr=False, compare=False)
 
     @property
     def teve_falha(self) -> bool:
         return bool(self.falhas)
 
-    def linhas(self) -> list[str]:
-        saida = [
+    def anotar_ligacao(self) -> None:
+        self.ao_registrar(
             f"ligacao: {self.tickers_ligados} tickers em {self.empresas_ligadas} empresas, "
             f"{self.tickers_sem_empresa} sem empresa ({self.mapeamento})"
-        ]
-        saida.extend(self.avisos)
-        saida.extend(self.arquivos)
-        saida.extend(self.proventos)
-        saida.extend(f"falhou {f}" for f in self.falhas)
-        return saida
+        )
+
+    def anotar_aviso(self, texto: str) -> None:
+        self.avisos.append(texto)
+        self.ao_registrar(texto)
+
+    def anotar_arquivo(self, texto: str) -> None:
+        self.arquivos.append(texto)
+        self.ao_registrar(texto)
+
+    def anotar_provento(self, texto: str) -> None:
+        self.proventos.append(texto)
+        self.ao_registrar(texto)
+
+    def anotar_falha(self, texto: str) -> None:
+        self.falhas.append(texto)
+        self.ao_registrar(f"falhou {texto}")
 
 
 def _baixar_para_ler(
@@ -262,7 +284,7 @@ def _mapear_tickers(
         )
     except CvmIndisponivelError as exc:
         caminho_cadastro = None
-        relatorio.avisos.append(f"cadastro da CVM indisponivel ({exc}); ligacao nao atualizada")
+        relatorio.anotar_aviso(f"cadastro da CVM indisponivel ({exc}); ligacao nao atualizada")
     if caminho_cadastro is None:
         relatorio.mapeamento = "cadastro da CVM ausente"
         _contar_mapeamento(engine, relatorio)
@@ -282,7 +304,7 @@ def _mapear_tickers(
     faltam = [t for t in alvo if t not in ligacoes]
     pela_b3, procurados, aviso = _resolver_na_b3(faltam, set(cadastro["cd_cvm"]), pausa=pausa_b3)
     if aviso:
-        relatorio.avisos.append(aviso)
+        relatorio.anotar_aviso(aviso)
     ligacoes.update(pela_b3)
 
     # Cache negativo so para quem a B3 procurou ate o fim e nao achou.
@@ -340,20 +362,20 @@ def _atualizar_arquivo(
             forcar=forcar,
         )
     except CvmIndisponivelError as exc:
-        relatorio.falhas.append(f"{tipo} {ano}: download falhou: {exc}")
+        relatorio.anotar_falha(f"{tipo} {ano}: download falhou: {exc}")
         return
 
     if not download.alterado:
         if etag is not None or last_modified is not None:
             repository.marcar_arquivo_verificado(engine, url, momento)
             data_txt = _data_bonita(anterior["modificado_em"] if anterior else None)
-            relatorio.arquivos.append(f"{tipo} {ano}: sem mudanca (dados da CVM de {data_txt})")
+            relatorio.anotar_arquivo(f"{tipo} {ano}: sem mudanca (dados da CVM de {data_txt})")
         else:
-            relatorio.arquivos.append(f"{tipo} {ano}: ainda nao publicado pela CVM")
+            relatorio.anotar_arquivo(f"{tipo} {ano}: ainda nao publicado pela CVM")
         return
 
     if download.caminho is None:  # pragma: no cover - alterado=True sempre tem caminho
-        relatorio.falhas.append(f"{tipo} {ano}: download sem arquivo")
+        relatorio.anotar_falha(f"{tipo} {ano}: download sem arquivo")
         return
 
     try:
@@ -369,14 +391,14 @@ def _atualizar_arquivo(
             verificado_em=momento,
         )
     except Exception as exc:
-        relatorio.falhas.append(f"{tipo} {ano}: {exc}")
+        relatorio.anotar_falha(f"{tipo} {ano}: {exc}")
         return
 
     # `com_nova_versao` conta os novos tambem; o que interessa ler no log e
     # quantos ja existiam e vieram reapresentados.
     reapresentados = gravado.com_nova_versao - gravado.novos
     data_txt = _data_bonita(download.modificado_em)
-    relatorio.arquivos.append(
+    relatorio.anotar_arquivo(
         f"{tipo} {ano}: atualizado (dados da CVM de {data_txt}): "
         f"{gravado.documentos} documentos, {gravado.novos} novos, "
         f"{reapresentados} reapresentados"
@@ -392,12 +414,14 @@ def atualizar_fundamentos(
     com_b3: bool = True,
     cache: Path = DEFAULT_CACHE,
     pausa_b3: float = PAUSA_B3,
+    ao_registrar: Callable[[str], None] = _descartar,
 ) -> RelatorioFundamentos:
     """Liga cada ticker a sua empresa e carrega os zips anuais da CVM.
 
     Falha num arquivo nao impede os outros: cada (tipo, ano) roda isolado e as
     falhas ficam no relatorio -- quem decide se isso e motivo de sair com erro
-    e o chamador (o CLI sai 1 se `relatorio.teve_falha`).
+    e o chamador (o CLI sai 1 se `relatorio.teve_falha`). Cada linha do
+    relatorio tambem sai em `ao_registrar` assim que acontece.
 
     `com_b3=False` pula cadastro e proventos: so a CVM (balancos) e o
     recalculo dos trimestres. A CVM publica ITR e DFP por trimestre, nao por
@@ -411,7 +435,7 @@ def atualizar_fundamentos(
     do corte -- e barato, e nao pode esperar uma semana.
     """
     momento = agora if agora is not None else datetime.now(UTC)
-    relatorio = RelatorioFundamentos()
+    relatorio = RelatorioFundamentos(ao_registrar=ao_registrar)
 
     _mapear_tickers(
         engine,
@@ -422,10 +446,11 @@ def atualizar_fundamentos(
         pausa_b3=pausa_b3,
         relatorio=relatorio,
     )
+    relatorio.anotar_ligacao()
 
     cd_cvms = repository.cd_cvms_mapeados(engine)
     if not cd_cvms:
-        relatorio.avisos.append("arquivos: nenhuma empresa ligada, nada para baixar da CVM")
+        relatorio.anotar_aviso("arquivos: nenhuma empresa ligada, nada para baixar da CVM")
         return relatorio
 
     escopo_hash = hashlib.sha256(
@@ -477,7 +502,7 @@ def _recalcular_trimestres(engine: Engine, relatorio: RelatorioFundamentos) -> N
     gravados = repository.gravar_trimestres(engine, calculados)
     if gravados:
         empresas = int(calculados["cd_cvm"].nunique())
-        relatorio.arquivos.append(f"trimestres: {gravados} de {empresas} empresas")
+        relatorio.anotar_arquivo(f"trimestres: {gravados} de {empresas} empresas")
 
 
 def _detalhar_empresas(
@@ -506,7 +531,7 @@ def _detalhar_empresas(
             try:
                 detalhe = detalhe_da_empresa(cliente, cd_cvm)
             except B3IndisponivelError as exc:
-                relatorio.avisos.append(f"detalhe: B3 fora do ar em {empresa['nome']}: {exc}")
+                relatorio.anotar_aviso(f"detalhe: B3 fora do ar em {empresa['nome']}: {exc}")
                 break
             if detalhe is None:
                 repository.marcar_consulta(engine, cd_cvm, "detalhe_em", momento)
@@ -532,7 +557,7 @@ def _detalhar_empresas(
         cliente.close()
 
     if atualizadas:
-        relatorio.proventos.append(f"detalhe da B3: {atualizadas} empresas")
+        relatorio.anotar_provento(f"detalhe da B3: {atualizadas} empresas")
 
 
 def _proventos_recentes(
@@ -566,7 +591,7 @@ def _proventos_recentes(
             try:
                 brutos = proventos_recentes(cliente, str(empresa["emissor_b3"]))
             except B3IndisponivelError as exc:
-                relatorio.avisos.append(f"proventos: B3 fora do ar em {empresa['nome']}: {exc}")
+                relatorio.anotar_aviso(f"proventos: B3 fora do ar em {empresa['nome']}: {exc}")
                 break
 
             linhas = ligar_recentes(brutos, por_isin)
@@ -589,9 +614,7 @@ def _proventos_recentes(
     finally:
         cliente.close()
 
-    relatorio.proventos.append(
-        f"proventos recentes: {gravados} de {empresas_com_provento} empresas"
-    )
+    relatorio.anotar_provento(f"proventos recentes: {gravados} de {empresas_com_provento} empresas")
 
 
 def _proventos_historicos(
@@ -625,7 +648,7 @@ def _proventos_historicos(
             try:
                 brutos = _historico_por_nome(cliente, empresa)
             except B3IndisponivelError as exc:
-                relatorio.avisos.append(f"historico: B3 fora do ar em {empresa['nome']}: {exc}")
+                relatorio.anotar_aviso(f"historico: B3 fora do ar em {empresa['nome']}: {exc}")
                 break
 
             repository.marcar_consulta(engine, cd_cvm, "historico_em", momento)
@@ -662,9 +685,9 @@ def _proventos_historicos(
     finally:
         cliente.close()
 
-    relatorio.proventos.append(f"historico de proventos: {gravados} linhas")
+    relatorio.anotar_provento(f"historico de proventos: {gravados} linhas")
     if reprovados:
-        relatorio.proventos.append(
+        relatorio.anotar_provento(
             f"historico reprovado na conferencia de preco em {len(reprovados)}: "
             + "; ".join(reprovados[:3])
         )

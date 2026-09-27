@@ -4,6 +4,7 @@ explica de onde vieram os CSVs.
 
 from __future__ import annotations
 
+import io
 import zipfile
 from datetime import date
 from pathlib import Path
@@ -393,10 +394,26 @@ def test_fca_le_codigo_de_negociacao_e_cnpj(tmp_path: Path) -> None:
 # --- Download condicional ----------------------------------------------------
 
 
+def _zip_em_bytes() -> bytes:
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w") as zf:
+        zf.writestr("itr_cia_aberta_2023.csv", "CNPJ_CIA;DT_REFER;VERSAO\n")
+    return buffer.getvalue()
+
+
+ZIP_INTEIRO = _zip_em_bytes()
+# Como o ITR 2023 de 27/09/2026: um 200 que nao abre como zip. Cortado, falta o
+# diretorio central que fica no fim do arquivo.
+ZIP_CORTADO = ZIP_INTEIRO[: len(ZIP_INTEIRO) // 2]
+
+
 class _RespostaFalsa:
-    def __init__(self, status: int, headers: dict[str, str] | None = None) -> None:
+    def __init__(
+        self, status: int, headers: dict[str, str] | None = None, corpo: bytes = ZIP_INTEIRO
+    ) -> None:
         self.status_code = status
         self.headers = headers or {}
+        self.corpo = corpo
 
     def __enter__(self) -> _RespostaFalsa:
         return self
@@ -409,7 +426,7 @@ class _RespostaFalsa:
             raise httpx.HTTPStatusError("erro", request=None, response=None)  # type: ignore[arg-type]
 
     def iter_bytes(self, _tamanho: int) -> list[bytes]:
-        return [b"conteudo"]
+        return [self.corpo]
 
 
 def test_baixar_200_grava_arquivo_e_devolve_headers(
@@ -424,9 +441,38 @@ def test_baixar_200_grava_arquivo_e_devolve_headers(
 
     assert resultado.alterado is True
     assert resultado.caminho == destino
-    assert destino.read_bytes() == b"conteudo"
+    assert destino.read_bytes() == ZIP_INTEIRO
     assert resultado.etag == "abc"
     assert resultado.modificado_em is not None
+
+
+def test_baixar_zip_cortado_baixa_de_novo(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:
+    """O 200 com o zip pela metade nao chega a quem vai ler: a tentativa seguinte vale."""
+    respostas = iter([_RespostaFalsa(200, corpo=ZIP_CORTADO), _RespostaFalsa(200)])
+    monkeypatch.setattr(httpx, "stream", lambda *a, **k: next(respostas))
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    destino = tmp_path / "itr_cia_aberta_2023.zip"
+    resultado = baixar("http://exemplo/itr_cia_aberta_2023.zip", destino)
+
+    assert resultado.alterado is True
+    assert zipfile.is_zipfile(destino)
+    assert destino.read_bytes() == ZIP_INTEIRO
+
+
+def test_baixar_zip_sempre_cortado_diz_o_que_houve(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Antes a falha chegava como `File is not a zip file`, sem dizer de onde."""
+    monkeypatch.setattr(httpx, "stream", lambda *a, **k: _RespostaFalsa(200, corpo=ZIP_CORTADO))
+    monkeypatch.setattr("time.sleep", lambda _s: None)
+
+    destino = tmp_path / "itr_cia_aberta_2023.zip"
+    with pytest.raises(CvmIndisponivelError, match="zip incompleto") as erro:
+        baixar("http://exemplo/itr_cia_aberta_2023.zip", destino, tentativas=2, espera=0)
+
+    assert "2 tentativas" in str(erro.value)
+    assert list(tmp_path.iterdir()) == [], "o zip cortado nao pode ficar em disco"
 
 
 def test_baixar_304_nao_baixa_nada(monkeypatch: pytest.MonkeyPatch, tmp_path: Path) -> None:

@@ -38,7 +38,7 @@ jobs:
     # So a B3 tem timeout largo: sem o passo do pregao competindo pelos mesmos
     # 30 minutos do job, nao ha pressa. Numa passada com tudo vencido de uma vez
     # (as tres consultas para as ~320 empresas), a pior medida ja vista foi
-    # 29min36s.
+    # 42min54s, em 27/09/2026, dia em que a CVM tambem republicou os zips.
     timeout-minutes: 60
 
     env:
@@ -75,7 +75,12 @@ jobs:
         #
         # Nao use sem motivo: sao ~930 requisicoes na B3 contra as 0 de uma
         # passada em que nada venceu.
-        run: uv run --no-sync scanner fundamentos atualizar $FORCAR
+        #
+        # O `tee` guarda a saida para o aviso dizer o que falhou.
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run --no-sync scanner fundamentos atualizar $FORCAR 2>&1 | tee /tmp/fundamentos.log
 
       - name: Avisar no Telegram se algo falhou
         # `cancelled()` junto de `failure()`: com `--forcar` o job passa a poder
@@ -93,18 +98,38 @@ jobs:
         run: |
           onde="passo desconhecido"
           if [ "$RES_B3" = cancelled ]; then
-            onde="B3, cancelado no teto de 60 minutos"
+            onde="cancelado no teto de 60 minutos"
           elif [ "$RES_DEPS" = failure ]; then
             onde="instalacao das dependencias"
           elif [ "$RES_MIGRATIONS" = failure ]; then
             onde="migrations"
           elif [ "$RES_B3" = failure ]; then
-            onde="cadastro ou proventos na B3"
+            onde="carga dos fundamentos"
           fi
 
-          onde=$(printf '%s' "$onde" | tr -d '<>&')
-          texto=$(printf '⚠️ <b>Cadastro/proventos da B3 não atualizaram</b>\nOnde: %s\nA aba Fundamentos segue com os dados da passada anterior; o pregão diário não depende disto.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
-            "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          # O que falhou, e nao so que o passo falhou. Em 27/09/2026 este aviso
+          # culpou a B3 e disse que nada tinha sido gravado: quem falhou foi um
+          # zip da CVM, e a B3 tinha gravado tudo. Sem linha de falha, o passo
+          # foi cortado no teto: a ultima linha impressa diz onde estava.
+          corpo="Onde: $onde"
+          if [ "$RES_B3" = failure ] || [ "$RES_B3" = cancelled ]; then
+            detalhe=$(grep -E '^\[fundamentos\] falhou ' /tmp/fundamentos.log 2>/dev/null | sed 's/^\[fundamentos\] //' | head -5 | cut -c1-300 || true)
+            if [ -z "$detalhe" ]; then
+              ultima=$(grep -E '^\[fundamentos\] ' /tmp/fundamentos.log 2>/dev/null | tail -1 | sed 's/^\[fundamentos\] //' | cut -c1-200 || true)
+              if [ -n "$ultima" ]; then
+                detalhe="Parou depois de: $ultima"
+              else
+                detalhe="Parou antes da primeira etapa"
+              fi
+            fi
+            corpo=$(printf '%s\n%s\nO que foi gravado antes da falha fica; o resto é tentado de novo na próxima passada.' "$corpo" "$detalhe")
+          fi
+          # `cut` corta em byte e pode partir um "Ç" ao meio; o Telegram recusa
+          # a mensagem inteira com UTF-8 invalido, e o `iconv -c` tira a sobra.
+          corpo=$(printf '%s' "$corpo" | tr -d '<>&' | iconv -c -f UTF-8 -t UTF-8 2>/dev/null || true)
+
+          texto=$(printf '⚠️ <b>Fundamentos da semana com falha</b>\n%s\nO pregão diário não depende disto.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$corpo" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
 
           curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
             "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \

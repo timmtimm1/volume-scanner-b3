@@ -582,6 +582,38 @@ def test_falha_num_arquivo_nao_impede_os_outros(
     assert doc_unipar_itr is not None
 
 
+def test_cada_linha_sai_na_hora_em_que_acontece(
+    engine: Engine,
+    config: FundamentosConfig,
+    servidor: ServidorFalso,
+    b3: B3Falsa,
+    tickers: list[str],
+) -> None:
+    """Antes o relatorio so era impresso no fim: processo morto no teto nao
+    deixava linha nenhuma no log, e uma passada lenta nao dizia onde demorou.
+    """
+    servidor.falhando.add(carga_mod._url_zip("DFP", 2025))
+    emitidas: list[str] = []
+
+    relatorio = carga_mod.atualizar_fundamentos(
+        engine, config, agora=AGORA, pausa_b3=0, ao_registrar=emitidas.append
+    )
+
+    assert emitidas[0].startswith("ligacao: ")
+    (falha,) = [linha for linha in emitidas if linha.startswith("falhou DFP 2025")]
+    (itr_2026,) = [linha for linha in emitidas if linha.startswith("ITR 2026: atualizado")]
+    assert emitidas.index(falha) < emitidas.index(itr_2026), "a falha saiu so no fim"
+
+    # Nada do relatorio fica de fora da saida, e nada sai duas vezes.
+    anotadas = [
+        *relatorio.avisos,
+        *relatorio.arquivos,
+        *relatorio.proventos,
+        *(f"falhou {f}" for f in relatorio.falhas),
+    ]
+    assert sorted(emitidas[1:]) == sorted(anotadas)
+
+
 def test_cascade_apaga_filhas_ao_reprocessar(
     engine: Engine,
     config: FundamentosConfig,

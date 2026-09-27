@@ -135,7 +135,7 @@ COLUNAS_BALANCOS = [
 
 
 class CvmIndisponivelError(Exception):
-    """A CVM nao respondeu apos todas as tentativas."""
+    """A CVM nao entregou o arquivo: fora do ar, ou entregou pela metade."""
 
 
 class _FalhaTemporariaError(Exception):
@@ -209,7 +209,7 @@ def baixar(
                 time.sleep(espera)
                 continue
             raise CvmIndisponivelError(
-                f"{url}: a CVM nao respondeu apos {tentativas} tentativas"
+                f"{url}: {tentativas} tentativas sem sucesso (a ultima: {ultimo_erro})"
             ) from ultimo_erro
 
     raise AssertionError("inalcancavel: o loop acima sempre retorna ou levanta")
@@ -233,7 +233,7 @@ def _tentar_baixar(url: str, destino: Path, parcial: Path, cabecalhos: dict[str,
                     alterado=False, caminho=None, etag=None, last_modified=None, modificado_em=None
                 )
             if resposta.status_code in _STATUS_TEMPORARIOS or resposta.status_code >= 500:
-                raise _FalhaTemporariaError(f"{url}: HTTP {resposta.status_code}")
+                raise _FalhaTemporariaError(f"HTTP {resposta.status_code}")
             resposta.raise_for_status()
 
             novo_etag = resposta.headers.get("ETag")
@@ -243,10 +243,21 @@ def _tentar_baixar(url: str, destino: Path, parcial: Path, cabecalhos: dict[str,
                     arquivo.write(pedaco)
     except httpx.TimeoutException as exc:
         parcial.unlink(missing_ok=True)
-        raise _FalhaTemporariaError(f"{url}: timeout") from exc
+        raise _FalhaTemporariaError("timeout") from exc
     except httpx.HTTPError as exc:
         parcial.unlink(missing_ok=True)
         raise CvmIndisponivelError(f"{url}: falha ao baixar: {exc}") from exc
+
+    # Em 27/09/2026 o ITR 2023 veio com 200 e nao abria como zip, no mesmo dia
+    # em que a CVM republicou os arquivos -- ao que tudo indica, baixado no meio
+    # da regravacao. Um zip assim nao pode chegar a quem vai le-lo; baixar de
+    # novo e a chance de pegar o arquivo inteiro.
+    if destino.suffix == ".zip" and not zipfile.is_zipfile(parcial):
+        tamanho = parcial.stat().st_size
+        parcial.unlink(missing_ok=True)
+        raise _FalhaTemporariaError(
+            f"a CVM entregou um zip incompleto ou invalido, {tamanho} bytes"
+        )
 
     parcial.replace(destino)
     return Download(

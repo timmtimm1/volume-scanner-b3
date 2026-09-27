@@ -656,10 +656,12 @@ def fundamentos_atualizar(
     from scanner.storage.engine import build_engine
 
     relatorio = atualizar_fundamentos(
-        build_engine(), load_config().fundamentos, forcar=forcar, com_b3=not sem_b3
+        build_engine(),
+        load_config().fundamentos,
+        forcar=forcar,
+        com_b3=not sem_b3,
+        ao_registrar=lambda linha: typer.echo(f"[fundamentos] {linha}"),
     )
-    for linha in relatorio.linhas():
-        typer.echo(f"[fundamentos] {linha}")
     if relatorio.teve_falha:
         raise typer.Exit(code=1)
 

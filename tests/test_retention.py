@@ -38,6 +38,7 @@ MANUAL = PROJECT_ROOT / ".github" / "workflows" / "pregao-manual.yml"
 WORKFLOWS = sorted((PROJECT_ROOT / ".github" / "workflows").glob("*.yml"))
 CRON_EXTERNO = PROJECT_ROOT / ".github" / "cron-externo.yml"
 ROMPIMENTOS = PROJECT_ROOT / ".github" / "workflows" / "rompimentos.yml"
+FUNDAMENTOS_B3 = PROJECT_ROOT / ".github" / "workflows" / "fundamentos-b3.yml"
 
 FIM = date(2026, 6, 30)
 SESSOES = 50
@@ -464,6 +465,128 @@ def test_fundamentos_tem_aviso_proprio_de_falha(workflow: dict[Any, Any]) -> Non
     assert "failure" in str(aviso["if"])
     assert "api.telegram.org" in str(aviso.get("run", ""))
     assert "Fundamentos não atualizaram" in str(aviso.get("run", ""))
+
+
+# A saida de 27/09/2026, resumida: a B3 gravou tudo e so um zip da CVM falhou.
+LOG_27_09 = """\
+[b3] tentativa 1/3 falhou: timeout em GetListedCashDividends
+[fundamentos] ligacao: 436 tickers em 320 empresas, 9 sem empresa (sem ticker novo para ligar)
+[fundamentos] ITR 2022: sem mudanca (dados da CVM de 20/09/2026)
+[fundamentos] falhou ITR 2023: download falhou: https://dados.cvm.gov.br/itr_cia_aberta_2023.zip: \
+3 tentativas sem sucesso (a ultima: a CVM entregou um zip incompleto ou invalido, 1234 bytes)
+[fundamentos] DFP 2023: atualizado (dados da CVM de 27/09/2026): 319 documentos, 0 novos
+[fundamentos] historico: B3 fora do ar em CRUZEIRO DO SUL EDUCACIONAL S.A.: GetListedCashDividends
+[fundamentos] historico de proventos: 13489 linhas
+"""
+# Cortado no teto: nenhuma linha de falha, so o que ja tinha terminado.
+LOG_CORTADO = """\
+[fundamentos] ligacao: 436 tickers em 320 empresas, 9 sem empresa (sem ticker novo para ligar)
+[fundamentos] ITR 2022: sem mudanca (dados da CVM de 20/09/2026)
+[fundamentos] DFP 2022: sem mudanca (dados da CVM de 20/09/2026)
+"""
+
+
+def _aviso_dos_fundamentos(arquivo: Path) -> dict[Any, Any]:
+    (job,) = _carregar(arquivo)["jobs"].values()
+    (aviso,) = [
+        p
+        for p in job["steps"]
+        if "api.telegram.org" in str(p.get("run", ""))
+        and ("steps.fundamentos.outcome" in str(p.get("if", "")) or arquivo == FUNDAMENTOS_B3)
+    ]
+    return dict(aviso)
+
+
+def _mensagem_do_aviso(
+    tmp_path: Path, arquivo: Path, log: str | None, resultados: dict[str, str]
+) -> str:
+    """Executa o aviso com um `curl` falso e devolve o texto que iria ao Telegram."""
+    log_path = tmp_path / "fundamentos.log"
+    if log is not None:
+        log_path.write_text(log, encoding="utf-8")
+    curl = tmp_path / "curl"
+    curl.write_text(
+        '#!/bin/sh\nfor a in "$@"; do case "$a" in text=*) printf "%s" "${a#text=}" > "$SAIDA";;'
+        " esac; done\n",
+        encoding="utf-8",
+    )
+    curl.chmod(0o755)
+    saida = tmp_path / "mensagem.txt"
+    script = str(_aviso_dos_fundamentos(arquivo)["run"]).replace(
+        "/tmp/fundamentos.log", str(log_path)
+    )
+    env = {
+        **os.environ,
+        "PATH": f"{tmp_path}{os.pathsep}{os.environ['PATH']}",
+        "SAIDA": str(saida),
+        "SCANNER_TELEGRAM_BOT_TOKEN": "token-de-teste",
+        "SCANNER_TELEGRAM_CHAT_ID": "1",
+        "GITHUB_SERVER_URL": "https://github.com",
+        "GITHUB_REPOSITORY": "dono/repo",
+        "GITHUB_RUN_ID": "1",
+        "DATA_PREGAO": "2026-09-25",
+        **resultados,
+    }
+    # As mesmas opcoes que o Actions usa para `shell: bash`.
+    rodada = subprocess.run(
+        ["bash", "--noprofile", "--norc", "-eo", "pipefail", "-c", script],
+        env=env,
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    assert rodada.returncode == 0, rodada.stdout + rodada.stderr
+    # UTF-8 invalido faz o Telegram recusar a mensagem inteira: ler ja confere.
+    return saida.read_text(encoding="utf-8")
+
+
+B3_FALHOU = {"RES_DEPS": "success", "RES_MIGRATIONS": "success", "RES_B3": "failure"}
+
+
+@pytest.mark.parametrize("arquivo", [WORKFLOW, FUNDAMENTOS_B3], ids=lambda p: p.name)
+def test_passo_dos_fundamentos_guarda_a_saida_para_o_aviso(arquivo: Path) -> None:
+    (job,) = _carregar(arquivo)["jobs"].values()
+    (passo,) = [p for p in job["steps"] if "scanner fundamentos atualizar" in str(p.get("run"))]
+    run = str(passo["run"])
+    assert "| tee /tmp/fundamentos.log" in run
+    assert "set -o pipefail" in run, "tee sem pipefail esconde a falha"
+    assert "/tmp/fundamentos.log" in str(_aviso_dos_fundamentos(arquivo)["run"])
+
+
+@pytest.mark.parametrize("arquivo", [WORKFLOW, FUNDAMENTOS_B3], ids=lambda p: p.name)
+def test_aviso_dos_fundamentos_diz_o_que_falhou(tmp_path: Path, arquivo: Path) -> None:
+    """Em 27/09/2026 o aviso semanal culpou a B3 e disse que nada tinha sido
+    gravado. Quem falhou foi o zip do ITR 2023, e a B3 tinha gravado tudo.
+    """
+    mensagem = _mensagem_do_aviso(tmp_path, arquivo, LOG_27_09, B3_FALHOU)
+
+    assert "falhou ITR 2023" in mensagem
+    assert "zip incompleto" in mensagem
+    assert "cadastro ou proventos na B3" not in mensagem
+    assert "B3 não atualizaram" not in mensagem
+
+
+@pytest.mark.parametrize("arquivo", [WORKFLOW, FUNDAMENTOS_B3], ids=lambda p: p.name)
+@pytest.mark.parametrize(
+    ("log", "esperado"),
+    [
+        pytest.param(LOG_CORTADO, "Parou depois de: DFP 2022: sem mudanca", id="cortado-no-teto"),
+        pytest.param(None, "Parou antes da primeira etapa", id="sem-saida-nenhuma"),
+    ],
+)
+def test_aviso_dos_fundamentos_cortados_diz_onde_parou(
+    tmp_path: Path, arquivo: Path, log: str | None, esperado: str
+) -> None:
+    resultados = {**B3_FALHOU, "RES_B3": "cancelled"} if arquivo == FUNDAMENTOS_B3 else {}
+    assert esperado in _mensagem_do_aviso(tmp_path, arquivo, log, resultados)
+
+
+@pytest.mark.parametrize("arquivo", [WORKFLOW, FUNDAMENTOS_B3], ids=lambda p: p.name)
+def test_aviso_dos_fundamentos_nao_parte_caractere_ao_meio(tmp_path: Path, arquivo: Path) -> None:
+    # O corte em 300 bytes cai no meio do "Ç": sem limpeza, o Telegram recusaria.
+    linha = "[fundamentos] falhou " + "A" * 292 + "ÇÃO\n"
+    mensagem = _mensagem_do_aviso(tmp_path, arquivo, linha, B3_FALHOU)
+    assert "A" * 292 in mensagem
 
 
 @pytest.mark.parametrize("arquivo", [DAILY, MANUAL], ids=lambda p: p.name)

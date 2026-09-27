@@ -168,8 +168,23 @@ jobs:
         env:
           DATA_PREGAO: ${{ steps.pregao.outputs.data || env.PREGAO }}
         run: |
-          texto=$(printf '⚠️ <b>Fundamentos não atualizaram</b>\nO pregão de %s foi processado normalmente; a aba Fundamentos segue com os dados anteriores.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
-            "$DATA_PREGAO" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          # O que falhou, e nao so que o passo falhou. Sem linha de falha, o
+          # passo foi cortado no teto: a ultima linha impressa diz onde estava.
+          detalhe=$(grep -E '^\[fundamentos\] falhou ' /tmp/fundamentos.log 2>/dev/null | sed 's/^\[fundamentos\] //' | head -5 | cut -c1-300 || true)
+          if [ -z "$detalhe" ]; then
+            ultima=$(grep -E '^\[fundamentos\] ' /tmp/fundamentos.log 2>/dev/null | tail -1 | sed 's/^\[fundamentos\] //' | cut -c1-200 || true)
+            if [ -n "$ultima" ]; then
+              detalhe="Parou depois de: $ultima"
+            else
+              detalhe="Parou antes da primeira etapa"
+            fi
+          fi
+          # `cut` corta em byte e pode partir um "Ç" ao meio; o Telegram recusa
+          # a mensagem inteira com UTF-8 invalido, e o `iconv -c` tira a sobra.
+          detalhe=$(printf '%s' "$detalhe" | tr -d '<>&' | iconv -c -f UTF-8 -t UTF-8 2>/dev/null || true)
+
+          texto=$(printf '⚠️ <b>Fundamentos não atualizaram</b>\nO pregão de %s foi processado normalmente; a aba Fundamentos segue com os dados anteriores.\n\n%s\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$DATA_PREGAO" "$detalhe" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
 
           curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
             "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \

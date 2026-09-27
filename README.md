@@ -663,6 +663,15 @@ Sem gatilho de rebuild próprio: o pregão roda pelo menos uma vez por dia útil
 já dispara o rebuild dele, então o que este workflow grava aparece no site na
 próxima passada normal.
 
+**A CVM regrava os zips uma vez por semana, e esta passada pode pegar a
+regravação no meio.** Em 27/09/2026, dia em que a CVM republicou os arquivos, o
+ITR 2023 veio com 200 mas não abria como zip. Hoje um zip inválido é baixado de
+novo antes de desistir; se continuar inválido, a falha diz "a CVM entregou um
+zip incompleto", e a passada seguinte do pregão tenta outra vez — a versão nova
+só é registrada depois de lida. O aviso no Telegram traz as linhas `falhou …`
+da saída, e não só o nome do passo: naquele dia ele culpou a B3, que tinha
+gravado tudo.
+
 A única B3 que continua diária é a exceção dentro do próprio `_mapear_tickers`:
 ligar um ticker novo (o FCA não declara todos) não pode esperar uma semana,
 senão o papel que acabou de cruzar o limiar fica sem ficha. É rara — histórico

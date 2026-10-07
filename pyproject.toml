@@ -25,7 +25,13 @@ dependencies = [
 scanner = "scanner.cli:app"
 
 [dependency-groups]
+# So para os scripts de analise em `scripts/` (graficos). Fica fora das
+# dependencias do pacote: o pipeline diario nao precisa dele.
+analise = [
+    "matplotlib>=3.8",
+]
 dev = [
+    {include-group = "analise"},
     "pytest>=8.2",
     "pytest-cov>=5.0",
     "ruff>=0.6",
@@ -40,7 +46,7 @@ packages = ["src/scanner"]
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-src = ["src", "tests"]
+src = ["src", "tests", "scripts"]
 
 [tool.ruff.lint]
 select = [
@@ -73,7 +79,7 @@ select = [
 # sob 3.12+. A compatibilidade minima com 3.11 e garantida pelo ruff
 # (`target-version = "py311"`), que rejeita sintaxe mais nova no nosso codigo.
 strict = true
-files = ["src", "tests"]
+files = ["src", "tests", "scripts"]
 plugins = []
 exclude = ["src/scanner/storage/migrations/"]
 

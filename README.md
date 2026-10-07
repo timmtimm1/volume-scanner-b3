@@ -29,6 +29,7 @@ O sistema **detecta e apresenta**.
 - [Calendário da B3](#calendário-da-b3)
 - [A regra mecânica, verificada no dado real](#a-regra-mecânica-verificada-no-dado-real)
 - [Duas coisas que o layout da B3 esconde](#duas-coisas-que-o-layout-da-b3-esconde)
+- [Análise: o preço anda mais depois de um evento?](#análise-o-preço-anda-mais-depois-de-um-evento)
 - [Banco de dados](#banco-de-dados)
 - [Deploy](#deploy)
 - [Recriar do zero](#recriar-do-zero)
@@ -387,6 +388,111 @@ Por isso o `price_check_mode` do `config.yaml` tem dois modos:
 `truncation` é o padrão. Não é uma tolerância afrouxada: é a aritmética exata de um
 campo truncado, e continua estreita o bastante para pegar desalinhamento real — em
 papel de R$ 20 a folga é de 0,05%.
+
+## Análise: o preço anda mais depois de um evento?
+
+Pedida explicitamente, e por isso fora do pipeline: `scripts/backtest_variacao.py`
+lê o banco, não grava nada nele, não muda o alerta e não entra no `daily`. A
+pergunta é uma só — **depois de um `z_log ≥ 6` na janela de 30, o preço se move
+mais do que num dia comum do mesmo universo?** Não diz para que lado, nem se dá
+para operar.
+
+### O que é medido
+
+Para cada evento no pregão `t` e cada horizonte `N ∈ {1, 5, 10, 20, 30}`:
+
+| Medida | Fórmula |
+|---|---|
+| `var_abs` | `\|close(t+N) / close(t) − 1\|` |
+| `amplitude` | `(máx. high − mín. low entre t+1 e t+N) / close(t)` |
+| `var_abs_norm`, `amplitude_norm` | as duas acima ÷ desvio-padrão dos retornos diários de `t−60` a `t−1` |
+
+Regras, todas cobertas por teste em `tests/test_backtest_variacao.py`:
+
+- **Só o passado normaliza.** O desvio usa `shift(1)` antes do `rolling(60)`, como
+  o z-score; exige 50 retornos válidos nos 60, senão o evento sai.
+- **Sem horizonte inventado.** Evento sem `N` pregões à frente sai daquele
+  horizonte, e só dele.
+- **Bloco conta uma vez.** Dias seguidos de evento no mesmo papel viram um evento,
+  no primeiro dia (`dias_no_bloco` guarda o tamanho).
+- **O mesmo piso do alerta** (`alert.min_volume_brl`) vale para evento e controle.
+- **Mercado separado.** `mkt_vol_z ≥ 2` marca o dia como "mercado alto"
+  (`--mkt-alto` muda). Sem `mkt_vol_z` (começo da série) conta como alto.
+- **Controle.** Dias do mesmo universo com `z_log < 2` na janela de 30, sorteados
+  com semente fixa (`--semente`, padrão 20261002; `--n-controle`, padrão 20 000).
+
+### `DATA_CORTE` e as versões
+
+`DATA_CORTE = 2026-10-02` (`--data-corte`). Na versão com corte, **nenhum preço
+posterior sai do banco** (o `WHERE trade_date <= :corte` está no SQL), e um
+horizonte só entra se o pregão `t+N` for `≤ DATA_CORTE`. Um teste multiplica
+por 7 todo preço posterior ao corte e confere que nada muda.
+
+| Versão | O que é |
+|---|---|
+| `a_corte` | só preços até o corte |
+| `b_sem_corte` | tudo o que está no banco |
+| `c_corte_sem_mkt_alto` | (a) sem os dias de mercado alto |
+| `d_corte_so_mkt_alto` | (a) só com eles — o que (c) tirou |
+
+O script imprime o `n` de eventos e de controles de cada versão e horizonte.
+
+### Rodar
+
+```bash
+uv sync                                   # o grupo dev já traz o matplotlib
+uv run python scripts/backtest_variacao.py
+uv run python scripts/backtest_variacao.py --data-corte 2026-10-02 --saida data/backtest_variacao
+```
+
+Saída em `data/backtest_variacao/` (fora do git):
+
+- `resumo.csv` — por versão, horizonte e medida: `n`, mediana, p25, p75 e p90 de
+  evento e controle, e as razões evento/controle da mediana, do p75 e do p90.
+- `observacoes.csv` — uma linha por (evento ou controle, horizonte), versões a e b.
+  É o arquivo que o painel interativo lê.
+- `grafico.png` — em cima, evento × controle (mediana e faixa p25–p75) na versão
+  (a); embaixo, a razão das medianas nas quatro versões.
+
+### Os três eventos conferidos à mão
+
+Os testes montam 101 pregões com o corte na posição 95 e três eventos cujos
+números saem na ponta do lápis:
+
+| Evento | Montagem | Exemplo conferido |
+|---|---|---|
+| AAAA, t=70 | antes alterna 100/101; depois `close = 100+k`, high/low ±1 | N=5: var 5%, amplitude (106−100)/100 = 6%; σ60 = (0,01+1/101)/2·√(60/59) |
+| BBBB, t=75–77 | um bloco de 3 dias, conta em 75; depois `close = 51−k` | N=5: var 5/51, amplitude (50,2−45,7)/51 |
+| CCCC, t=80 | dia em que o mercado inteiro negocia 20× | marcado `mkt_alto`, sai da versão (c); t+20 cai depois do corte |
+
+### Validação do método
+
+Num banco sintético de 80 papéis em que, por construção, a volatilidade sobe
+1,8× nos 14 pregões seguintes a cada pico de volume, o script devolve razões de
+mediana entre 1,5 e 1,8 nos horizontes de 5 a 10 pregões, caindo para ~1,3 em
+30 — o efeito que foi plantado, diluído conforme a janela passa dele. Isso
+valida a conta, **não diz nada sobre a B3**.
+
+### Resultado na B3
+
+**Ainda não rodado no dado real.** Esta seção foi escrita num ambiente sem
+acesso ao COTAHIST nem ao Neon, e não há número de mercado aqui de propósito:
+qualquer tabela antes de rodar o script contra a carga real seria inventada.
+Para preencher, rode o script no banco com a carga completa e cole a tabela da
+versão `a_corte` (e a contagem por versão) abaixo.
+
+<!-- resultado-real: cole aqui a saída de `scripts/backtest_variacao.py` -->
+
+Como ler quando os números chegarem:
+
+- **Razão perto de 1 nas medidas normalizadas** = o evento não move o preço mais
+  que um dia comum, depois de descontar a volatilidade que o papel já tinha.
+- **Razão alta em `var_abs` mas perto de 1 em `var_abs_norm`** = os eventos caem
+  em papéis que já eram mais voláteis; o pico de volume não acrescenta nada.
+- **(c) muito abaixo de (a)** = boa parte do efeito era dia de mercado inteiro
+  agitado, não do papel.
+- **(a) e (b) muito diferentes** = os últimos pregões, posteriores ao corte,
+  pesam no resultado; desconfie de conclusões com `n` pequeno em N=20 e N=30.
 
 ## Banco de dados
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import pytest
 from sqlalchemy import Engine, text
@@ -72,8 +73,13 @@ def test_a_migracao_vai_para_o_banco_consultado_e_nao_para_o_do_ambiente(
     assert urls == [engine.url.render_as_string(hide_password=False)]
 
 
-def test_sem_alembic_ini_falha_alto(engine: Engine, monkeypatch: pytest.MonkeyPatch) -> None:
-    # Seguir em frente calado seria checar alertas num schema possivelmente velho.
-    monkeypatch.setattr(migracao, "ALEMBIC_INI", migracao.RAIZ / "nao-existe.ini")
-    with pytest.raises(FileNotFoundError, match=r"alembic\.ini"):
-        migracao.migrar_se_preciso(engine)
+def test_nao_depende_de_rodar_na_raiz_do_repositorio(
+    engine: Engine,
+    upgrades: list[str],
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    # As migrations sao achadas pelo lugar do modulo, nao pelo alembic.ini.
+    monkeypatch.chdir(tmp_path)
+    assert migracao.migrar_se_preciso(engine) is None
+    assert upgrades == []

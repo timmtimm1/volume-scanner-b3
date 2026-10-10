@@ -22,23 +22,21 @@ from sqlalchemy import Engine
 
 from scanner.storage.models import SCHEMA
 
-# src/scanner/storage/migracao.py -> raiz do repositorio.
-RAIZ = Path(__file__).resolve().parents[3]
-ALEMBIC_INI = RAIZ / "alembic.ini"
 MIGRATIONS = Path(__file__).resolve().parent / "migrations"
 
 
 def _config(engine: Engine) -> Config:
-    """A mesma configuracao do `alembic upgrade head`, apontada para `engine`.
+    """As mesmas migrations do `alembic upgrade head`, apontadas para `engine`.
+
+    Sem o alembic.ini de proposito. Dele so interessariam duas coisas: onde
+    estao as migrations, que aqui sai do lugar deste arquivo, e o log do
+    Alembic, que a checagem nao precisa. Depender do .ini seria depender de o
+    comando rodar na raiz do repositorio.
 
     A URL vai explicita: o `env.py` so cai em `SCANNER_DATABASE_URL` quando
     ninguem definiu nada, e o banco a migrar tem de ser o que foi consultado.
     """
-    if not ALEMBIC_INI.is_file():
-        # Falha alta de proposito: sem o .ini nao da para migrar, e seguir em
-        # frente num schema velho e o que este modulo existe para evitar.
-        raise FileNotFoundError(f"alembic.ini nao encontrado em {ALEMBIC_INI}")
-    config = Config(str(ALEMBIC_INI))
+    config = Config()
     config.set_main_option("script_location", str(MIGRATIONS))
     # O configparser le "%" como interpolacao; senha com "%" quebraria aqui.
     url = engine.url.render_as_string(hide_password=False).replace("%", "%%")

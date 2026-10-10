@@ -44,8 +44,13 @@ app.add_typer(fundamentos_app, name="fundamentos")
 
 # Codigo de saida do `daily` quando o arquivo do pregao de HOJE ainda nao saiu
 # da B3. E o EX_TEMPFAIL do sysexits.h: "tente mais tarde". O workflow trata
-# como adiado, e nao como falha -- a passada das 07:40 processa o pregao.
+# como adiado, e nao como falha -- a proxima passada processa o pregao.
 SAIDA_ADIADO = 75
+
+# Como o `daily --so-se-faltar` comeca a linha quando nao havia nada a fazer. O
+# pregao.yml procura por isto para pular o rebuild e os fundamentos: mudou aqui,
+# mude la.
+MARCA_PRONTO = "[pronto]"
 
 
 def parse_trade_date(value: str) -> date:
@@ -364,6 +369,13 @@ def daily(
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Calcula e mostra, sem gravar nem notificar.")
     ] = False,
+    so_se_faltar: Annotated[
+        bool,
+        typer.Option(
+            "--so-se-faltar",
+            help="Sai sem fazer nada se o resumo deste pregao ja foi enviado.",
+        ),
+    ] = False,
 ) -> None:
     """O pregao inteiro num comando: carga, metricas, alerta, trades, resumo e poda.
 
@@ -376,6 +388,14 @@ def daily(
     Alem do tempo, isso garante que o alerta e o resumo do mesmo pregao falam
     dos mesmos numeros, em vez de dois calculos independentes que se espera que
     coincidam.
+
+    `--so-se-faltar` e para as repescagens da noite (22:15 e 23:30), que so
+    existem para o caso de a B3 ter atrasado. Na maioria das noites a passada
+    das 21:30 ja resolveu, e ai a repescagem sai na primeira consulta ao banco,
+    sem baixar, recalcular nem reconstruir o site. "Ja resolveu" e o resumo
+    carimbado: ele e a ultima mensagem do pregao, e so e carimbado depois de
+    sair. Com o resumo desligado no config nao ha carimbo para consultar, e a
+    opcao nao pula nada.
     """
     from scanner.alerts import run_scan
     from scanner.calendar import is_trading_day
@@ -384,17 +404,34 @@ def daily(
     from scanner.ingest.pipeline import ingest_day
     from scanner.recompute import carregar_contexto, refresh_metrics
     from scanner.storage.engine import build_engine
-    from scanner.storage.repository import mb, prune_bars, retention_cutoff, tamanho_do_banco
+    from scanner.storage.repository import (
+        digest_enviado,
+        mb,
+        prune_bars,
+        retention_cutoff,
+        tamanho_do_banco,
+    )
     from scanner.trades import run_snapshots
 
     dia = parse_trade_date(trade_date)
     if not is_trading_day(dia):
         typer.secho(f"[pulado] {dia.isoformat()} nao e pregao.", fg=typer.colors.YELLOW)
         return
+    # Lido antes da carga, e nao depois: a espera pelo arquivo leva ate 15
+    # minutos, e uma passada que comeca perto da meia-noite terminaria no dia
+    # seguinte -- o "ainda nao saiu" de hoje viraria falha de pregao passado.
+    hoje = hoje_na_b3()
 
     config = load_config()
     settings = get_settings()
     engine = build_engine()
+
+    if so_se_faltar and not dry_run and config.digest.enabled and digest_enviado(engine, dia):
+        typer.echo(
+            f"{MARCA_PRONTO} o pregao de {dia.isoformat()} ja foi processado e o resumo "
+            "ja saiu; nada a fazer."
+        )
+        return
 
     def etapa(numero: int, texto: str) -> None:
         """Uma linha por etapa: sem isto, um comando so vira uma caixa preta."""
@@ -413,9 +450,9 @@ def daily(
             # que varia de um dia para outro. Sair como falha mandaria aviso no
             # Telegram quase toda sexta. Para um pregao que nao e o de hoje, o
             # arquivo ja devia existir, e ai e falha de verdade.
-            if dia != hoje_na_b3():
+            if dia != hoje:
                 raise
-            etapa(1, f"adiado: {exc}. A passada das 07:40 processa este pregao.")
+            etapa(1, f"adiado: {exc}. A proxima passada processa este pregao.")
             raise typer.Exit(code=SAIDA_ADIADO) from exc
 
     # A unica leitura das barras e o unico calculo do dia. Tudo abaixo reusa.

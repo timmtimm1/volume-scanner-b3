@@ -34,6 +34,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # `pregao-manual.yml` (a mao) so o chamam.
 WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pregao.yml"
 DAILY = PROJECT_ROOT / ".github" / "workflows" / "daily.yml"
+REPESCAGEM = PROJECT_ROOT / ".github" / "workflows" / "daily-repescagem.yml"
 MANUAL = PROJECT_ROOT / ".github" / "workflows" / "pregao-manual.yml"
 WORKFLOWS = sorted((PROJECT_ROOT / ".github" / "workflows").glob("*.yml"))
 CRON_EXTERNO = PROJECT_ROOT / ".github" / "cron-externo.yml"
@@ -404,6 +405,67 @@ def test_pregao_adiado_nao_e_falha_nem_reconstroi_o_site(workflow: dict[Any, Any
     assert '"$codigo" -eq 75' in run
     assert "adiado=true" in run
     assert "steps.pregao.outputs.adiado != 'true'" in str(vercel["if"])
+
+
+def test_repescagem_pronta_nao_reconstroi_o_site_nem_consulta_a_cvm(
+    workflow: dict[Any, Any],
+) -> None:
+    """`[pronto]` do `daily --so-se-faltar` = uma passada anterior ja resolveu.
+
+    Nada foi gravado, entao rebuild e fundamentos so repetiriam o que a passada
+    das 21:30 fez. A marca procurada no log e a que o comando imprime.
+    """
+    from scanner.cli import MARCA_PRONTO
+
+    passos = _passos_do_job(workflow)
+    (pregao,) = [p for p in passos if p.get("id") == "pregao"]
+    (vercel,) = [p for p in passos if p.get("id") == "vercel"]
+    (fundamentos,) = [p for p in passos if p.get("id") == "fundamentos"]
+
+    run = str(pregao["run"])
+    assert "$SO_SE_FALTAR" in run
+    assert MARCA_PRONTO.replace("[", "\\[").replace("]", "\\]") in run
+    assert "pronto=true" in run
+    assert "steps.pregao.outputs.pronto != 'true'" in str(vercel["if"])
+    assert "steps.pregao.outputs.pronto != 'true'" in str(fundamentos["if"])
+
+
+def test_so_a_repescagem_pede_so_se_faltar() -> None:
+    """As 21:30, as 07:40 e o manual processam sempre; so a repescagem pula.
+
+    A da manha tem de continuar reprocessando: e ela que pega um arquivo que a
+    B3 corrigiu durante a noite.
+    """
+    (job,) = _carregar(REPESCAGEM)["jobs"].values()
+    assert job["with"]["so_se_faltar"] is True
+    assert job["with"]["trade_date"] == "ultimo"
+    assert set(_gatilhos(_carregar(REPESCAGEM))) == {"workflow_dispatch"}
+
+    for arquivo in (DAILY, MANUAL):
+        (job,) = _carregar(arquivo)["jobs"].values()
+        assert "so_se_faltar" not in job["with"], f"{arquivo.name} passou a pular pregao"
+
+
+def test_repescagens_rodam_depois_das_21h30_e_terminam_antes_da_meia_noite() -> None:
+    """Depois da meia-noite `ultimo` ja nao e o pregao do dia.
+
+    Com os 15 minutos de espera pelo arquivo, uma repescagem que comecasse as
+    23:50 atravessaria o dia. O teto e 23:40.
+    """
+    agenda = _agenda_externa()
+    noite = str(agenda["jobs"]["daily-noite"]["cron"]).split()
+    inicio_da_noite = int(noite[1]) * 60 + int(noite[0])
+
+    repescagens = [j for j in agenda["jobs"].values() if j["workflow"] == REPESCAGEM.name]
+    assert len(repescagens) >= 1
+    for job in repescagens:
+        minuto, hora, *resto = str(job["cron"]).split()
+        assert minuto != "0", "minuto 0 cai na fila da hora cheia"
+        comeco = int(hora) * 60 + int(minuto)
+        # A passada das 21:30 so desiste 15 minutos depois de comecar.
+        assert comeco >= inicio_da_noite + 15, "comeca com as 21:30 ainda esperando o arquivo"
+        assert comeco <= 23 * 60 + 40, "a espera pelo arquivo atravessaria a meia-noite"
+        assert resto == ["*", "*", "1-5"]
 
 
 def test_aviso_de_falha_nao_se_diz_teste(workflow: dict[Any, Any]) -> None:

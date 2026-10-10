@@ -680,6 +680,22 @@ def test_guarda_so_barra_rerun_fora_do_main_atual(
         assert "pregao manual" in saida.stdout, "a mensagem tem de dizer o que fazer"
 
 
+def test_rompimentos_migra_dentro_da_checagem_e_nao_num_passo_a_parte() -> None:
+    """A migration pendente tem de ser aplicada, mas sem um processo so para isso.
+
+    O passo separado custava tanto quanto a checagem, a cada passada. Tirar o
+    passo sem por o `--migrar-antes` no lugar deixaria o dia inteiro de
+    passadas num schema velho depois de um merge com migration.
+    """
+    conteudo = dict(yaml.safe_load(ROMPIMENTOS.read_text(encoding="utf-8")))
+    (job,) = conteudo["jobs"].values()
+    comandos = [str(p.get("run", "")) for p in job["steps"]]
+
+    assert not any("alembic upgrade" in c for c in comandos)
+    (checagem,) = [c for c in comandos if "scanner alerta checar" in c]
+    assert "--migrar-antes" in checagem
+
+
 def test_rompimentos_em_feriado_nao_instala_nem_conecta() -> None:
     """Feriado da B3 cai em dia util: o job para antes de instalar e conectar.
 

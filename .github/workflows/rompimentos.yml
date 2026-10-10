@@ -88,22 +88,22 @@ jobs:
         if: steps.pregao.outputs.aberto == 'true'
         run: uv sync --locked --no-dev
 
-      - name: Migrations
-        id: migrations
-        if: steps.pregao.outputs.aberto == 'true'
-        # O `daily` tambem migra, mas so roda de terca a sabado: uma migration
-        # mergeada numa segunda ficaria sem aplicar ate a terca de manha, e
-        # todas as passadas de segunda bateriam num schema velho. Aqui e barato
-        # -- sem migration pendente o alembic sai sem tocar em nada.
-        # --no-sync: sem ele o `uv run` baixa o grupo dev (mypy, ruff, pytest).
-        run: uv run --no-sync alembic upgrade head
-
       - name: Checar rompimentos
         id: checagem
         if: steps.pregao.outputs.aberto == 'true'
-        # Sem alerta ativo o comando sai em um segundo, sem tocar a rede: a
-        # consulta aos fornecedores so acontece se houver o que vigiar.
-        run: uv run --no-sync scanner alerta checar
+        # Sem alerta ativo o comando sai sem tocar a rede: a consulta aos
+        # fornecedores so acontece se houver o que vigiar.
+        #
+        # `--migrar-antes` faz o papel do passo de migrations que existia aqui.
+        # O `daily` tambem migra, mas so roda a noite e de manha: uma migration
+        # mergeada no meio do pregao ficaria sem aplicar ate a noite, e todas
+        # as passadas ate la bateriam num schema velho. O passo separado
+        # resolvia isso com um processo e uma conexao a mais por passada --
+        # 5,3s de migrations para 4,7s de checagem, na media de 25 execucoes
+        # de 09/10/2026. Agora e uma consulta na conexao que a checagem ja
+        # abre, e o Alembic so roda quando ha o que aplicar.
+        # --no-sync: sem ele o `uv run` baixa o grupo dev (mypy, ruff, pytest).
+        run: uv run --no-sync scanner alerta checar --migrar-antes
 
       # Sem isto, uma falha aqui e indistinguivel de "nada rompeu": o job fica
       # vermelho numa aba que ninguem abre e o alerta simplesmente nao chega.
@@ -115,7 +115,6 @@ jobs:
         env:
           RES_PREGAO: ${{ steps.pregao.outcome }}
           RES_DEPS: ${{ steps.deps.outcome }}
-          RES_MIGRATIONS: ${{ steps.migrations.outcome }}
           RES_CHECAGEM: ${{ steps.checagem.outcome }}
         run: |
           onde="passo desconhecido"
@@ -123,10 +122,8 @@ jobs:
             onde="conferencia do calendario da B3"
           elif [ "$RES_DEPS" = failure ]; then
             onde="instalacao das dependencias"
-          elif [ "$RES_MIGRATIONS" = failure ]; then
-            onde="migrations"
           elif [ "$RES_CHECAGEM" = failure ]; then
-            onde="checagem dos alertas de preco"
+            onde="migrations ou checagem dos alertas de preco"
           fi
 
           onde=$(printf '%s' "$onde" | tr -d '<>&')

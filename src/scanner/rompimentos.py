@@ -69,7 +69,7 @@ class RelatorioDeChecagem:
     fontes: tuple[tuple[str, int], ...] = ()
     # Quanto sobrou do plano de cada fornecedor que diz, ex.: (("brapi", Cota),).
     # O `fontes` acima mostra quem parou de responder; este mostra quem esta
-    # PRESTES a parar. Sao 36 passadas por pregao contra 15 mil requisicoes por
+    # PRESTES a parar. Sao 108 passadas por pregao contra 15 mil requisicoes por
     # mes no plano gratuito da brapi: a conta fica apertada sem ninguem avisar,
     # e a brapi manda o numero em toda resposta.
     cotas: tuple[tuple[str, Cota], ...] = ()
@@ -97,7 +97,7 @@ def rompeu(alerta: Alerta, cotacao: Cotacao) -> bool:
 
     Comparacao simples e inclusiva: tocar o nivel conta. A escolha e do usuario
     -- "tocou o nivel, a qualquer momento", e nao "fechou alem dele". Com
-    checagem de 15 em 15 minutos isso significa que um pavio pode disparar; e
+    checagem de 5 em 5 minutos isso significa que um pavio pode disparar; e
     por isso que o disparo grava o preco que o causou.
     """
     if alerta.direcao == "acima":

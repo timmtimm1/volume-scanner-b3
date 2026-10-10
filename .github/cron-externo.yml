@@ -44,9 +44,12 @@ jobs:
 
   rompimentos:
     workflow: rompimentos.yml
-    cron: "7,22,37,52 10-18 * * 1-5"
+    cron: "1-59/5 10-18 * * 1-5"
     porque: >-
-      De 15 em 15 minutos durante o pregao, segunda a sexta. Vai ate as 18:xx e
+      De 5 em 5 minutos durante o pregao (minutos 01, 06, ..., 56), segunda a
+      sexta: 108 passadas por pregao. Era de 15 em 15; o intervalo menor deixa
+      escapar menos pavio, porque a checagem so ve o preco do instante. O
+      minuto 1 evita a fila da hora cheia. Vai ate as 18:xx e
       nao ate as 17:xx de proposito: o pregao fecha as 18:00 e o leilao de
       fechamento se estende alguns minutos, que e justamente quando um
       rompimento acontece. Feriado da B3 tambem cai em dia util, e o cron nao

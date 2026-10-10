@@ -595,7 +595,7 @@ def alerta_checar(
     from scanner.storage.engine import build_engine
 
     # O cron roda de segunda a sexta, mas feriado da B3 tambem cai em dia util.
-    # Sem esta guarda, um feriado gastaria 36 consultas aos fornecedores para
+    # Sem esta guarda, um feriado gastaria 108 consultas aos fornecedores para
     # reler um preco que nao se move. O dia e o de Sao Paulo, nao o do runner.
     if not is_trading_day(hoje_na_b3()):
         typer.secho("[pulado] hoje nao e pregao.", fg=typer.colors.YELLOW)

@@ -231,7 +231,7 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
 - **Resumo diário no Telegram.** Os 10 papéis que mais fugiram do próprio volume
   normal no pregão, tenham cruzado o limiar ou não. Sai uma vez por pregão.
 - **Alertas de rompimento de preço.** Na ficha do papel, logado, você clica no
-  gráfico e escolhe um nível. A cada 15 minutos durante o pregão o
+  gráfico e escolhe um nível. A cada 5 minutos durante o pregão o
   `rompimentos.yml` consulta a brapi e o Yahoo, fica com a cotação de hora mais
   nova e avisa no Telegram quando o preço toca o nível. Cotação que não é do
   pregão de hoje não dispara. É o único dado do sistema que não vem do COTAHIST.
@@ -976,7 +976,7 @@ pareceriam complexas demais para o problema.
   Empresa com duas classes de verdade e preço faltando continua nula — somar
   só parte das ações daria um valor menor que o real. É o caso de CPLE6 e
   ELET3 enquanto a B3 não devolver o ISIN delas.
-- **O rompimento só vê o preço do instante da checagem**, a cada 15 minutos
+- **O rompimento só vê o preço do instante da checagem**, a cada 5 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.
 
@@ -1203,6 +1203,12 @@ conta é apertada: a checagem de rompimentos roda 36 vezes por pregão, com uma
 requisição por papel no plano gratuito, contra 15 mil requisições por mês. São
 `36 × papéis × 21 pregões` por mês, o que estoura a cota em torno de 19 alertas
 ativos — e o único sintoma seria o alerta parar de chegar.
+
+> **Atualização (10/10/2026):** a checagem passou a rodar de 5 em 5 minutos,
+> 108 vezes por pregão. A conta do pior caso vira `108 × papéis × 21`, e a cota
+> estoura em torno de 6 alertas ativos, não 19. Pior caso porque, desde que a
+> brapi virou reserva (seção abaixo), ela só é consultada para o papel que o
+> Yahoo não respondeu — no dia a dia o consumo fica perto de zero.
 
 Agora a linha da checagem termina com o número:
 

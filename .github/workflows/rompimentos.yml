@@ -4,8 +4,9 @@ name: rompimentos
 # agendador nativo do GitHub -- que em repo publico gratuito atrasa e falha
 # demais para ser confiavel.
 #
-# Agenda no cron externo: de 15 em 15 minutos durante o pregao, 10:00 as 18:59
-# BRT, de segunda a sexta (cron "7,22,37,52 10-18 * * 1-5", fuso America/Sao_Paulo).
+# Agenda no cron externo: de 5 em 5 minutos durante o pregao, 10:00 as 18:59
+# BRT, de segunda a sexta (cron "1-59/5 10-18 * * 1-5", fuso America/Sao_Paulo).
+# Sao 108 passadas por pregao.
 #
 # Vai ate as 18:xx e nao ate as 17:xx de proposito: o pregao fecha as 18:00 e o
 # leilao de fechamento se estende alguns minutos. Parar as 17:52 perderia
@@ -16,7 +17,7 @@ name: rompimentos
 # Fora do pregao nao roda: alerta de rompimento so faz sentido com o mercado
 # aberto, e checar de madrugada gastaria requisicao dos fornecedores a toa.
 #
-# O minuto 7 evita a fila dos que agendam em ponto.
+# O minuto 1 evita a fila dos que agendam em ponto.
 on:
   workflow_dispatch:
 
@@ -54,7 +55,7 @@ jobs:
 
       # O cron externo dispara de segunda a sexta, e feriado da B3 cai em dia
       # util. Sem esta guarda, cada feriado instalaria as dependencias e abriria
-      # conexao com o Neon 36 vezes so para desistir no fim. Roda com o Python do
+      # conexao com o Neon 108 vezes so para desistir no fim. Roda com o Python do
       # runner e so a biblioteca padrao: `scanner.calendar` nao importa nada de
       # fora. A guarda do `alerta checar` continua la, por garantia.
       - name: Hoje e pregao?
@@ -108,7 +109,7 @@ jobs:
       # Sem isto, uma falha aqui e indistinguivel de "nada rompeu": o job fica
       # vermelho numa aba que ninguem abre e o alerta simplesmente nao chega.
       # Mesma lacuna de silencio ambiguo que o daily.yml ja fechou -- so que
-      # este roda 36 vezes por dia e e o unico que vigia preco ao vivo.
+      # este roda 108 vezes por dia e e o unico que vigia preco ao vivo.
       - name: Avisar no Telegram se algo falhou
         if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
         shell: bash

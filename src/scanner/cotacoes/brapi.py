@@ -38,14 +38,14 @@ LOTE_PADRAO = 1
 # A brapi manda dois pares de cabecalho de limite. Os `ratelimit-*` sao a
 # janela curta -- 20 por minuto no gratuito, medido em 23/09/2026 -- e os
 # `x-ratelimit-*` sao a cota do plano, 15 mil por mes no gratuito. E a do plano
-# que interessa aqui: a checagem roda 36 vezes por pregao e o risco real e
+# que interessa aqui: a checagem roda 108 vezes por pregao e o risco real e
 # acabar o mes, nao estourar o minuto.
 COTA_RESTANTE = "x-ratelimit-remaining"
 COTA_LIMITE = "x-ratelimit-limit"
 
-# Abaixo disto o aviso sobe de INFO para WARNING. Sao 36 passadas por pregao e
-# ~21 pregoes por mes: com menos de mil requisicoes sobrando, um unico papel a
-# mais na lista de alertas ja nao cabe ate o fim do ciclo.
+# Abaixo disto o aviso sobe de INFO para WARNING. Sao 108 passadas por pregao:
+# no pior caso, o da brapi consultada em toda passada, mil requisicoes sao
+# menos de dez pregoes de um unico papel.
 COTA_BAIXA = 1_000
 
 

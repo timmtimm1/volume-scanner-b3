@@ -156,7 +156,7 @@ class PriceAlert(Base):
 
     Dispara uma vez e se desativa (`disparado_em` preenchido). `preco_disparo`
     guarda a cotacao que causou o disparo, nao o nivel pedido: com checagem de
-    15 em 15 minutos, um pavio pode furar o nivel e voltar, e ver o preco real
+    5 em 5 minutos, um pavio pode furar o nivel e voltar, e ver o preco real
     e o que permite distinguir rompimento de ruido depois do fato.
     """
 

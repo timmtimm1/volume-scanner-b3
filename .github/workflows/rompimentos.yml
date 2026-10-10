@@ -4,8 +4,9 @@ name: rompimentos
 # agendador nativo do GitHub -- que em repo publico gratuito atrasa e falha
 # demais para ser confiavel.
 #
-# Agenda no cron externo: de 15 em 15 minutos durante o pregao, 10:00 as 18:59
-# BRT, de segunda a sexta (cron "7,22,37,52 10-18 * * 1-5", fuso America/Sao_Paulo).
+# Agenda no cron externo: de 5 em 5 minutos durante o pregao, 10:00 as 18:59
+# BRT, de segunda a sexta (cron "1-59/5 10-18 * * 1-5", fuso America/Sao_Paulo).
+# Sao 108 passadas por pregao.
 #
 # Vai ate as 18:xx e nao ate as 17:xx de proposito: o pregao fecha as 18:00 e o
 # leilao de fechamento se estende alguns minutos. Parar as 17:52 perderia
@@ -16,7 +17,7 @@ name: rompimentos
 # Fora do pregao nao roda: alerta de rompimento so faz sentido com o mercado
 # aberto, e checar de madrugada gastaria requisicao dos fornecedores a toa.
 #
-# O minuto 7 evita a fila dos que agendam em ponto.
+# O minuto 1 evita a fila dos que agendam em ponto.
 on:
   workflow_dispatch:
 
@@ -54,7 +55,7 @@ jobs:
 
       # O cron externo dispara de segunda a sexta, e feriado da B3 cai em dia
       # util. Sem esta guarda, cada feriado instalaria as dependencias e abriria
-      # conexao com o Neon 36 vezes so para desistir no fim. Roda com o Python do
+      # conexao com o Neon 108 vezes so para desistir no fim. Roda com o Python do
       # runner e so a biblioteca padrao: `scanner.calendar` nao importa nada de
       # fora. A guarda do `alerta checar` continua la, por garantia.
       - name: Hoje e pregao?
@@ -88,34 +89,33 @@ jobs:
         if: steps.pregao.outputs.aberto == 'true'
         run: uv sync --locked --no-dev
 
-      - name: Migrations
-        id: migrations
-        if: steps.pregao.outputs.aberto == 'true'
-        # O `daily` tambem migra, mas so roda de terca a sabado: uma migration
-        # mergeada numa segunda ficaria sem aplicar ate a terca de manha, e
-        # todas as passadas de segunda bateriam num schema velho. Aqui e barato
-        # -- sem migration pendente o alembic sai sem tocar em nada.
-        # --no-sync: sem ele o `uv run` baixa o grupo dev (mypy, ruff, pytest).
-        run: uv run --no-sync alembic upgrade head
-
       - name: Checar rompimentos
         id: checagem
         if: steps.pregao.outputs.aberto == 'true'
-        # Sem alerta ativo o comando sai em um segundo, sem tocar a rede: a
-        # consulta aos fornecedores so acontece se houver o que vigiar.
-        run: uv run --no-sync scanner alerta checar
+        # Sem alerta ativo o comando sai sem tocar a rede: a consulta aos
+        # fornecedores so acontece se houver o que vigiar.
+        #
+        # `--migrar-antes` faz o papel do passo de migrations que existia aqui.
+        # O `daily` tambem migra, mas so roda a noite e de manha: uma migration
+        # mergeada no meio do pregao ficaria sem aplicar ate a noite, e todas
+        # as passadas ate la bateriam num schema velho. O passo separado
+        # resolvia isso com um processo e uma conexao a mais por passada --
+        # 5,3s de migrations para 4,7s de checagem, na media de 25 execucoes
+        # de 09/10/2026. Agora e uma consulta na conexao que a checagem ja
+        # abre, e o Alembic so roda quando ha o que aplicar.
+        # --no-sync: sem ele o `uv run` baixa o grupo dev (mypy, ruff, pytest).
+        run: uv run --no-sync scanner alerta checar --migrar-antes
 
       # Sem isto, uma falha aqui e indistinguivel de "nada rompeu": o job fica
       # vermelho numa aba que ninguem abre e o alerta simplesmente nao chega.
       # Mesma lacuna de silencio ambiguo que o daily.yml ja fechou -- so que
-      # este roda 36 vezes por dia e e o unico que vigia preco ao vivo.
+      # este roda 108 vezes por dia e e o unico que vigia preco ao vivo.
       - name: Avisar no Telegram se algo falhou
         if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
         shell: bash
         env:
           RES_PREGAO: ${{ steps.pregao.outcome }}
           RES_DEPS: ${{ steps.deps.outcome }}
-          RES_MIGRATIONS: ${{ steps.migrations.outcome }}
           RES_CHECAGEM: ${{ steps.checagem.outcome }}
         run: |
           onde="passo desconhecido"
@@ -123,10 +123,8 @@ jobs:
             onde="conferencia do calendario da B3"
           elif [ "$RES_DEPS" = failure ]; then
             onde="instalacao das dependencias"
-          elif [ "$RES_MIGRATIONS" = failure ]; then
-            onde="migrations"
           elif [ "$RES_CHECAGEM" = failure ]; then
-            onde="checagem dos alertas de preco"
+            onde="migrations ou checagem dos alertas de preco"
           fi
 
           onde=$(printf '%s' "$onde" | tr -d '<>&')

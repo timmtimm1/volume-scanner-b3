@@ -617,6 +617,13 @@ def alerta_checar(
     dry_run: Annotated[
         bool, typer.Option("--dry-run", help="Mostra sem gravar nem desativar.")
     ] = False,
+    migrar_antes: Annotated[
+        bool,
+        typer.Option(
+            "--migrar-antes",
+            help="Aplica migration pendente antes de checar (o que o workflow usa).",
+        ),
+    ] = False,
 ) -> None:
     """Consulta o preco atual e dispara os alertas que romperam."""
     from scanner.calendar import hoje_na_b3, is_trading_day
@@ -625,15 +632,26 @@ def alerta_checar(
     from scanner.storage.engine import build_engine
 
     # O cron roda de segunda a sexta, mas feriado da B3 tambem cai em dia util.
-    # Sem esta guarda, um feriado gastaria 36 consultas aos fornecedores para
+    # Sem esta guarda, um feriado gastaria 108 consultas aos fornecedores para
     # reler um preco que nao se move. O dia e o de Sao Paulo, nao o do runner.
     if not is_trading_day(hoje_na_b3()):
         typer.secho("[pulado] hoje nao e pregao.", fg=typer.colors.YELLOW)
         return
 
+    engine = build_engine()
+    if migrar_antes:
+        # No lugar do passo `alembic upgrade head` do workflow, que abria um
+        # segundo processo e uma segunda conexao a cada passada so para
+        # descobrir que nao havia nada a aplicar.
+        from scanner.storage.migracao import migrar_se_preciso
+
+        revisao = migrar_se_preciso(engine)
+        if revisao is not None:
+            typer.echo(f"[migrado] schema atualizado para {revisao}")
+
     notifier = _notificador(get_settings(), dry_run=dry_run)
     relatorio = checar_rompimentos(
-        build_engine(), _provedor_de_cotacoes(), notifier=notifier, dry_run=dry_run
+        engine, _provedor_de_cotacoes(), notifier=notifier, dry_run=dry_run
     )
     typer.echo(relatorio.summary())
 

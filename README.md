@@ -1344,6 +1344,39 @@ o de anteontem, o instantâneo é de ontem. Mas em 23/09/2026 a brapi devolveu
 fechamento real de 22/09 foi 48,35: o campo é o tick anterior, não o fechamento
 da sessão anterior. Não serve.
 
+### A checagem de rompimentos sem o passo de migrations (10/10/2026)
+
+O `rompimentos.yml` rodava `alembic upgrade head` antes de cada checagem. Sem
+migration pendente o comando não muda nada no banco, mas custa um processo
+inteiro: outro Python, outro import, outra conexão com o Neon. Na média de 25
+execuções de 09/10/2026:
+
+| Passo | Tempo |
+|---|---|
+| Migrations (sem nada a aplicar) | 5,3 s |
+| Checar rompimentos | 4,7 s |
+| Job inteiro | 18,2 s |
+
+O passo que não fazia nada custava mais que o que fazia. E ele não podia
+simplesmente sair: o pregão só migra à noite e de manhã, então uma migration
+mergeada no meio do dia deixaria todas as passadas até a noite num schema
+velho.
+
+Agora a checagem pergunta ela mesma (`scanner alerta checar --migrar-antes`),
+na conexão que já ia abrir: lê a revisão em `alembic_version`, compara com a
+última do repositório, e só chama o Alembic se forem diferentes. Código em
+`src/scanner/storage/migracao.py`.
+
+| | Antes | Depois |
+|---|---|---|
+| Banco em dia (todas as passadas menos uma) | processo separado: 0,77 s local, 5,3 s no runner | uma consulta: 0,006 s local |
+| Banco atrasado | `alembic upgrade head` | o mesmo `upgrade`, chamado de dentro |
+
+Verificado num banco vazio criado só para isso: a primeira chamada migrou do
+zero até a `0009`, a segunda devolveu "nada a fazer". O ganho no runner é
+estimativa — cerca de 5 s por passada, dos 18,2 s — e só dá para medir depois
+do merge.
+
 ### O que ficou na lista e não foi feito
 
 Além da questão acima, três itens continuam abertos:

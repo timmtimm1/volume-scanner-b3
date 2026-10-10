@@ -2,8 +2,9 @@ name: pregao
 
 # As etapas do pregao, num lugar so. Nao roda sozinho: quem chama e
 # - daily.yml, o disparo agendado pelo cron externo (21:30 e 07:40);
+# - daily-repescagem.yml, as tentativas tardias da noite (22:15 e 23:30);
 # - pregao-manual.yml, o botao para rodar a mao.
-# Os dois executam exatamente isto: rodar a mao testa o mesmo caminho da agenda.
+# Todos executam exatamente isto: rodar a mao testa o mesmo caminho da agenda.
 on:
   workflow_call:
     inputs:
@@ -14,6 +15,11 @@ on:
         default: "ultimo"
       fundamentos_forcar:
         description: "Reprocessa os zips da CVM mesmo sem mudanca (ver README)"
+        type: boolean
+        required: false
+        default: false
+      so_se_faltar:
+        description: "Sai sem fazer nada se o resumo do pregao ja foi enviado (repescagem)"
         type: boolean
         required: false
         default: false
@@ -35,6 +41,7 @@ jobs:
       SCANNER_WEB_BASE_URL: ${{ vars.SCANNER_WEB_BASE_URL }}
       PREGAO: ${{ inputs.trade_date || 'ultimo' }}
       FUNDAMENTOS_FORCAR: ${{ inputs.fundamentos_forcar && '--forcar' || '' }}
+      SO_SE_FALTAR: ${{ inputs.so_se_faltar && '--so-se-faltar' || '' }}
       VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
     steps:
       - name: Barrar Re-run de codigo antigo
@@ -92,18 +99,25 @@ jobs:
         run: |
           set -o pipefail
           set +e
-          uv run --no-sync scanner daily --date "$PREGAO" 2>&1 | tee /tmp/daily.log
+          uv run --no-sync scanner daily --date "$PREGAO" $SO_SE_FALTAR 2>&1 | tee /tmp/daily.log
           codigo=$?
           set -e
           # A data de verdade do pregao, para os avisos: "$PREGAO" e "ultimo".
           data=$(grep -oE '^\[4/7\] [0-9]{4}-[0-9]{2}-[0-9]{2}' /tmp/daily.log | tail -1 | cut -d' ' -f2 || true)
           echo "data=${data:-$PREGAO}" >> "$GITHUB_OUTPUT"
           # 75 = o arquivo do pregao de hoje ainda nao saiu da B3. Nao e falha:
-          # a passada das 07:40 processa. Marca o passo para pular o rebuild.
+          # a proxima passada processa. Marca o passo para pular o rebuild.
           if [ "$codigo" -eq 75 ]; then
             echo "adiado=true" >> "$GITHUB_OUTPUT"
-            echo "::notice::B3 ainda nao publicou o pregao de hoje; a passada das 07:40 processa"
+            echo "::notice::B3 ainda nao publicou o pregao de hoje; a proxima passada processa"
             exit 0
+          fi
+          # Repescagem que chegou depois de o pregao ja estar resolvido: o
+          # `--so-se-faltar` saiu na primeira consulta, sem gravar nada. O site
+          # e os fundamentos ja estao em dia -- refaze-los so gastaria build.
+          if [ "$codigo" -eq 0 ] && grep -q '^\[pronto\]' /tmp/daily.log; then
+            echo "pronto=true" >> "$GITHUB_OUTPUT"
+            echo "::notice::Pregao ja processado por uma passada anterior; nada a fazer"
           fi
           exit "$codigo"
 
@@ -113,8 +127,9 @@ jobs:
         # no Telegram com o link do site, e o site nao pode ficar esperando a
         # CVM. Em 26/09/2026 o passo dos fundamentos ficou os 10 minutos do teto
         # de pe e o rebuild so saiu 11 minutos depois do resumo.
-        # Adiado nao gravou nada: reconstruir o site so gastaria build.
-        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.pregao.outputs.adiado != 'true' }}
+        # Adiado nao gravou nada, e pronto tambem nao: reconstruir o site so
+        # gastaria build.
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.pregao.outputs.adiado != 'true' && steps.pregao.outputs.pronto != 'true' }}
         run: |
           curl -sS -f --retry 3 --retry-delay 2 --retry-connrefused \
             -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null
@@ -150,6 +165,10 @@ jobs:
         # e ITR de 2022 nao muda mais. Como nao toca a B3, continua rapido
         # (~2 minutos localmente, para 5 anos de ITR/DFP) e nao precisa de teto
         # proprio.
+        #
+        # Pronto = a passada que processou o pregao ja rodou este passo ha
+        # menos de duas horas; a CVM publica uma vez por semana.
+        if: ${{ steps.pregao.outputs.pronto != 'true' }}
         continue-on-error: true
         timeout-minutes: 10
         shell: bash

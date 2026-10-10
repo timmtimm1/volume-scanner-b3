@@ -32,7 +32,24 @@ jobs:
       21:30, segunda a sexta. Processa o pregao do proprio dia, para o resumo
       chegar na mesma noite. A B3 publicou as 21:08 em 08/09, mas em 11/09
       (sexta) as 21:59 o arquivo ainda dava 404: por isso esta passada pode
-      terminar como adiada, sem falha, e a da manha existe.
+      terminar como adiada, sem falha, e as repescagens e a da manha existem.
+
+  daily-repescagem-1:
+    workflow: daily-repescagem.yml
+    cron: "15 22 * * 1-5"
+    porque: >-
+      22:15, segunda a sexta. A passada das 21:30 desiste as 21:45; pela data
+      do proprio arquivo na B3, em 25/09, 30/09 e 09/10 ele saiu entre 21:44 e
+      21:51, e o resumo so chegou as 07:40 do dia seguinte. Se as 21:30 ja
+      resolveram, esta sai sem fazer nada.
+
+  daily-repescagem-2:
+    workflow: daily-repescagem.yml
+    cron: "30 23 * * 1-5"
+    porque: >-
+      23:30, segunda a sexta. Para o atraso de horas: em 11/09 o arquivo saiu
+      as 23:17. Nao pode ser mais tarde: com os 15 minutos de espera termina as
+      23:45, e depois da meia-noite `ultimo` deixaria de ser o pregao do dia.
 
   daily-manha:
     workflow: daily.yml

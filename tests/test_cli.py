@@ -252,6 +252,96 @@ def test_daily_em_ensaio_nao_grava_nem_carrega(monkeypatch: pytest.MonkeyPatch) 
     assert etapas.chamadas == ["contexto", "scan", "snapshots", "resumo"]
 
 
+# --- Repescagem: `--so-se-faltar` ---------------------------------------------
+
+
+def _resumo_ja_enviado(monkeypatch: pytest.MonkeyPatch, enviado: bool) -> list[date]:
+    """Troca o carimbo do resumo e devolve os pregoes pelos quais perguntaram."""
+    from scanner.storage import repository
+
+    consultas: list[date] = []
+
+    def carimbo(_engine: object, dia: date) -> bool:
+        consultas.append(dia)
+        return enviado
+
+    monkeypatch.setattr(repository, "digest_enviado", carimbo)
+    return consultas
+
+
+def test_repescagem_sai_sem_fazer_nada_se_o_resumo_ja_saiu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A noite normal: as 21:30 resolveram e a repescagem nao repete nada."""
+    from scanner import cli
+
+    etapas = _EtapasFalsas(monkeypatch)
+    consultas = _resumo_ja_enviado(monkeypatch, True)
+
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04", "--so-se-faltar"])
+
+    assert result.exit_code == 0, result.output
+    assert result.output.startswith(cli.MARCA_PRONTO), "o pregao.yml procura a marca"
+    assert consultas == [date(2026, 9, 4)]
+    assert etapas.chamadas == [], "pronto nao baixa, nao calcula, nao notifica e nao poda"
+
+
+def test_repescagem_processa_o_pregao_que_as_21h30_adiaram(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A noite do atraso: sem carimbo, a repescagem e um `daily` como outro."""
+    etapas = _EtapasFalsas(monkeypatch)
+    _resumo_ja_enviado(monkeypatch, False)
+
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04", "--so-se-faltar"])
+
+    assert result.exit_code == 0, result.output
+    assert "[pronto]" not in result.output
+    assert etapas.chamadas[0] == "ingest"
+    assert "resumo" in etapas.chamadas
+    for numero in range(1, 8):
+        assert f"[{numero}/7]" in result.output
+
+
+def test_sem_a_opcao_o_daily_reprocessa_mesmo_com_o_resumo_enviado(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """As 07:40 e o manual continuam como eram: nem perguntam pelo carimbo."""
+    etapas = _EtapasFalsas(monkeypatch)
+    consultas = _resumo_ja_enviado(monkeypatch, True)
+
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
+
+    assert result.exit_code == 0, result.output
+    assert consultas == []
+    assert "ingest" in etapas.chamadas
+
+
+def test_adiado_depois_da_meia_noite_continua_adiado(monkeypatch: pytest.MonkeyPatch) -> None:
+    """A espera pelo arquivo dura 15 minutos e pode atravessar a meia-noite.
+
+    "Hoje" e lido antes da carga. Lido depois, a passada que comecou no dia do
+    pregao terminaria no dia seguinte, e o 404 viraria falha com aviso.
+    """
+    from scanner import cli
+    from scanner.ingest import pipeline
+    from scanner.ingest.download import AindaNaoPublicadoError
+
+    _EtapasFalsas(monkeypatch)
+    relogio = {"hoje": date(2026, 9, 4)}
+    monkeypatch.setattr(cli, "hoje_na_b3", lambda: relogio["hoje"])
+
+    def espera_e_falha(*_a: object, **_k: object) -> str:
+        relogio["hoje"] = date(2026, 9, 5)
+        raise AindaNaoPublicadoError("404")
+
+    monkeypatch.setattr(pipeline, "ingest_day", espera_e_falha)
+
+    result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
+
+    assert result.exit_code == cli.SAIDA_ADIADO, result.output
+
+
 # --- "ultimo": o pregao completo mais recente --------------------------------
 
 

@@ -698,6 +698,7 @@ mesmas etapas:
 | Workflow | Quem dispara | Pregão |
 |---|---|---|
 | `daily.yml` — **daily (agendado)** | o cron externo, nos horários abaixo | sempre `ultimo` |
+| `daily-repescagem.yml` — **daily (repescagem)** | o cron externo, mais tarde na mesma noite | sempre `ultimo`, e só se ainda faltar |
 | `pregao-manual.yml` — **pregao manual** | você, se quiser | `ultimo` ou uma data |
 
 O manual é opcional: se ninguém rodar, a agenda faz o serviço.
@@ -705,13 +706,33 @@ O manual é opcional: se ninguém rodar, a agenda faz o serviço.
 Quem dispara é um cron externo ([cron-job.org](https://cron-job.org)), via
 `workflow_dispatch`: o agendador nativo do GitHub, em repositório público
 gratuito, entregou cerca de 11% dos horários. A agenda versionada fica em
-`.github/cron-externo.yml`, e são dois disparos, ambos pedindo o pregão
+`.github/cron-externo.yml`, e são quatro disparos, todos pedindo o pregão
 encerrado mais recente no relógio de Brasília:
 
 | Quando (Brasília) | Dias | O que acontece |
 |---|---|---|
 | **21:30** | seg a sex | Processa o pregão do dia. Se a B3 ainda não publicou, termina como **adiado**: sem aviso de falha e sem rebuild |
+| **22:15** | seg a sex | Repescagem. Se as 21:30 já resolveram, sai em um segundo sem fazer nada; se adiaram, processa o pregão |
+| **23:30** | seg a sex | Segunda repescagem, para o atraso de horas. Mesma regra |
 | **07:40** | ter a sáb | Reserva. Processa o pregão da véspera se a noite não conseguiu; se conseguiu, nada se repete |
+
+As repescagens existem porque a passada das 21:30 espera o arquivo por 15
+minutos e desiste às 21:45 — e a B3 gosta de publicar logo depois. A data que a
+própria B3 carimba em cada arquivo mostra quando ele saiu. Nos 24 pregões de
+08/09 a 09/10/2026:
+
+| Quando o arquivo saiu | Pregões | Quem pegava antes | Quem pega agora |
+|---|---|---|---|
+| até 21:05 | 20 | 21:30 | 21:30 |
+| 21:44 a 21:51 | 3 (25/09, 30/09, 09/10) | 07:40 do dia seguinte | 22:15 |
+| 23:17 | 1 (11/09) | 07:40 do dia seguinte | 23:30 |
+
+Em um pregão a cada seis, o resumo da noite chegava na manhã seguinte por uma
+diferença de minutos. A repescagem pede `--so-se-faltar`: nas outras cinco
+noites ela consulta o carimbo do resumo, vê que já saiu e termina ali — sem
+baixar, recalcular, reconstruir o site nem consultar a CVM de novo. A segunda
+não pode ser mais tarde que 23:40: com a espera de 15 minutos ela atravessaria
+a meia-noite, e `ultimo` deixaria de ser o pregão do dia.
 
 Alerta, resumo e carga são idempotentes: rodar duas vezes o mesmo pregão não
 manda mensagem duplicada.
@@ -843,8 +864,8 @@ pareceriam complexas demais para o problema.
   horários programados — por isso o disparo real é um cron externo
   (seção [O job diário](#4-o-job-diário)), e não o `schedule:` do Actions.
 - **A B3 publica o arquivo do pregão com atraso variável**, às vezes horas, às
-  vezes com 403/404 no meio do caminho — daí os dois horários de disparo
-  (21:30 + 07:40) em vez de um único horário fixo.
+  vezes com 403/404 no meio do caminho — daí os quatro horários de disparo
+  (21:30, 22:15, 23:30 e 07:40) em vez de um único horário fixo.
 - **Cotação de preço não é tempo real.** Isso vale só para os alertas de
   rompimento e para o candle parcial da ficha — as únicas partes do sistema que
   não vêm do COTAHIST oficial; o scan de volume usa dado de fechamento, sem

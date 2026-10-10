@@ -336,3 +336,54 @@ def test_daily_diz_quanto_o_banco_ocupa(monkeypatch: pytest.MonkeyPatch) -> None
     result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
     assert result.exit_code == 0, result.output
     assert "banco com 150 MB (daily_features 60 MB)" in result.output
+
+
+# --- Rompimentos: `--migrar-antes` ---------------------------------------------
+
+
+def _checagem_falsa(monkeypatch: pytest.MonkeyPatch) -> list[str]:
+    """Troca a checagem, o banco e a migracao e devolve a ordem das chamadas."""
+    from scanner import calendar, cli, rompimentos
+    from scanner.storage import engine as engine_mod
+    from scanner.storage import migracao
+
+    ordem: list[str] = []
+
+    class _Relatorio:
+        def summary(self) -> str:
+            return "0 alertas ativos"
+
+    def checar(*_a: object, **_k: object) -> _Relatorio:
+        ordem.append("checar")
+        return _Relatorio()
+
+    def migrar(_engine: object) -> str | None:
+        ordem.append("migrar")
+        return None
+
+    monkeypatch.setattr(calendar, "is_trading_day", lambda _dia: True)
+    monkeypatch.setattr(engine_mod, "build_engine", lambda: object())
+    monkeypatch.setattr(rompimentos, "checar_rompimentos", checar)
+    monkeypatch.setattr(migracao, "migrar_se_preciso", migrar)
+    monkeypatch.setattr(cli, "_notificador", lambda *_a, **_k: None)
+    monkeypatch.setattr(cli, "_provedor_de_cotacoes", lambda: None)
+    return ordem
+
+
+def test_alerta_checar_migra_antes_de_checar(monkeypatch: pytest.MonkeyPatch) -> None:
+    ordem = _checagem_falsa(monkeypatch)
+
+    result = runner.invoke(app, ["alerta", "checar", "--migrar-antes"])
+
+    assert result.exit_code == 0, result.output
+    assert ordem == ["migrar", "checar"], "checar num schema velho e o que a opcao evita"
+
+
+def test_alerta_checar_sem_a_opcao_nao_mexe_no_schema(monkeypatch: pytest.MonkeyPatch) -> None:
+    # Rodando a mao na maquina, ninguem espera que o comando migre o banco.
+    ordem = _checagem_falsa(monkeypatch)
+
+    result = runner.invoke(app, ["alerta", "checar"])
+
+    assert result.exit_code == 0, result.output
+    assert ordem == ["checar"]

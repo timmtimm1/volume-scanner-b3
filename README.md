@@ -274,6 +274,21 @@ Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
 - **Régua no gráfico.** Um toque mede de agora até um nível (%, R$ por ação e,
   logado, o efeito no trade aberto, com botão para virar alerta de preço); dois
   toques medem o movimento entre dois pontos e quantos pregões ele levou.
+- **Prévia do gráfico no histórico (computador).** Clicar num evento mostra o
+  candlestick dele ao lado da lista, centrado no pregão do evento, sem sair da
+  página. As setas ↑ e ↓ passam de evento em evento e o Enter abre a ficha. Quem
+  abre a ficha e volta encontra o histórico como deixou: filtros, linhas
+  abertas, evento escolhido e rolagem. O gráfico vem de um JSON estático por
+  papel (`/api/barras/[ticker]`, ~4 KB comprimido), gerado no build como a
+  ficha. No celular, o toque continua abrindo a ficha.
+- **Alerta criado e arrastado no gráfico (computador).** O botão **Alerta** da
+  ficha liga um modo em que um clique na altura cria o alerta, com a direção
+  tirada do preço de agora. A linha de cada alerta que vigia pode ser arrastada
+  para outro nível (cruzando o preço, a direção troca sozinha), e o ✕ da
+  etiqueta apaga. Alerta disparado sai do gráfico e fica só na lista do painel,
+  onde o valor de cada alerta ativo pode ser digitado. Só o alerta ativo muda de
+  nível: o disparado guarda a que preço disparou. No celular, o formulário
+  continua como era.
 
 ## A interface
 
@@ -283,7 +298,8 @@ npm install
 npm run dev        # http://localhost:3000
 ```
 
-As telas de dado — scanner, histórico, papéis e cada ficha — são **estáticas**.
+As telas de dado — scanner, histórico, papéis e cada ficha — são **estáticas**,
+assim como o JSON de barras que a prévia do histórico usa (`/api/barras/[ticker]`).
 As consultas rodam no build, o Actions dispara o rebuild depois do scan, e é o
 que faz abrir instantâneo no 4G.
 

@@ -30,7 +30,7 @@ import {
   type Time,
 } from "lightweight-charts";
 import type { PointerEvent as EventoDePonteiro } from "react";
-import { useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Alerta, Direcao } from "@/lib/alertas";
 import { type CandleDeHoje, candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
 import { diaCurto, numero, percentual, reaisComSinal } from "@/lib/formato";
@@ -48,6 +48,7 @@ import { medirMovimento, type PontoDaRegua, type TradeDaRegua } from "@/lib/regu
 import { useTema } from "@/lib/tema";
 import type { Barra, Evento } from "@/lib/types";
 import { useMedias } from "@/lib/useMedias";
+import { CamadaDeAlertas } from "./CamadaDeAlertas";
 import { PainelDaRegua } from "./PainelDaRegua";
 
 /** Cores das series: fixas nos dois temas. */
@@ -79,7 +80,8 @@ const ALTURA_DO_ROTULO_DA_REGUA = 60;
 
 type Props = {
   barras: Barra[];
-  eventos: Evento[];
+  /** So a data importa aqui: o candle desses pregoes fica dourado. */
+  eventos: Pick<Evento, "tradeDate">[];
   /** Pregao a centralizar e destacar. */
   destaque?: string;
   /** Altura do grafico, em classes (muda entre celular e computador). */
@@ -128,6 +130,19 @@ type Props = {
     /** Logado: mostra o botao "Criar alerta em R$". */
     podeCriarAlerta: boolean;
     criarAlerta: (preco: number, direcao: Direcao) => Promise<void>;
+  };
+  /**
+   * Alertas editaveis no proprio grafico (computador, logado): o botao Alerta
+   * cria com um clique na altura, a linha arrasta para mudar o nivel e o ✕ da
+   * etiqueta apaga. Sem esta prop, as linhas sao so desenho, como no celular.
+   */
+  edicaoDeAlertas?: {
+    /** O preco de agora, que decide a direcao do alerta. */
+    referencia: number | null;
+    criar: (preco: number) => Promise<void>;
+    mover: (id: number, preco: number) => Promise<void>;
+    apagar: (id: number) => Promise<void>;
+    erro: string | null;
   };
 };
 
@@ -185,6 +200,7 @@ export function Grafico({
   publicacoes = [],
   posicao = null,
   regua,
+  edicaoDeAlertas,
 }: Props) {
   const idBase = useId();
   const { tema } = useTema();
@@ -203,6 +219,13 @@ export function Grafico({
   const [inicioDaRegua, setInicioDaRegua] = useState<PontoDaRegua | null>(null);
   const [pontaDaRegua, setPontaDaRegua] = useState<PontoDaRegua | null>(null);
   const [reguaFixada, setReguaFixada] = useState(false);
+  const editavel = edicaoDeAlertas !== undefined;
+  // Modo de criar alerta com um clique no grafico (so com `edicaoDeAlertas`).
+  // Exclusivo com a regua: os dois querem o clique no grafico.
+  const [modoDeCriar, setCriandoAlerta] = useState(false);
+  // Sem edicao (deslogou, ou a tela encolheu para celular), o modo nao vale.
+  const criandoAlerta = modoDeCriar && editavel;
+  const alertasAtivos = useMemo(() => alertas.filter((a) => a.ativo), [alertas]);
   // Os pixels dos pontos da regua (e do rotulo), recalculados num efeito --
   // nao no render, que nao pode ler refs do grafico (`chart.current`,
   // `serie.current`). Null sem os dois pontos ou fora da area visivel.
@@ -220,7 +243,8 @@ export function Grafico({
   // linhas de alerta sao penduradas e que a altura do clique vira preco.
   const serie = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const serieDeVolume = useRef<ISeriesApi<"Histogram"> | null>(null);
-  const linhasDeAlerta = useRef<IPriceLine[]>([]);
+  // Por id do alerta, para a linha andar junto com o arrasto antes de salvar.
+  const linhasDeAlerta = useRef(new Map<number, IPriceLine>());
   const linhasDeMedia = useRef(new Map<string, ISeriesApi<"Line">>());
   const linhaDoParcial = useRef<IPriceLine | null>(null);
   const marcadoresDeTrade = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
@@ -231,6 +255,16 @@ export function Grafico({
   // pintar o rotulo. So muda com o tema ou quando o grafico e reconstruido,
   // nunca a cada pixel arrastado.
   const [superficieRegua, setSuperficieRegua] = useState(SUPERFICIE_PADRAO);
+  // Quem quer saber que o grafico foi redesenhado (rolar, zoom, autoescala):
+  // a camada dos alertas, que precisa reposicionar as etiquetas.
+  const ouvintesDeRedesenho = useRef(new Set<() => void>());
+  const aoRedesenhar = useCallback((ouvinte: () => void) => {
+    const ouvintes = ouvintesDeRedesenho.current;
+    ouvintes.add(ouvinte);
+    return () => {
+      ouvintes.delete(ouvinte);
+    };
+  }, []);
 
   // Guardados em ref para o clique nao precisar deles nas dependencias -- se
   // precisasse, cada render do pai reassinaria o evento e remontaria o grafico.
@@ -269,11 +303,18 @@ export function Grafico({
   }
 
   function alternarRegua() {
+    setCriandoAlerta(false);
     setReguaLigada((ligada) => {
       const proxima = !ligada;
       if (!proxima) limparRegua();
       return proxima;
     });
+  }
+
+  function alternarCriacaoDeAlerta() {
+    setReguaLigada(false);
+    limparRegua();
+    setCriandoAlerta((v) => !v);
   }
 
   // Quanto a banda abriu contra a media recente: o "abrindo" em numero.
@@ -328,6 +369,13 @@ export function Grafico({
      * que marca o evento, sem seta nem rotulo por cima.
      */
     const datasDeEvento = new Set(eventos.map((e) => e.tradeDate));
+    // Um primitivo sem desenho nenhum: so serve para o grafico avisar cada
+    // redesenho, que e quando a camada dos alertas precisa remedir.
+    candles.attachPrimitive({
+      updateAllViews: () => {
+        for (const ouvinte of ouvintesDeRedesenho.current) ouvinte();
+      },
+    });
     candles.setData(
       barras.map((b) => {
         const direcao = b.close >= (b.open ?? b.close) ? SERIE.alta : SERIE.baixa;
@@ -416,6 +464,7 @@ export function Grafico({
     });
 
     const mapaDeMedias = linhasDeMedia.current;
+    const linhasDoGrafico = linhasDeAlerta.current;
     return () => {
       c.remove();
       chart.current = null;
@@ -424,7 +473,7 @@ export function Grafico({
       serieDeVolume.current = null;
       // As linhas morrem junto com o grafico; zerar as listas evita que os
       // efeitos de alerta e de media mexam num grafico que nao existe mais.
-      linhasDeAlerta.current = [];
+      linhasDoGrafico.clear();
       linhaDoParcial.current = null;
       // Os marcadores e a linha do PM morrem com o grafico (chart.remove()
       // desfaz os primitivos da serie); so zerar as refs evita usa-las presas
@@ -552,18 +601,29 @@ export function Grafico({
     const s = serie.current;
     if (!s) return;
 
-    for (const linha of linhasDeAlerta.current) s.removePriceLine(linha);
-    linhasDeAlerta.current = alertas.map((a) =>
-      s.createPriceLine({
-        price: a.preco,
-        color: a.ativo ? SERIE.alerta : SERIE.alertaDisparado,
-        lineWidth: 1,
-        lineStyle: a.ativo ? LineStyle.Dashed : LineStyle.Dotted,
-        axisLabelVisible: true,
-        title: a.ativo ? (a.direcao === "acima" ? "▲" : "▼") : "•",
-      }),
-    );
-  }, [alertas, barras, eventos, destaque]);
+    const linhas = linhasDeAlerta.current;
+    for (const linha of linhas.values()) s.removePriceLine(linha);
+    linhas.clear();
+    for (const a of alertas) {
+      linhas.set(
+        a.id,
+        s.createPriceLine({
+          price: a.preco,
+          color: a.ativo ? SERIE.alerta : SERIE.alertaDisparado,
+          lineWidth: 1,
+          lineStyle: a.ativo ? LineStyle.Dashed : LineStyle.Dotted,
+          axisLabelVisible: true,
+          // Editavel, a seta e o resto vao na etiqueta da camada por cima; um
+          // titulo aqui ficaria embaixo dela.
+          title: editavel ? "" : a.ativo ? (a.direcao === "acima" ? "▲" : "▼") : "•",
+        }),
+      );
+    }
+  }, [alertas, editavel, barras, eventos, destaque]);
+
+  const moverLinha = useCallback((id: number, preco: number) => {
+    linhasDeAlerta.current.get(id)?.applyOptions({ price: preco });
+  }, []);
 
   /**
    * Os marcadores de compra/venda e a linha do preco medio, redesenhados quando
@@ -726,6 +786,16 @@ export function Grafico({
       c.timeScale().unsubscribeVisibleLogicalRangeChange(recalcular);
     };
   }, [reguaLigada, barras, eventos, destaque]);
+
+  // Esc cancela o modo de criar alerta, como a regua.
+  useEffect(() => {
+    if (!criandoAlerta) return;
+    function aoTeclar(e: KeyboardEvent) {
+      if (e.key === "Escape") setCriandoAlerta(false);
+    }
+    window.addEventListener("keydown", aoTeclar);
+    return () => window.removeEventListener("keydown", aoTeclar);
+  }, [criandoAlerta]);
 
   // Esc limpa e desliga a regua -- unico jeito de fazer isso pelo teclado,
   // ja que nao ha "clicar fora" (o overlay cobre o grafico inteiro).
@@ -929,6 +999,33 @@ export function Grafico({
             Régua
           </button>
         )}
+
+        {edicaoDeAlertas && (
+          <button
+            type="button"
+            onClick={alternarCriacaoDeAlerta}
+            aria-pressed={criandoAlerta}
+            aria-label="Alerta: criar um alerta clicando na altura do nível"
+            title="Criar alerta clicando no gráfico"
+            className={`inline-flex h-8 items-center gap-2 rounded-full px-3 text-[12px] font-bold transition-colors ${
+              criandoAlerta ? "bg-selecao text-acento" : "bg-painel-2 text-tinta-3 hover:text-acento"
+            }`}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path
+                d="M8 2.2a4 4 0 0 0-4 4v2.6L2.8 11h10.4L12 8.8V6.2a4 4 0 0 0-4-4ZM6.5 13a1.5 1.5 0 0 0 3 0"
+                stroke="currentColor"
+                strokeWidth="1.4"
+                strokeLinejoin="round"
+              />
+            </svg>
+            Alerta
+          </button>
+        )}
+
+        {edicaoDeAlertas?.erro && (
+          <span className="text-[12px] font-semibold text-baixa">{edicaoDeAlertas.erro}</span>
+        )}
       </div>
 
       {adicionando && (
@@ -1028,7 +1125,7 @@ export function Grafico({
 
       <div
         className={`relative w-full ${classeDeAltura}`}
-        style={{ cursor: escolhendoPreco || reguaLigada ? "crosshair" : undefined }}
+        style={{ cursor: escolhendoPreco || reguaLigada || criandoAlerta ? "crosshair" : undefined }}
       >
         {/* So o alvo do lightweight-charts: ele injeta seus proprios elementos
             aqui por fora do React (createChart/appendChild), entao este div nao
@@ -1036,6 +1133,28 @@ export function Grafico({
             React tentando reconciliar um DOM que ele nao criou. O overlay da
             regua, por isso, e um irmao posicionado por cima, nao um filho. */}
         <div ref={alvo} className="h-full w-full" />
+
+        {/* Os alertas editaveis: etiquetas e faixas de arrasto por cima de cada
+            linha, e o modo de criar. Some com a regua ligada, que usa o
+            grafico inteiro. */}
+        {edicaoDeAlertas && !reguaLigada && (
+          <CamadaDeAlertas
+            chart={chart}
+            serie={serie}
+            aoRedesenhar={aoRedesenhar}
+            alertas={alertasAtivos}
+            referencia={edicaoDeAlertas.referencia}
+            criando={criandoAlerta}
+            aoCriar={(preco) => {
+              setCriandoAlerta(false);
+              void edicaoDeAlertas.criar(preco);
+            }}
+            aoMover={(id, preco) => void edicaoDeAlertas.mover(id, preco)}
+            aoApagar={(id) => void edicaoDeAlertas.apagar(id)}
+            moverLinha={moverLinha}
+            cor={SERIE.alerta}
+          />
+        )}
 
         {/* Overlay da regua: so existe com a regua ligada -- desligada, o
             grafico se comporta exatamente como sem ela (sem ate um listener a

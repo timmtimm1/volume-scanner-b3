@@ -28,6 +28,7 @@ import { marcarAgora } from "@/lib/posicao";
 import type { Barra, Evento, Fundamentos } from "@/lib/types";
 import { useAlertasDoPapel } from "@/lib/useAlertasDoPapel";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
+import { useComputador } from "@/lib/useComputador";
 import { useNoticias } from "@/lib/useNoticias";
 import { useTradesDoPapel } from "@/lib/useTradesDoPapel";
 
@@ -149,6 +150,25 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
 
   const estadoDosAlertas = useAlertasDoPapel(ticker, barras, evento?.tradeDate, hoje);
   const estadoDosTrades = useTradesDoPapel(ticker, estadoDosAlertas.autenticado);
+
+  // No computador, logado, o alerta e criado, arrastado e apagado no proprio
+  // grafico, e os que ja dispararam saem dele (continuam na lista do painel).
+  // No celular tudo fica como era: tocar no grafico preenche o formulario.
+  const computador = useComputador();
+  const alertasNoGrafico = useMemo(
+    () => (computador ? estadoDosAlertas.alertas.filter((a) => a.ativo) : estadoDosAlertas.alertas),
+    [computador, estadoDosAlertas.alertas],
+  );
+  const edicaoDeAlertas =
+    computador && estadoDosAlertas.autenticado === true
+      ? {
+          referencia: estadoDosAlertas.precoDeReferencia,
+          criar: estadoDosAlertas.criarNoGrafico,
+          mover: estadoDosAlertas.moverAlerta,
+          apagar: estadoDosAlertas.apagar,
+          erro: estadoDosAlertas.erro,
+        }
+      : undefined;
 
   // Compras e vendas de TODOS os trades do papel (nao so o aberto) viram
   // marcador no grafico; o PM tracejado e so do trade aberto, se houver.
@@ -369,7 +389,7 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
             barras={barras}
             eventos={eventos}
             destaque={evento?.tradeDate}
-            alertas={estadoDosAlertas.alertas}
+            alertas={alertasNoGrafico}
             escolhendoPreco={estadoDosAlertas.escolhendo}
             aoEscolherPreco={estadoDosAlertas.escolherNoGrafico}
             hoje={hoje}
@@ -377,6 +397,7 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
             posicao={posicaoDoGrafico}
             publicacoes={publicacoes}
             regua={regua}
+            edicaoDeAlertas={edicaoDeAlertas}
             classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
           />
 
@@ -559,7 +580,7 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
             )}
           </div>
           <PainelDeTrade estado={estadoDosTrades} hoje={hoje} />
-          <PainelDeAlerta estado={estadoDosAlertas} />
+          <PainelDeAlerta estado={estadoDosAlertas} computador={computador} />
         </section>
       </div>
     </div>

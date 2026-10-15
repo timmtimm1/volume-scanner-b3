@@ -79,6 +79,22 @@ export async function listarAlertas(ticker?: string): Promise<Alerta[]> {
 
 export class DadoInvalido extends Error {}
 
+function precoValido(bruto: unknown): number {
+  const preco = Number(bruto);
+  if (!Number.isFinite(preco) || preco <= 0) {
+    throw new DadoInvalido("preco tem de ser um numero positivo");
+  }
+  return preco;
+}
+
+function direcaoValida(bruta: unknown): Direcao {
+  const direcao = String(bruta ?? "");
+  if (direcao !== "acima" && direcao !== "abaixo") {
+    throw new DadoInvalido("direcao aceita 'acima' ou 'abaixo'");
+  }
+  return direcao;
+}
+
 export async function criarAlerta(entrada: {
   ticker: unknown;
   preco: unknown;
@@ -90,15 +106,8 @@ export async function criarAlerta(entrada: {
   // ticker salvo vai depois para a URL dos fornecedores de cotacao.
   if (!TICKER.test(ticker)) throw new DadoInvalido("ticker fora do formato da B3");
 
-  const preco = Number(entrada.preco);
-  if (!Number.isFinite(preco) || preco <= 0) {
-    throw new DadoInvalido("preco tem de ser um numero positivo");
-  }
-
-  const direcao = String(entrada.direcao ?? "");
-  if (direcao !== "acima" && direcao !== "abaixo") {
-    throw new DadoInvalido("direcao aceita 'acima' ou 'abaixo'");
-  }
+  const preco = precoValido(entrada.preco);
+  const direcao = direcaoValida(entrada.direcao);
 
   const tradeDate = String(entrada.tradeDate ?? "");
   if (!/^\d{4}-\d{2}-\d{2}$/.test(tradeDate)) {
@@ -119,6 +128,32 @@ export async function apagarAlerta(id: number): Promise<boolean> {
     [id],
   );
   return (r.rowCount ?? 0) > 0;
+}
+
+/**
+ * Muda o nivel (e a direcao) de um alerta que ainda esta vigiando.
+ *
+ * So o ativo muda: o disparado guarda a que preco e quando disparou, e trocar o
+ * nivel dele apagaria o porque do disparo. Null quando o alerta nao existe ou
+ * ja disparou -- inclusive se disparou entre o arrasto na tela e este UPDATE.
+ *
+ * O `trade_date` fica: e o pregao em que o alerta foi criado, e nao muda porque
+ * a linha andou.
+ */
+export async function moverAlerta(
+  id: number,
+  entrada: { preco: unknown; direcao: unknown },
+): Promise<Alerta | null> {
+  const preco = precoValido(entrada.preco);
+  const direcao = direcaoValida(entrada.direcao);
+  const { rows } = await conexaoDeAlertas().query<Linha>(
+    `UPDATE volume_scanner.price_alerts
+        SET preco = $2, direcao = $3
+      WHERE id = $1 AND disparado_em IS NULL
+      RETURNING ${COLUNAS}`,
+    [id, preco, direcao],
+  );
+  return rows.length ? paraAlerta(rows[0]) : null;
 }
 
 /** Religa um alerta ja disparado, limpando o registro do disparo. */

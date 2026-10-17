@@ -52,3 +52,19 @@ fundamentos:
   # Proventos recentes. Mesma logica do campo acima: o `fundamentos-b3.yml` e
   # quem define a cadencia real (semanal); este e o piso dentro dela.
   horas_para_rechecar_proventos: 20
+
+semana:
+  # Resumo semanal de mercado (scanner semana montar).
+  # Quantas acoes entram em cada lista, altas e quedas.
+  acoes_por_lado: 10
+  # Cripto: quantas moedas depois de tirar as excluidas, e quantas altas e
+  # quedas destacar entre elas (BTC e ETH ficam de fora dos destaques).
+  cripto_top: 20
+  cripto_destaques: 5
+  # Categorias da CoinGecko que nao entram: em 17/10/2026 o top 40 tinha 8
+  # stablecoins, tether-gold e figure-heloc (papeis tokenizados).
+  cripto_categorias_excluidas: [stablecoins, tokenized-products, tokenized-btc, liquid-staking-tokens]
+  # Vertices da curva prefixada da ANBIMA, em dias uteis: 1, 2, 5 e 10 anos.
+  curva_vertices_du: [252, 504, 1260, 2520]
+  # Vencimentos do Tesouro americano, como o CSV do Treasury os rotula.
+  treasuries: ["3 Mo", "6 Mo", "2 Yr", "5 Yr", "10 Yr", "30 Yr"]

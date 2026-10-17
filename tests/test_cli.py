@@ -477,3 +477,90 @@ def test_alerta_checar_sem_a_opcao_nao_mexe_no_schema(monkeypatch: pytest.Monkey
 
     assert result.exit_code == 0, result.output
     assert ordem == ["checar"]
+
+
+# --- semana montar ---------------------------------------------------------
+
+
+def _semana_falsa(monkeypatch: pytest.MonkeyPatch, *, pregao_ausente: bool = False) -> list[object]:
+    """Troca engine, montagem e gravacao; devolve as gravacoes feitas."""
+    from scanner.semana import montagem
+    from scanner.storage import engine as engine_mod
+    from scanner.storage import repository
+
+    gravacoes: list[object] = []
+    payload = {"versao": 1, "semana": {"sexta": "2026-10-16"}}
+
+    def montar(engine: object, config: object, semana: object) -> dict[str, object]:
+        if pregao_ausente:
+            raise montagem.PregaoAusenteError("o pregao de 2026-10-16 ainda nao esta em daily_bars")
+        gravacoes.append(("montou", semana))
+        return payload
+
+    def gravar(engine: object, **kw: object) -> bool:
+        gravacoes.append(kw)
+        return True
+
+    monkeypatch.setattr(engine_mod, "build_engine", lambda: object())
+    monkeypatch.setattr(montagem, "montar_dados_de_mercado", montar)
+    monkeypatch.setattr(montagem, "previa", lambda p: "PREVIA DE TESTE")
+    monkeypatch.setattr(repository, "gravar_resumo_semanal", gravar)
+    return gravacoes
+
+
+def test_semana_montar_so_mostra_a_previa(monkeypatch: pytest.MonkeyPatch) -> None:
+    gravacoes = _semana_falsa(monkeypatch)
+
+    result = runner.invoke(app, ["semana", "montar", "--semana", "2026-10-14"])
+
+    assert result.exit_code == 0
+    assert "PREVIA DE TESTE" in result.output
+    assert "[gravado]" not in result.output
+    (montou,) = gravacoes  # nada gravado
+    assert montou[0] == "montou"  # type: ignore[index]
+    assert montou[1].sexta == date(2026, 10, 16)  # type: ignore[index]
+
+
+def test_semana_montar_grava_com_a_sexta_nominal(monkeypatch: pytest.MonkeyPatch) -> None:
+    gravacoes = _semana_falsa(monkeypatch)
+
+    result = runner.invoke(app, ["semana", "montar", "--semana", "2026-10-16", "--gravar"])
+
+    assert result.exit_code == 0
+    assert "[gravado] semana de 2026-10-16" in result.output
+    gravado = gravacoes[-1]
+    assert gravado["semana"] == date(2026, 10, 16)  # type: ignore[index]
+    assert gravado["inicio"] == date(2026, 10, 9)  # type: ignore[index]
+    assert gravado["fim"] == date(2026, 10, 16)  # type: ignore[index]
+    assert gravado["substituir_enviado"] is False  # type: ignore[index]
+
+
+def test_semana_montar_avisa_quando_o_resumo_ja_foi_enviado(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from scanner.storage import repository
+
+    _semana_falsa(monkeypatch)
+    monkeypatch.setattr(repository, "gravar_resumo_semanal", lambda *a, **k: False)
+
+    result = runner.invoke(app, ["semana", "montar", "--semana", "2026-10-16", "--gravar"])
+
+    assert result.exit_code == 0
+    assert "[recusado]" in result.output
+    assert "--substituir-enviado" in result.output
+
+
+def test_semana_montar_pregao_ausente_sai_com_codigo_3(monkeypatch: pytest.MonkeyPatch) -> None:
+    gravacoes = _semana_falsa(monkeypatch, pregao_ausente=True)
+
+    result = runner.invoke(app, ["semana", "montar", "--semana", "2026-10-16", "--gravar"])
+
+    assert result.exit_code == 3
+    assert "[adiado]" in result.output
+    assert gravacoes == []
+
+
+def test_semana_montar_rejeita_data_invalida() -> None:
+    result = runner.invoke(app, ["semana", "montar", "--semana", "ontem"])
+
+    assert result.exit_code != 0

@@ -1,0 +1,58 @@
+{
+ "stablecoins": [
+  {
+   "id": "tether",
+   "symbol": "usdt",
+   "name": "Tether"
+  },
+  {
+   "id": "usd-coin",
+   "symbol": "usdc",
+   "name": "USDC"
+  },
+  {
+   "id": "usds",
+   "symbol": "usds",
+   "name": "USDS"
+  },
+  {
+   "id": "ethena-usde",
+   "symbol": "usde",
+   "name": "Ethena USDe"
+  },
+  {
+   "id": "dai",
+   "symbol": "dai",
+   "name": "Dai"
+  },
+  {
+   "id": "usd1-wlfi",
+   "symbol": "usd1",
+   "name": "USD1"
+  },
+  {
+   "id": "global-dollar",
+   "symbol": "usdg",
+   "name": "Global Dollar"
+  },
+  {
+   "id": "paypal-usd",
+   "symbol": "pyusd",
+   "name": "PayPal USD"
+  }
+ ],
+ "tokenized-products": [
+  {
+   "id": "figure-heloc",
+   "symbol": "figr_heloc",
+   "name": "Figure Heloc"
+  },
+  {
+   "id": "tether-gold",
+   "symbol": "xaut",
+   "name": "Tether Gold"
+  }
+ ],
+ "tokenized-btc": [],
+ "liquid-staking-tokens": []
+}

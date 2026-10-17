@@ -1,0 +1,206 @@
+{
+ "ITUB": {
+  "code": "ITUB",
+  "cashDividends": [
+   {
+    "assetIssued": "BRITUBACNOR4",
+    "paymentDate": "03/11/2026",
+    "rate": "0,01818200000",
+    "relatedTo": "Mensal/2026",
+    "approvedOn": "09/12/2025",
+    "isinCode": "BRITUBACNOR4",
+    "label": "JRS CAP PROPRIO",
+    "lastDatePrior": "30/09/2026",
+    "remarks": ""
+   }
+  ],
+  "stockDividends": [
+   {
+    "assetIssued": "BRITUBACNOR4",
+    "factor": "3,00000000000",
+    "approvedOn": "18/12/2025",
+    "isinCode": "BRITUBACNOR4",
+    "label": "BONIFICACAO",
+    "lastDatePrior": "23/12/2025",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRITUBACNPR1",
+    "factor": "3,00000000000",
+    "approvedOn": "18/12/2025",
+    "isinCode": "BRITUBACNPR1",
+    "label": "BONIFICACAO",
+    "lastDatePrior": "23/12/2025",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRXPARACNOR9",
+    "factor": "100,00000000000",
+    "approvedOn": "31/01/2021",
+    "isinCode": "BRITUBACNOR4",
+    "label": "CIS RED CAP",
+    "lastDatePrior": "01/10/2021",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRITUBACNOR4",
+    "factor": "100,00000000000",
+    "approvedOn": "31/01/2021",
+    "isinCode": "BRITUBACNOR4",
+    "label": "CIS RED CAP",
+    "lastDatePrior": "01/10/2021",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRXPARACNPR6",
+    "factor": "100,00000000000",
+    "approvedOn": "31/01/2021",
+    "isinCode": "BRITUBACNPR1",
+    "label": "CIS RED CAP",
+    "lastDatePrior": "01/10/2021",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRITUBACNPR1",
+    "factor": "100,00000000000",
+    "approvedOn": "31/01/2021",
+    "isinCode": "BRITUBACNPR1",
+    "label": "CIS RED CAP",
+    "lastDatePrior": "01/10/2021",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRITUBACNOR4",
+    "factor": "50,00000000000",
+    "approvedOn": "27/07/2018",
+    "isinCode": "BRITUBACNOR4",
+    "label": "DESDOBRAMENTO",
+    "lastDatePrior": "19/11/2018",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRITUBACNPR1",
+    "factor": "50,00000000000",
+    "approvedOn": "27/07/2018",
+    "isinCode": "BRITUBACNPR1",
+    "label": "DESDOBRAMENTO",
+    "lastDatePrior": "19/11/2018",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRITUBACNOR4",
+    "factor": "0,01000000000",
+    "approvedOn": "25/04/2011",
+    "isinCode": "BRITUBACNOR4",
+    "label": "GRUPAMENTO",
+    "lastDatePrior": "31/10/2011",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRITUBACNPR1",
+    "factor": "0,01000000000",
+    "approvedOn": "25/04/2011",
+    "isinCode": "BRITUBACNPR1",
+    "label": "GRUPAMENTO",
+    "lastDatePrior": "31/10/2011",
+    "remarks": ""
+   }
+  ]
+ },
+ "MGLU": {
+  "code": "MGLU",
+  "cashDividends": [
+   {
+    "assetIssued": "BRMGLUACNOR2",
+    "paymentDate": "08/05/2026",
+    "rate": "0,08130019210",
+    "relatedTo": "Anual/2025",
+    "approvedOn": "23/04/2026",
+    "isinCode": "BRMGLUACNOR2",
+    "label": "DIVIDENDO",
+    "lastDatePrior": "24/04/2026",
+    "remarks": ""
+   }
+  ],
+  "stockDividends": [
+   {
+    "assetIssued": "BRMGLUACNOR2",
+    "factor": "5,00000000000",
+    "approvedOn": "22/12/2025",
+    "isinCode": "BRMGLUACNOR2",
+    "label": "BONIFICACAO",
+    "lastDatePrior": "29/12/2025",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRMGLUACNOR2",
+    "factor": "0,10000000000",
+    "approvedOn": "24/04/2024",
+    "isinCode": "BRMGLUACNOR2",
+    "label": "GRUPAMENTO",
+    "lastDatePrior": "24/05/2024",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRMGLUACNOR2",
+    "factor": "300,00000000000",
+    "approvedOn": "07/10/2020",
+    "isinCode": "BRMGLUACNOR2",
+    "label": "DESDOBRAMENTO",
+    "lastDatePrior": "13/10/2020",
+    "remarks": ""
+   }
+  ]
+ },
+ "BBAS": {
+  "code": "BBAS",
+  "cashDividends": [
+   {
+    "assetIssued": "BRBBASA04OR8",
+    "paymentDate": "11/09/2026",
+    "rate": "0,10245643978",
+    "relatedTo": "2º Trimestre/2026",
+    "approvedOn": "10/08/2026",
+    "isinCode": "BRBBASA04OR8",
+    "label": "JRS CAP PROPRIO",
+    "lastDatePrior": "01/09/2026",
+    "remarks": ""
+   }
+  ],
+  "stockDividends": [
+   {
+    "assetIssued": "BRBBASACNOR3",
+    "factor": "100,00000000000",
+    "approvedOn": "02/02/2024",
+    "isinCode": "BRBBASACNOR3",
+    "label": "DESDOBRAMENTO",
+    "lastDatePrior": "15/04/2024",
+    "remarks": ""
+   }
+  ]
+ },
+ "CASH": {
+  "code": "CASH",
+  "cashDividends": [],
+  "stockDividends": [
+   {
+    "assetIssued": "BRCASHACNOR8",
+    "factor": "900,00000000000",
+    "approvedOn": "28/04/2023",
+    "isinCode": "BRCASHACNOR8",
+    "label": "DESDOBRAMENTO",
+    "lastDatePrior": "31/05/2023",
+    "remarks": ""
+   },
+   {
+    "assetIssued": "BRCASHACNOR8",
+    "factor": "0,01000000000",
+    "approvedOn": "28/04/2023",
+    "isinCode": "BRCASHACNOR8",
+    "label": "GRUPAMENTO",
+    "lastDatePrior": "31/05/2023",
+    "remarks": ""
+   }
+  ]
+ }
+}

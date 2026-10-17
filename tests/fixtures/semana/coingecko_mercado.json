@@ -1,0 +1,362 @@
+[
+ {
+  "id": "bitcoin",
+  "symbol": "btc",
+  "name": "Bitcoin",
+  "current_price": 81554,
+  "market_cap": 1639113974522,
+  "market_cap_rank": 1,
+  "price_change_percentage_7d_in_currency": -1.8915
+ },
+ {
+  "id": "ethereum",
+  "symbol": "eth",
+  "name": "Ethereum",
+  "current_price": 2417.21,
+  "market_cap": 295230679484,
+  "market_cap_rank": 2,
+  "price_change_percentage_7d_in_currency": -3.6205
+ },
+ {
+  "id": "tether",
+  "symbol": "usdt",
+  "name": "Tether",
+  "current_price": 0.999028,
+  "market_cap": 183486302225,
+  "market_cap_rank": 3,
+  "price_change_percentage_7d_in_currency": -0.0096
+ },
+ {
+  "id": "binancecoin",
+  "symbol": "bnb",
+  "name": "BNB",
+  "current_price": 716.94,
+  "market_cap": 95465469124,
+  "market_cap_rank": 4,
+  "price_change_percentage_7d_in_currency": -4.5868
+ },
+ {
+  "id": "ripple",
+  "symbol": "xrp",
+  "name": "XRP",
+  "current_price": 1.3,
+  "market_cap": 82033659877,
+  "market_cap_rank": 5,
+  "price_change_percentage_7d_in_currency": -7.5001
+ },
+ {
+  "id": "usd-coin",
+  "symbol": "usdc",
+  "name": "USDC",
+  "current_price": 0.999754,
+  "market_cap": 72530596908,
+  "market_cap_rank": 6,
+  "price_change_percentage_7d_in_currency": 0.0014
+ },
+ {
+  "id": "solana",
+  "symbol": "sol",
+  "name": "Solana",
+  "current_price": 104.03,
+  "market_cap": 61315440200,
+  "market_cap_rank": 7,
+  "price_change_percentage_7d_in_currency": -5.472
+ },
+ {
+  "id": "tron",
+  "symbol": "trx",
+  "name": "TRON",
+  "current_price": 0.334126,
+  "market_cap": 31742039453,
+  "market_cap_rank": 8,
+  "price_change_percentage_7d_in_currency": 1.0431
+ },
+ {
+  "id": "figure-heloc",
+  "symbol": "figr_heloc",
+  "name": "Figure Heloc",
+  "current_price": 1.03,
+  "market_cap": 24733660129,
+  "market_cap_rank": 9,
+  "price_change_percentage_7d_in_currency": 2.806
+ },
+ {
+  "id": "zcash",
+  "symbol": "zec",
+  "name": "Zcash",
+  "current_price": 1153.01,
+  "market_cap": 19589210045,
+  "market_cap_rank": 10,
+  "price_change_percentage_7d_in_currency": -6.535
+ },
+ {
+  "id": "hyperliquid",
+  "symbol": "hype",
+  "name": "Hyperliquid",
+  "current_price": 79.09,
+  "market_cap": 17592451049,
+  "market_cap_rank": 11,
+  "price_change_percentage_7d_in_currency": -7.4161
+ },
+ {
+  "id": "dogecoin",
+  "symbol": "doge",
+  "name": "Dogecoin",
+  "current_price": 0.08002,
+  "market_cap": 12511904249,
+  "market_cap_rank": 12,
+  "price_change_percentage_7d_in_currency": -7.2203
+ },
+ {
+  "id": "monero",
+  "symbol": "xmr",
+  "name": "Monero",
+  "current_price": 562.38,
+  "market_cap": 10583121022,
+  "market_cap_rank": 13,
+  "price_change_percentage_7d_in_currency": 6.5885
+ },
+ {
+  "id": "usds",
+  "symbol": "usds",
+  "name": "USDS",
+  "current_price": 0.999701,
+  "market_cap": 10246208563,
+  "market_cap_rank": 14,
+  "price_change_percentage_7d_in_currency": -0.0218
+ },
+ {
+  "id": "whitebit",
+  "symbol": "wbt",
+  "name": "WhiteBIT Coin",
+  "current_price": 79.83,
+  "market_cap": 9482326749,
+  "market_cap_rank": 15,
+  "price_change_percentage_7d_in_currency": -2.2787
+ },
+ {
+  "id": "chainlink",
+  "symbol": "link",
+  "name": "Chainlink",
+  "current_price": 12.07,
+  "market_cap": 9256489323,
+  "market_cap_rank": 16,
+  "price_change_percentage_7d_in_currency": -8.0525
+ },
+ {
+  "id": "cardano",
+  "symbol": "ada",
+  "name": "Cardano",
+  "current_price": 0.222615,
+  "market_cap": 8361418071,
+  "market_cap_rank": 17,
+  "price_change_percentage_7d_in_currency": -12.569
+ },
+ {
+  "id": "leo-token",
+  "symbol": "leo",
+  "name": "LEO Token",
+  "current_price": 9.04,
+  "market_cap": 8312413324,
+  "market_cap_rank": 18,
+  "price_change_percentage_7d_in_currency": 2.1748
+ },
+ {
+  "id": "near",
+  "symbol": "near",
+  "name": "NEAR Protocol",
+  "current_price": 4.99,
+  "market_cap": 6530487652,
+  "market_cap_rank": 19,
+  "price_change_percentage_7d_in_currency": -7.049
+ },
+ {
+  "id": "stellar",
+  "symbol": "xlm",
+  "name": "Stellar",
+  "current_price": 0.179056,
+  "market_cap": 6303516689,
+  "market_cap_rank": 20,
+  "price_change_percentage_7d_in_currency": -9.5405
+ },
+ {
+  "id": "rain",
+  "symbol": "rain",
+  "name": "Rain",
+  "current_price": 0.00879321,
+  "market_cap": 6236310341,
+  "market_cap_rank": 21,
+  "price_change_percentage_7d_in_currency": -14.5283
+ },
+ {
+  "id": "bitcoin-cash",
+  "symbol": "bch",
+  "name": "Bitcoin Cash",
+  "current_price": 276.88,
+  "market_cap": 5566015388,
+  "market_cap_rank": 22,
+  "price_change_percentage_7d_in_currency": -1.5249
+ },
+ {
+  "id": "ethena-usde",
+  "symbol": "usde",
+  "name": "Ethena USDe",
+  "current_price": 0.99933,
+  "market_cap": 4682725458,
+  "market_cap_rank": 23,
+  "price_change_percentage_7d_in_currency": 0.0014
+ },
+ {
+  "id": "litecoin",
+  "symbol": "ltc",
+  "name": "Litecoin",
+  "current_price": 59.33,
+  "market_cap": 4611112692,
+  "market_cap_rank": 24,
+  "price_change_percentage_7d_in_currency": -7.7547
+ },
+ {
+  "id": "dai",
+  "symbol": "dai",
+  "name": "Dai",
+  "current_price": 1.0,
+  "market_cap": 4540655524,
+  "market_cap_rank": 25,
+  "price_change_percentage_7d_in_currency": 0.0056
+ },
+ {
+  "id": "uniswap",
+  "symbol": "uni",
+  "name": "Uniswap",
+  "current_price": 7.17,
+  "market_cap": 4482011711,
+  "market_cap_rank": 26,
+  "price_change_percentage_7d_in_currency": -5.3061
+ },
+ {
+  "id": "avalanche-2",
+  "symbol": "avax",
+  "name": "Avalanche",
+  "current_price": 9.89,
+  "market_cap": 4385439274,
+  "market_cap_rank": 27,
+  "price_change_percentage_7d_in_currency": -5.9964
+ },
+ {
+  "id": "canton-network",
+  "symbol": "cc",
+  "name": "Canton",
+  "current_price": 0.104642,
+  "market_cap": 4171224557,
+  "market_cap_rank": 28,
+  "price_change_percentage_7d_in_currency": -11.7148
+ },
+ {
+  "id": "sui",
+  "symbol": "sui",
+  "name": "Sui",
+  "current_price": 0.991804,
+  "market_cap": 4084292828,
+  "market_cap_rank": 29,
+  "price_change_percentage_7d_in_currency": -11.5452
+ },
+ {
+  "id": "usd1-wlfi",
+  "symbol": "usd1",
+  "name": "USD1",
+  "current_price": 0.999239,
+  "market_cap": 4032827055,
+  "market_cap_rank": 30,
+  "price_change_percentage_7d_in_currency": 0.0245
+ },
+ {
+  "id": "bitway",
+  "symbol": "btw",
+  "name": "Bitway",
+  "current_price": 2.64,
+  "market_cap": 3971894943,
+  "market_cap_rank": 31,
+  "price_change_percentage_7d_in_currency": 60.2419
+ },
+ {
+  "id": "the-open-network",
+  "symbol": "gram",
+  "name": "Gram (prev. Toncoin)",
+  "current_price": 1.37,
+  "market_cap": 3870359458,
+  "market_cap_rank": 32,
+  "price_change_percentage_7d_in_currency": -6.7323
+ },
+ {
+  "id": "hedera-hashgraph",
+  "symbol": "hbar",
+  "name": "Hedera",
+  "current_price": 0.085175,
+  "market_cap": 3751260854,
+  "market_cap_rank": 33,
+  "price_change_percentage_7d_in_currency": -9.7728
+ },
+ {
+  "id": "tether-gold",
+  "symbol": "xaut",
+  "name": "Tether Gold",
+  "current_price": 4155.66,
+  "market_cap": 3361907974,
+  "market_cap_rank": 34,
+  "price_change_percentage_7d_in_currency": -0.6624
+ },
+ {
+  "id": "global-dollar",
+  "symbol": "usdg",
+  "name": "Global Dollar",
+  "current_price": 0.999945,
+  "market_cap": 3084472322,
+  "market_cap_rank": 35,
+  "price_change_percentage_7d_in_currency": 0.0132
+ },
+ {
+  "id": "bittensor",
+  "symbol": "tao",
+  "name": "Bittensor",
+  "current_price": 271.74,
+  "market_cap": 3081367402,
+  "market_cap_rank": 36,
+  "price_change_percentage_7d_in_currency": -4.2319
+ },
+ {
+  "id": "shiba-inu",
+  "symbol": "shib",
+  "name": "Shiba Inu",
+  "current_price": 5.02e-06,
+  "market_cap": 2957896077,
+  "market_cap_rank": 37,
+  "price_change_percentage_7d_in_currency": -8.414
+ },
+ {
+  "id": "crypto-com-chain",
+  "symbol": "cro",
+  "name": "Cronos",
+  "current_price": 0.057467,
+  "market_cap": 2915172554,
+  "market_cap_rank": 38,
+  "price_change_percentage_7d_in_currency": -6.1699
+ },
+ {
+  "id": "quant-network",
+  "symbol": "qnt",
+  "name": "Quant",
+  "current_price": 199.01,
+  "market_cap": 2896746453,
+  "market_cap_rank": 39,
+  "price_change_percentage_7d_in_currency": -17.4821
+ },
+ {
+  "id": "paypal-usd",
+  "symbol": "pyusd",
+  "name": "PayPal USD",
+  "current_price": 0.999572,
+  "market_cap": 2848544915,
+  "market_cap_rank": 40,
+  "price_change_percentage_7d_in_currency": -0.0177
+ }
+]

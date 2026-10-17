@@ -31,6 +31,7 @@ calendar_app = typer.Typer(help="Calendario de pregoes da B3.", no_args_is_help=
 universe_app = typer.Typer(help="Universo de papeis acompanhados.", no_args_is_help=True)
 db_app = typer.Typer(help="Operacoes de banco.", no_args_is_help=True)
 fundamentos_app = typer.Typer(help="Empresas e balancos da CVM.", no_args_is_help=True)
+semana_app = typer.Typer(help="Resumo da semana.", no_args_is_help=True)
 
 app.add_typer(ingest_app, name="ingest")
 app.add_typer(metrics_app, name="metrics")
@@ -40,6 +41,7 @@ app.add_typer(calendar_app, name="calendar")
 app.add_typer(universe_app, name="universe")
 app.add_typer(db_app, name="db")
 app.add_typer(fundamentos_app, name="fundamentos")
+app.add_typer(semana_app, name="semana")
 
 
 # Codigo de saida do `daily` quando o arquivo do pregao de HOJE ainda nao saiu
@@ -875,6 +877,80 @@ def fundamentos_proventos(
         typer.echo(
             f"{linha['data_com']!s:<12}{linha['tipo'][:17]:<18}"
             f"{float(linha['valor']):>14.8f}{pago:>13}  {linha['fonte']}"
+        )
+
+
+# Codigo de saida do `semana montar` quando o ultimo pregao da semana ainda nao
+# esta em daily_bars. Nao e falha nem sucesso: quem agenda tenta de novo mais tarde.
+SAIDA_PREGAO_AUSENTE = 3
+
+
+@semana_app.command("montar")
+def semana_montar(
+    semana: Annotated[
+        str,
+        typer.Option(
+            "--semana",
+            help="'ultima' (a semana encerrada mais recente) ou uma data AAAA-MM-DD dentro dela.",
+        ),
+    ] = "ultima",
+    gravar: Annotated[
+        bool, typer.Option("--gravar", help="Grava o payload em resumos_semanais.")
+    ] = False,
+    substituir_enviado: Annotated[
+        bool,
+        typer.Option(
+            "--substituir-enviado",
+            help="Com --gravar, sobrescreve um resumo que ja foi enviado.",
+        ),
+    ] = False,
+) -> None:
+    """Monta o bloco de dados de mercado da semana e mostra a previa em texto.
+
+    Codigo de saida 3: o ultimo pregao da semana ainda nao esta no banco
+    (o arquivo do COTAHIST nao saiu). Nada e montado nem gravado.
+    """
+    from scanner.semana.montagem import PregaoAusenteError, montar_dados_de_mercado, previa
+    from scanner.semana.periodo import semana_da_data, semana_encerrada
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import gravar_resumo_semanal
+
+    if semana.lower() == "ultima":
+        periodo = semana_encerrada(hoje_na_b3())
+    else:
+        try:
+            periodo = semana_da_data(date.fromisoformat(semana))
+        except ValueError as exc:
+            raise typer.BadParameter(
+                f"semana invalida: {semana!r} (use 'ultima' ou AAAA-MM-DD)"
+            ) from exc
+
+    engine = build_engine()
+    try:
+        payload = montar_dados_de_mercado(engine, load_config(), periodo)
+    except PregaoAusenteError as exc:
+        typer.secho(f"[adiado] {exc}. Tente de novo depois da carga.", fg=typer.colors.YELLOW)
+        raise typer.Exit(code=SAIDA_PREGAO_AUSENTE) from exc
+
+    typer.echo(previa(payload))
+    if not gravar:
+        return
+
+    gravou = gravar_resumo_semanal(
+        engine,
+        semana=periodo.sexta,
+        inicio=periodo.inicio,
+        fim=periodo.fim,
+        payload=payload,
+        substituir_enviado=substituir_enviado,
+    )
+    if gravou:
+        typer.secho(f"\n[gravado] semana de {periodo.sexta.isoformat()}", fg=typer.colors.GREEN)
+    else:
+        typer.secho(
+            f"\n[recusado] o resumo da semana de {periodo.sexta.isoformat()} ja foi enviado; "
+            "use --substituir-enviado para sobrescrever",
+            fg=typer.colors.YELLOW,
         )
 
 

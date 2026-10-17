@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import base64
 import json
+from datetime import date
+from decimal import Decimal
+from pathlib import Path
 from typing import Any
 
 import httpx
@@ -13,6 +16,8 @@ from scanner.fundamentos.b3 import (
     B3IndisponivelError,
     buscar_candidatos,
     codigos_da_empresa,
+    proventos_recentes,
+    suplemento,
 )
 
 
@@ -124,3 +129,138 @@ def test_falha_persistente_vira_erro_proprio() -> None:
 
     with pytest.raises(B3IndisponivelError):
         buscar_candidatos(cliente, "CSNA3", tentativas=3, espera=0)  # type: ignore[arg-type]
+
+
+# Suplemento real da B3, capturado em 17/10/2026 e recortado: so os itens de
+# stockDividends que os testes usam, mais um provento em dinheiro de cada.
+_FIXTURE_SUPLEMENTO = Path(__file__).parent / "fixtures" / "semana" / "b3_suplemento.json"
+
+
+def _suplemento_real(emissor: str) -> _RespostaFalsa:
+    return _RespostaFalsa(200, json.loads(_FIXTURE_SUPLEMENTO.read_text())[emissor])
+
+
+def test_suplemento_le_eventos_em_acoes_reais() -> None:
+    cliente = _ClienteFalso([_suplemento_real("MGLU")])
+
+    sup = suplemento(cliente, "MGLU")  # type: ignore[arg-type]
+
+    por_tipo = {e.tipo: e for e in sup.eventos_em_acoes}
+    assert set(por_tipo) == {"DESDOBRAMENTO", "GRUPAMENTO", "BONIFICACAO"}
+    assert por_tipo["DESDOBRAMENTO"].fator == Decimal("300")
+    assert por_tipo["DESDOBRAMENTO"].data_com == date(2020, 10, 13)
+    assert por_tipo["DESDOBRAMENTO"].data_aprovacao == date(2020, 10, 7)
+    assert por_tipo["DESDOBRAMENTO"].isin == "BRMGLUACNOR2"
+    assert por_tipo["DESDOBRAMENTO"].multiplicador == Decimal("4")
+    assert por_tipo["GRUPAMENTO"].multiplicador == Decimal("0.1")
+    assert por_tipo["BONIFICACAO"].multiplicador == Decimal("1.05")
+
+
+def test_desdobramento_do_bbas_vira_uma_acao_em_duas() -> None:
+    sup = suplemento(_ClienteFalso([_suplemento_real("BBAS")]), "BBAS")  # type: ignore[arg-type]
+
+    (evento,) = sup.eventos_em_acoes
+    assert evento.isin == "BRBBASACNOR3"
+    assert evento.data_com == date(2024, 4, 15)
+    assert evento.multiplicador == Decimal("2")
+
+
+def test_bonificacao_do_itub_casa_pelo_isin_de_quem_sofre_o_evento() -> None:
+    sup = suplemento(_ClienteFalso([_suplemento_real("ITUB")]), "ITUB")  # type: ignore[arg-type]
+
+    bonificacoes = {e.isin: e for e in sup.eventos_em_acoes if e.tipo == "BONIFICACAO"}
+    assert set(bonificacoes) == {"BRITUBACNOR4", "BRITUBACNPR1"}
+    assert all(e.multiplicador == Decimal("1.03") for e in bonificacoes.values())
+
+
+def test_cisao_nao_se_ajusta_por_fator() -> None:
+    sup = suplemento(_ClienteFalso([_suplemento_real("ITUB")]), "ITUB")  # type: ignore[arg-type]
+
+    cisoes = [e for e in sup.eventos_em_acoes if e.tipo == "CIS RED CAP"]
+    assert cisoes
+    assert all(e.multiplicador is None for e in cisoes)
+    # O ISIN e o da acao que sofre o evento, nao o do papel emitido (XPAR).
+    assert {e.isin for e in cisoes} == {"BRITUBACNOR4", "BRITUBACNPR1"}
+
+
+def test_bonificacao_em_outra_classe_nao_se_ajusta_por_fator() -> None:
+    # Quem tem ON recebe PN: a quantidade de ON nao muda, o fator nao basta.
+    item = {
+        "label": "BONIFICACAO",
+        "factor": "10,0",
+        "lastDatePrior": "15/04/2024",
+        "isinCode": "BRXXXXACNOR1",
+        "assetIssued": "BRXXXXACNPR8",
+    }
+    cliente = _ClienteFalso([_RespostaFalsa(200, {"stockDividends": [item]})])
+    sup = suplemento(cliente, "XXXX")  # type: ignore[arg-type]
+
+    (evento,) = sup.eventos_em_acoes
+    assert evento.em_outro_papel
+    assert evento.multiplicador is None
+
+
+def test_item_antigo_sem_asset_issued_e_do_proprio_papel() -> None:
+    item = {
+        "label": "BONIFICACAO",
+        "factor": "20,0",
+        "lastDatePrior": "17/06/1996",
+        "isinCode": "BRBBASACNOR3",
+        "assetIssued": "",
+    }
+    cliente = _ClienteFalso([_RespostaFalsa(200, {"stockDividends": [item]})])
+    sup = suplemento(cliente, "BBAS")  # type: ignore[arg-type]
+
+    (evento,) = sup.eventos_em_acoes
+    assert not evento.em_outro_papel
+    assert evento.multiplicador == Decimal("1.2")
+
+
+def test_desdobramento_e_grupamento_no_mesmo_dia_ficam_os_dois() -> None:
+    sup = suplemento(_ClienteFalso([_suplemento_real("CASH")]), "CASH")  # type: ignore[arg-type]
+
+    assert {e.data_com for e in sup.eventos_em_acoes} == {date(2023, 5, 31)}
+    liquido = Decimal(1)
+    for e in sup.eventos_em_acoes:
+        assert e.multiplicador is not None
+        liquido *= e.multiplicador
+    assert liquido == Decimal("0.1")  # 10 acoes viram 1
+
+
+def test_item_incompleto_de_stock_dividends_e_descartado() -> None:
+    base = {"label": "DESDOBRAMENTO", "factor": "100,0", "lastDatePrior": "15/04/2024"}
+    itens = [
+        {**base, "isinCode": "BRXXXXACNOR1"},
+        {**base},  # sem isinCode
+        {**base, "isinCode": "BRXXXXACNOR1", "lastDatePrior": ""},
+        {**base, "isinCode": "BRXXXXACNOR1", "factor": "0,0"},
+        {**base, "isinCode": "BRXXXXACNOR1", "factor": "-5,0"},
+        {**base, "isinCode": "BRXXXXACNOR1", "factor": "lixo"},
+        "nao e dict",
+    ]
+    cliente = _ClienteFalso([_RespostaFalsa(200, {"stockDividends": itens})])
+
+    sup = suplemento(cliente, "XXXX")  # type: ignore[arg-type]
+
+    assert len(sup.eventos_em_acoes) == 1
+
+
+def test_proventos_recentes_segue_igual_e_usa_so_cash_dividends() -> None:
+    cliente = _ClienteFalso([_suplemento_real("ITUB")])
+
+    proventos = proventos_recentes(cliente, "ITUB")  # type: ignore[arg-type]
+
+    (p,) = proventos
+    assert p.isin == "BRITUBACNOR4"
+    assert p.tipo == "JRS CAP PROPRIO"
+    assert p.valor == Decimal("0.01818200000")
+    assert p.data_com == date(2026, 9, 30)
+    assert p.data_pagamento == date(2026, 11, 3)
+    payload = _payload_da_url(cliente.urls[0])
+    assert payload == {"language": "pt-br", "issuingCompany": "ITUB"}
+
+
+def test_suplemento_com_resposta_vazia() -> None:
+    sup = suplemento(_ClienteFalso([_RespostaFalsa(200, [])]), "ZZZZ")  # type: ignore[arg-type]
+    assert sup.proventos == []
+    assert sup.eventos_em_acoes == []

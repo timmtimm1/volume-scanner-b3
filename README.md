@@ -1060,7 +1060,7 @@ Medido em 24/09/2026 com o primeiro protótipo, antes da tabela das 321 empresas
 
 ### O envio
 
-A mensagem do Telegram é enxuta: só os números e as manchetes, e o completo fica no app (o link fecha a mensagem). Na ordem: Ibovespa, dólar, Brent e ouro; 5 maiores altas e 5 maiores quedas (com `*` quando ajustada); as 5 primeiras histórias; BTC e ETH; Pré 1a e 10a, Selic e UST 2a e 10a; a semana que vem (agenda, balanços confirmados com data e horário, os prováveis só como contagem, feriado da B3). As tabelas ficam em `<pre>` de até 32 colunas, para caber no celular. Bloco cuja fonte caiu mostra "indisponível" e o resto sai. Passando de 4.096 caracteres, cortam-se manchetes do fim.
+A mensagem do Telegram é enxuta: só os números e as manchetes, e o completo fica no app (o link fecha a mensagem). Na ordem: Ibovespa, dólar, Brent e ouro; 5 maiores altas e 5 maiores quedas (com `*` quando ajustada); as 5 primeiras histórias; BTC e ETH; pré de 1 e 10 anos, Selic e Treasuries de 2 e 10 anos; a semana que vem (agenda, balanços confirmados com data e horário, os prováveis só como contagem, feriado da B3). É lista, na fonte normal, com o nome em negrito e uma seta para a direção (▲ 1,6%), sem tabela: a primeira versão alinhava os números em `<pre>`, e no Telegram do iPhone o bloco aparecia como código, com borda, fonte de terminal e o botão de copiar por cima da primeira linha, cobrindo o número. Bloco cuja fonte caiu mostra "indisponível" e o resto sai. Passando de 4.096 caracteres, cortam-se manchetes do fim.
 
 ```bash
 scanner semana enviar                            # a última semana encerrada

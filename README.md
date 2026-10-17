@@ -857,7 +857,7 @@ Quem dispara os workflows é o cron-job.org, não o agendador do GitHub
    **Actions: Read and write**.
 2. No cron-job.org, crie um job para cada entrada de
    [`.github/cron-externo.yml`](.github/cron-externo.yml) — `daily-noite`,
-   `daily-manha`, `rompimentos` e `fundamentos-b3` —, no fuso
+   `daily-manha`, `rompimentos`, `fundamentos-b3`, `semana-manha` e `semana-reserva` —, no fuso
    **America/Sao_Paulo**, com o `cron` de lá:
    - URL: `https://api.github.com/repos/SEU-USUARIO/SEU-REPO/actions/workflows/ARQUIVO.yml/dispatches`,
      com o `workflow` da entrada no lugar de `ARQUIVO.yml`
@@ -1058,6 +1058,24 @@ Medido em 24/09/2026 com o primeiro protótipo, antes da tabela das 321 empresas
 | ITUB4 | 62 | 36 | 28 | página de cotação, fonte fora da imprensa |
 | MGLU3 | 48 | 14 | 10 | 9 promoções de loja |
 
+### O envio
+
+A mensagem do Telegram é enxuta: só os números e as manchetes, e o completo fica no app (o link fecha a mensagem). Na ordem: Ibovespa, dólar, Brent e ouro; 5 maiores altas e 5 maiores quedas (com `*` quando ajustada); as 5 primeiras histórias; BTC e ETH; Pré 1a e 10a, Selic e UST 2a e 10a; a semana que vem (agenda, balanços confirmados com data e horário, os prováveis só como contagem, feriado da B3). As tabelas ficam em `<pre>` de até 32 colunas, para caber no celular. Bloco cuja fonte caiu mostra "indisponível" e o resto sai. Passando de 4.096 caracteres, cortam-se manchetes do fim.
+
+```bash
+scanner semana enviar                            # a última semana encerrada
+scanner semana enviar --semana 2026-10-16        # qualquer dia da semana serve
+scanner semana enviar --dry-run                  # mostra a mensagem; não grava nem envia
+scanner semana enviar --reenviar                 # monta e envia de novo uma edição já enviada
+scanner semana enviar --avisar-se-adiado         # pregão faltando: avisa no Telegram
+```
+
+O fluxo, em ordem: aplica migration pendente; se a semana já foi enviada, pula (`[pulado]`, saída 0); monta; grava; envia; **só depois de o Telegram aceitar** marca `enviado_em` e imprime `[enviado]`. Falha de envio sai com código 1 e não marca: a próxima passada tenta de novo. Sem token e chat configurados o comando também falha, em vez de marcar como enviado o que nunca chegou. Pregão de sexta ausente do banco sai com código 3 e a linha `[adiado]`; com `--avisar-se-adiado` manda antes "Resumo da semana adiado" no Telegram. `--reenviar` regrava a edição e atualiza a hora do envio.
+
+**Agenda.** O workflow `semana.yml` roda duas vezes no sábado: às 08:30 envia; às 10:30 é a reserva, para quando a das 08:30 adiou ou falhou. Se a primeira já enviou, a segunda não repete nada. A das 08:30 vem 50 minutos depois da reserva do pregão (07:40), que garante o pregão de sexta no banco. A passada das 10:30 (qualquer execução a partir das 10h de Brasília) liga o `--avisar-se-adiado`: pregão ainda ausente vira aviso no Telegram, e não silêncio. Depois de um envio o workflow dispara o rebuild da Vercel; adiado, pulado e falha não disparam. Falha de verdade (dependências, segredos, migrations, resumo, rebuild) avisa no Telegram dizendo o passo. Para reenviar ou escolher outra semana, use Run workflow com os campos `semana` e `reenviar`.
+
+**No cron-job.org**, dois jobs no mesmo formato dos outros, fuso `America/Sao_Paulo`: POST em `https://api.github.com/repos/<owner>/<repo>/actions/workflows/semana.yml/dispatches` com corpo `{"ref":"main"}`, às `30 8 * * 6` (`semana-manha`) e `30 10 * * 6` (`semana-reserva`). A fonte de verdade é o [`cron-externo.yml`](.github/cron-externo.yml).
+
 O ponto de restauração antes desta feature é a tag `v0.5-antes-das-noticias`.
 
 ## Resumo da semana
@@ -1066,7 +1084,7 @@ Todo sábado de manhã, um panorama da semana que fechou na sexta: as ações do
 
 Nada disto alimenta a regra do alerta. É um retrato do mercado, não um julgamento sobre os eventos de volume.
 
-> **Em construção, por fases.** Já montam e gravam no banco: os dados de mercado (fase 1), a agenda da semana seguinte e os balanços (fase 2) e as notícias da semana (fase 3). Envio no Telegram e a aba no site vêm nas próximas.
+> **Em construção, por fases.** Já montam, gravam e enviam: os dados de mercado (fase 1), a agenda da semana seguinte e os balanços (fase 2), as notícias (fase 3) e o envio no Telegram (fase 4). Falta só a aba no site.
 
 ```bash
 scanner semana montar                          # a última semana encerrada, só a prévia

@@ -74,3 +74,27 @@ def test_recusa_depois_de_enviado_e_aceita_com_substituir(limpo: Engine) -> None
     )
     assert ok is True
     assert resumo_semanal(limpo, SEXTA) == {"v": 3}
+
+
+@pytest.mark.db
+def test_marcar_enviado_marca_uma_vez_so(limpo: Engine) -> None:
+    from scanner.storage.repository import marcar_resumo_semanal_enviado, resumo_semanal_enviado
+
+    gravar_resumo_semanal(limpo, semana=SEXTA, inicio=INICIO, fim=SEXTA, payload={"v": 1})
+    assert resumo_semanal_enviado(limpo, SEXTA) is False
+
+    assert marcar_resumo_semanal_enviado(limpo, SEXTA) is True
+    assert resumo_semanal_enviado(limpo, SEXTA) is True
+    # Segunda chamada: ja estava marcado, nao mexe.
+    assert marcar_resumo_semanal_enviado(limpo, SEXTA) is False
+    # O reenvio explicito atualiza a hora.
+    assert marcar_resumo_semanal_enviado(limpo, SEXTA, sobrescrever=True) is True
+
+
+@pytest.mark.db
+def test_semana_sem_linha_nao_esta_enviada_nem_se_marca(limpo: Engine) -> None:
+    from scanner.storage.repository import marcar_resumo_semanal_enviado, resumo_semanal_enviado
+
+    assert resumo_semanal_enviado(limpo, SEXTA) is False
+    assert marcar_resumo_semanal_enviado(limpo, SEXTA) is False
+    assert marcar_resumo_semanal_enviado(limpo, SEXTA, sobrescrever=True) is False

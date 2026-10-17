@@ -1,0 +1,1 @@
+{"@odata.context":"https://was-p.bcnet.bcb.gov.br/olinda/servico/Expectativas/versao/v1/odata$metadata#ExpectativaMercadoMensais","value":[{"Indicador":"IPCA","Data":"2026-10-09","DataReferencia":"10/2026","Media":0.3236,"Mediana":0.3277,"DesvioPadrao":0.0768,"Minimo":0.1400,"Maximo":0.5900,"numeroRespondentes":138,"baseCalculo":0}]}

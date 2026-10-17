@@ -16,16 +16,17 @@ from __future__ import annotations
 
 import logging
 import math
-from datetime import UTC, date, datetime
+from datetime import UTC, date, datetime, timedelta
 from typing import Any
 
 import pandas as pd
 from sqlalchemy import Engine
 
-from scanner.calendar import sessions_before
+from scanner.calendar import is_holiday, sessions_before
 from scanner.config import ScannerConfig
 from scanner.fundamentos.b3 import novo_cliente
 from scanner.notify.telegram import br, pct
+from scanner.semana import agenda, balancos
 from scanner.semana.acoes import (
     PREGOES_DE_BASE,
     buscar_eventos_da_semana,
@@ -33,7 +34,7 @@ from scanner.semana.acoes import (
     variacoes_da_semana,
 )
 from scanner.semana.fontes import FonteIndisponivelError, anbima, bcb, cripto, fed, treasury, yahoo
-from scanner.semana.periodo import Semana
+from scanner.semana.periodo import Semana, proxima_semana
 from scanner.storage import repository
 from scanner.universe import load_universe, tickers
 
@@ -128,6 +129,38 @@ def _bloco_acoes(engine: Engine, config: ScannerConfig, semana: Semana) -> dict[
     }
 
 
+def _bloco_agenda(inicio: date, fim: date, semana: Semana) -> dict[str, Any]:
+    eventos, avisos = agenda.montar_agenda(inicio, fim, focus_ate=semana.fim)
+    return {"agenda": eventos, "agenda_avisos": avisos}
+
+
+def _bloco_balancos(
+    engine: Engine, config: ScannerConfig, semana: Semana, inicio: date, fim: date
+) -> dict[str, Any]:
+    universo = tickers(load_universe(engine, semana.fim, config.universe))
+    return balancos.montar_balancos(engine, universo, inicio, fim, semana.fim)
+
+
+def _bloco_proxima_semana(engine: Engine, config: ScannerConfig, semana: Semana) -> dict[str, Any]:
+    """Agenda macro e balanços da semana seguinte; cada parte falha sozinha."""
+    inicio, fim = proxima_semana(semana)
+    dias = [inicio + timedelta(days=i) for i in range(5)]
+    # `is_holiday` e o calendario da B3: aqui interessa o dia util sem pregao.
+    feriados = [d for d in dias if is_holiday(d)]
+    parte_agenda = _isolado("agenda", _bloco_agenda, inicio, fim, semana)
+    avisos: list[str] = list(parte_agenda.get("agenda_avisos", []))
+    if "erro" in parte_agenda:
+        avisos.append(f"agenda indisponível: {parte_agenda['erro']}")
+    return {
+        "inicio": inicio,
+        "fim": fim,
+        "feriados_b3": feriados,
+        "agenda": parte_agenda.get("agenda", []),
+        "agenda_avisos": avisos,
+        "balancos": _isolado("balancos", _bloco_balancos, engine, config, semana, inicio, fim),
+    }
+
+
 def montar_dados_de_mercado(
     engine: Engine, config: ScannerConfig, semana: Semana, *, agora: datetime | None = None
 ) -> dict[str, Any]:
@@ -167,6 +200,7 @@ def montar_dados_de_mercado(
             "treasuries": _isolado("treasuries", treasury.treasuries, semana, cfg.treasuries),
             "fed": _isolado("fed", fed.dot_plot, semana),
         },
+        "proxima_semana": _bloco_proxima_semana(engine, config, semana),
     }
     limpo: dict[str, Any] = _limpo(payload)
     return limpo
@@ -328,6 +362,60 @@ def _previa_eua(eua: dict[str, Any]) -> list[str]:
     return linhas
 
 
+DIAS_DA_SEMANA = ("Seg", "Ter", "Qua", "Qui", "Sex", "Sab", "Dom")
+
+
+def _dia_curto(iso: str) -> str:
+    dia = date.fromisoformat(iso)
+    return f"{DIAS_DA_SEMANA[dia.weekday()]} {dia.strftime('%d/%m')}"
+
+
+def _linha_evento(e: dict[str, Any]) -> str:
+    nome = e["evento"] + (f" ({e['detalhe']})" if e["detalhe"] else "")
+    consenso = e["consenso"]
+    focus = (
+        f"   Focus: {br(consenso['mediana'], 2)}{consenso['unidade']}"
+        if consenso is not None
+        else ""
+    )
+    return f"  {_dia_curto(e['data'])}  {e['hora'] or '--:--'}  {e['pais']:<3} {nome}{focus}"
+
+
+def _linha_balanco_confirmado(b: dict[str, Any]) -> str:
+    quando = f"{_dia_curto(b['data'])}  {b['horario'] or 'sem horario'}"
+    trimestre = f"   trimestre {b['trimestre']}" if b["trimestre"] else ""
+    return f"  {quando}  {b['empresa']} ({', '.join(b['tickers'])}){trimestre}   [{b['fonte']}]"
+
+
+def _previa_balancos(balancos_: dict[str, Any]) -> list[str]:
+    if (msg := _indisponivel(balancos_)) is not None:
+        return [f" Balanços: {msg}"]
+    linhas = [" Balanços confirmados (a própria empresa anunciou a data; só quem tem ADR)"]
+    linhas += [_linha_balanco_confirmado(b) for b in balancos_["confirmados"]] or ["  (nenhum)"]
+    linhas.append(
+        " Balanços prováveis (entregaram nesta semana do ano passado; tendência, não data)"
+    )
+    linhas += [
+        f"  {b['empresa']} ({', '.join(b['tickers'])})   {b['documento']} entregue em "
+        f"{_data_br(b['entregue_em'])}"
+        for b in balancos_["provaveis"]
+    ] or ["  (nenhum)"]
+    linhas += [f"  AVISO: {a}" for a in balancos_.get("avisos", [])]
+    return linhas
+
+
+def _previa_proxima_semana(bloco: dict[str, Any]) -> list[str]:
+    inicio, fim = date.fromisoformat(bloco["inicio"]), date.fromisoformat(bloco["fim"])
+    linhas = [f"SEMANA QUE VEM ({inicio.strftime('%d/%m')} a {fim.strftime('%d/%m')})"]
+    feriados = ", ".join(_data_br(d) for d in bloco["feriados_b3"]) or "nenhum"
+    linhas.append(f"  Feriados B3 (dia útil sem pregão): {feriados}")
+    linhas.append(" Agenda (horário de Brasília)")
+    linhas += [_linha_evento(e) for e in bloco["agenda"]] or ["  (nenhum evento)"]
+    linhas += [f"  AVISO: {a}" for a in bloco["agenda_avisos"]]
+    linhas += _previa_balancos(bloco["balancos"])
+    return linhas
+
+
 def previa(payload: dict[str, Any]) -> str:
     """Texto simples para conferir o resumo a mao. Nao e a mensagem do Telegram."""
     s = payload["semana"]
@@ -343,5 +431,6 @@ def previa(payload: dict[str, Any]) -> str:
         _previa_cripto(payload["cripto"]),
         _previa_juros(payload["juros_br"]),
         _previa_eua(payload["eua"]),
+        _previa_proxima_semana(payload["proxima_semana"]),
     ]
     return "\n\n".join("\n".join(b) for b in blocos)

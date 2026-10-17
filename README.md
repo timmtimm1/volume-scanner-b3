@@ -1066,7 +1066,7 @@ Todo sábado de manhã, um panorama da semana que fechou na sexta: as ações do
 
 Nada disto alimenta a regra do alerta. É um retrato do mercado, não um julgamento sobre os eventos de volume.
 
-> **Em construção, por fases.** A fase 1 (esta) monta os dados de mercado e grava o resumo no banco. Agenda e balanços, notícias, envio no Telegram e a aba no site vêm nas próximas.
+> **Em construção, por fases.** Já montam e gravam no banco: os dados de mercado (fase 1), a agenda da semana seguinte e os balanços (fase 2). Notícias, envio no Telegram e a aba no site vêm nas próximas.
 
 ```bash
 scanner semana montar                          # a última semana encerrada, só a prévia
@@ -1117,6 +1117,27 @@ Detalhes que mudam a leitura:
 - **O Yahoo recusa User-Agent de navegador** (429) e aceita o do projeto, o mesmo de `cotacoes/yahoo.py`.
 - **A projeção do Fed** usada é a mais recente publicada até a sexta da semana. Ela só muda quatro vezes por ano.
 - **Minério de ferro ficou de fora:** o contrato do Yahoo (`TIO=F`) parou de atualizar em agosto de 2021, e não há outra fonte gratuita semanal.
+
+### A semana que vem
+
+A agenda de segunda a sexta seguintes, em horário de Brasília, e os balanços esperados. Feriado da B3 na semana aparece no topo.
+
+| Evento | País | Fonte | Consenso |
+|---|---|---|---|
+| IPCA, IPCA-15, PIB, desemprego (PNAD), varejo (PMC), produção industrial (PIM-PF) | Brasil | API de calendário do IBGE | Focus no IPCA do mês |
+| Copom: decisão e ata | Brasil | `agenda_fixa.yaml` | Focus da Selic para a reunião |
+| FOMC: decisão | EUA | página do calendário do Fed | — |
+| PIB e PCE | EUA | cronograma do BEA | — |
+| CPI e payroll | EUA | `agenda_fixa.yaml` | — |
+
+- **Agenda fixa.** O bls.gov recusa qualquer acesso automatizado (403 com cabeçalho de navegador, de Firefox e de curl, em 17/10/2026). A página do calendário do Copom é montada por JavaScript, sem API conhecida. Por isso essas datas ficam em [`src/scanner/semana/agenda_fixa.yaml`](src/scanner/semana/agenda_fixa.yaml), copiadas das páginas oficiais e conferidas à mão, no mesmo espírito do `cron-externo.yml`. O arquivo cobre até dezembro de 2027. Quando a semana seguinte passa da última data coberta, o resumo avisa que é hora de atualizar.
+- **O Focus só entra onde mede a mesma coisa que a divulgação.** Selic por reunião e IPCA do mês. Para IPCA-15, PNAD, PMC e PIM-PF, o Focus não tem a série. O PIB trimestral do Focus não é a mesma comparação que o IBGE anuncia, então fica sem consenso, em vez de um número que não bate.
+- **Horário.** O IBGE informa em UTC: o IPCA-15 das 9h aparece como "12:00". Fed, BEA e BLS informam no horário de Nova York, e a conversão acompanha o horário de verão de lá. O payroll de 06/11/2026 sai às 10:30 em Brasília, porque o horário de verão dos EUA acaba em 01/11.
+
+**Balanços**, em duas listas que nunca se misturam:
+
+- **Confirmados:** a data que a própria empresa anunciou, pela Nasdaq. Só existe para quem tem ADR, 19 empresas ligadas à mão em [`src/scanner/semana/adrs.py`](src/scanner/semana/adrs.py) a partir da lista de tickers da SEC, cada código CVM conferido no cadastro. A Nasdaq também publica datas **estimadas por algoritmo** (Zacks, a partir do histórico). Essas não entram: em 17/10/2026, Bradesco estava anunciado para 22/10 após o fechamento, e Ambev e Itaú só tinham estimativa.
+- **Prováveis:** empresas do universo que entregaram o mesmo ITR ou DFP na mesma semana do ano passado (364 dias antes, para cair nos mesmos dias da semana) e que ainda não entregaram este ano. É tendência, não data, e a lista mostra o documento e o dia da entrega anterior. Quem anunciou data pela Nasdaq, para qualquer semana, sai dos prováveis: o anúncio vale mais que o histórico.
 
 **Unidades no payload.** Taxa (juro, inflação, yield) em % ao ano, como a fonte publica. Retorno (variação de preço, CDI acumulado) em fração: `0,051` é +5,1%.
 

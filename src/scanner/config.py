@@ -176,15 +176,32 @@ class SemanaConfig(BaseModel):
     treasuries: list[str] = Field(
         default_factory=lambda: ["3 Mo", "6 Mo", "2 Yr", "5 Yr", "10 Yr", "30 Yr"]
     )
+    # Noticias da semana: quantas historias entram e as buscas do Google Noticias
+    # (alem da secao Negocios). Sintaxe de busca do Google: OR e aspas valem.
+    noticias_top: int = 8
+    noticias_buscas: list[str] = Field(
+        default_factory=lambda: [
+            "Ibovespa",
+            "Copom OR Selic",
+            "dólar",
+            "juros",
+            'Fed OR "Federal Reserve"',
+            "inflação",
+            "economia",
+            'fiscal OR arcabouço OR "contas públicas"',
+        ]
+    )
 
-    @field_validator("acoes_por_lado", "cripto_top", "cripto_destaques")
+    @field_validator("acoes_por_lado", "cripto_top", "cripto_destaques", "noticias_top")
     @classmethod
     def _validate_inteiros(cls, value: int, info: ValidationInfo) -> int:
         if value < 1:
             raise ValueError(f"semana.{info.field_name} precisa ser ao menos 1")
         return value
 
-    @field_validator("cripto_categorias_excluidas", "curva_vertices_du", "treasuries")
+    @field_validator(
+        "cripto_categorias_excluidas", "curva_vertices_du", "treasuries", "noticias_buscas"
+    )
     @classmethod
     def _validate_listas(cls, value: list[Any], info: ValidationInfo) -> list[Any]:
         if not value:

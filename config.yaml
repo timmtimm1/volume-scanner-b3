@@ -68,3 +68,15 @@ semana:
   curva_vertices_du: [252, 504, 1260, 2520]
   # Vencimentos do Tesouro americano, como o CSV do Treasury os rotula.
   treasuries: ["3 Mo", "6 Mo", "2 Yr", "5 Yr", "10 Yr", "30 Yr"]
+  # Noticias da semana (Google Noticias): quantas historias entram, e as buscas
+  # alem da secao Negocios. OR e aspas sao sintaxe de busca do Google.
+  noticias_top: 8
+  noticias_buscas:
+    - Ibovespa
+    - Copom OR Selic
+    - dólar
+    - juros
+    - Fed OR "Federal Reserve"
+    - inflação
+    - economia
+    - fiscal OR arcabouço OR "contas públicas"

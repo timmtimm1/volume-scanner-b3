@@ -1066,7 +1066,7 @@ Todo sábado de manhã, um panorama da semana que fechou na sexta: as ações do
 
 Nada disto alimenta a regra do alerta. É um retrato do mercado, não um julgamento sobre os eventos de volume.
 
-> **Em construção, por fases.** Já montam e gravam no banco: os dados de mercado (fase 1), a agenda da semana seguinte e os balanços (fase 2). Notícias, envio no Telegram e a aba no site vêm nas próximas.
+> **Em construção, por fases.** Já montam e gravam no banco: os dados de mercado (fase 1), a agenda da semana seguinte e os balanços (fase 2) e as notícias da semana (fase 3). Envio no Telegram e a aba no site vêm nas próximas.
 
 ```bash
 scanner semana montar                          # a última semana encerrada, só a prévia
@@ -1117,6 +1117,21 @@ Detalhes que mudam a leitura:
 - **O Yahoo recusa User-Agent de navegador** (429) e aceita o do projeto, o mesmo de `cotacoes/yahoo.py`.
 - **A projeção do Fed** usada é a mais recente publicada até a sexta da semana. Ela só muda quatro vezes por ano.
 - **Minério de ferro ficou de fora:** o contrato do Yahoo (`TIO=F`) parou de atualizar em agosto de 2021, e não há outra fonte gratuita semanal.
+
+### As notícias
+
+As histórias principais da semana em economia e mercado financeiro, **sem relação com as ações das listas de altas e quedas** e sem IA. Vêm do Google Notícias (RSS): a seção Negócios do Brasil (70 itens em 17/10/2026) e uma busca por assunto (`semana.noticias_buscas`: Ibovespa, Copom/Selic, dólar, juros, Fed, inflação, economia, fiscal), até 100 itens cada. As buscas levam datas absolutas (`after:` e `before:`), e não `when:7d`, para a edição de uma semana antiga poder ser montada depois.
+
+**Principal é a história que mais veículos distintos deram.** As 8 primeiras (`semana.noticias_top`) entram, desempatadas pelo número de manchetes do grupo e depois pela mais recente. Cada história guarda o título, o veículo e o link de uma manchete (a primeira de imprensa financeira do grupo) e os links dos outros veículos.
+
+Os filtros, na ordem, com o que cada um tirou na semana de 16/10/2026 (855 manchetes recebidas, 764 sem link repetido):
+
+- **Fora da semana** (11): antes de segunda 00:00 de Brasília ou depois da hora da coleta.
+- **Fora da imprensa** (281): só entram os domínios de `FONTES_FINANCEIRAS` e `FONTES_GERAIS`, a mesma lista da aba Notícias da ficha (`web/src/lib/noticias.ts`; um teste confere as duas). Prefeitura, tribunal e blog saem.
+- **Não é notícia** (3): página de cotação, título de menos de 4 palavras e loteria. A Mega-Sena do BPMoney entrou pela busca "economia".
+- **Boletim diário** (93): "Ibovespa fecha...", "Ibovespa Futuro...", o Boletim Focus. Todo veículo publica um por dia, e sem este corte eles ocupavam o topo como "a notícia mais repetida": 3 das 8 primeiras eram boletins. "Focus eleva projeção de inflação..." fica, porque é notícia sobre o Focus.
+
+**Mesma história.** Agrupamento guloso, como na ficha, com duas diferenças. O peso de cada palavra é a raridade (`ln(N / df)`), e o limiar de semelhança é 0,40: "Ibovespa", "dólar" e "juros" estão em quase toda manchete e deixam de colar assuntos diferentes, e duas manchetes que contam o mesmo fato com palavras diferentes se juntam. O limiar foi escolhido comparando três valores sobre o mesmo conjunto de manchetes da semana de 16/10/2026: a 0,45 o Focus ficava partido em dois grupos e a inflação dos EUA ficava fora do top 8; a 0,35 um grupo de 11 misturava Citi, CPI e Fed. "Déficit fiscal dos EUA sobe a US$ 1,99 trilhões" (Folha) e "O déficit orçamentário dos EUA se aproxima de US$ 2 trilhões" (ADVFN) ficavam em grupos separados com contagem simples a 0,6; com o peso viraram uma história só. Além disso, só se agrupam manchetes publicadas a até 48 horas uma da outra: dois fechamentos parecidos de dias distantes são eventos distintos.
 
 ### A semana que vem
 

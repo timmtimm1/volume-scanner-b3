@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from datetime import UTC, date, datetime
+from pathlib import Path
 from typing import Any
 
 import numpy as np
@@ -13,7 +14,16 @@ import pytest
 
 from scanner.config import ScannerConfig
 from scanner.semana import agenda, balancos, montagem
-from scanner.semana.fontes import FonteIndisponivelError, anbima, bcb, cripto, fed, treasury, yahoo
+from scanner.semana.fontes import (
+    FonteIndisponivelError,
+    anbima,
+    bcb,
+    cripto,
+    fed,
+    google_noticias,
+    treasury,
+    yahoo,
+)
 from scanner.semana.montagem import (
     PregaoAusenteError,
     _limpo,
@@ -111,6 +121,17 @@ def vivo_agenda(falhas: dict[str, Exception]) -> Any:
     return f
 
 
+def _coletar_noticias(falhas: dict[str, Exception]) -> Any:
+    xml = (Path(__file__).parent / "fixtures" / "semana" / "google_busca_deficit.xml").read_text()
+
+    def f(*_a: Any, **_k: Any) -> tuple[list[Any], list[str]]:
+        if "noticias" in falhas:
+            raise falhas["noticias"]
+        return google_noticias.ler_rss(xml), ["busca 'Fed' falhou: HTTP 503"]
+
+    return f
+
+
 def _patch_fontes(monkeypatch: pytest.MonkeyPatch, **falhas: Exception) -> None:
     def vivo(nome: str, valor: dict[str, Any]) -> Any:
         def f(*_a: Any, **_k: Any) -> dict[str, Any]:
@@ -157,6 +178,7 @@ def _patch_fontes(monkeypatch: pytest.MonkeyPatch, **falhas: Exception) -> None:
         ),
     )
     monkeypatch.setattr(montagem, "load_universe", lambda *_a: pd.DataFrame())
+    monkeypatch.setattr(google_noticias, "coletar", _coletar_noticias(falhas))
     monkeypatch.setattr(agenda, "montar_agenda", vivo_agenda(falhas))
     monkeypatch.setattr(balancos, "montar_balancos", vivo("balancos", BLOCO_BALANCOS))
     monkeypatch.setattr(
@@ -337,3 +359,56 @@ def test_previa_com_balancos_indisponiveis(monkeypatch: pytest.MonkeyPatch) -> N
     payload["proxima_semana"]["balancos"] = {"erro": "banco fora"}
 
     assert "Balanços: indisponivel: banco fora" in previa(payload)
+
+
+def test_bloco_de_noticias_traz_janela_historias_contagem_e_avisos(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_fontes(monkeypatch)
+
+    bloco = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)["noticias"]
+
+    assert bloco["janela"] == {
+        "de": "2026-10-12T03:00:00+00:00",
+        "ate": "2026-10-17T19:00:00+00:00",
+    }
+    assert bloco["buscas"] == ScannerConfig().semana.noticias_buscas
+    assert bloco["contagem"]["recebidas"] == 6
+    assert set(bloco["contagem"]["descartes"]) == {
+        "boletim_diario",
+        "nao_e_noticia",
+        "fora_da_imprensa",
+        "fora_da_semana",
+    }
+    assert bloco["avisos"] == ["busca 'Fed' falhou: HTTP 503"]
+    assert {"titulo", "fonte", "link", "publicada_em", "veiculos", "outras_fontes"} <= set(
+        bloco["historias"][0]
+    )
+    json.dumps(bloco, allow_nan=False)
+
+
+def test_noticias_indisponiveis_nao_derrubam_o_resumo(monkeypatch: pytest.MonkeyPatch) -> None:
+    falha = FonteIndisponivelError("google_noticias", "todas as consultas falharam (HTTP 503)")
+    _patch_fontes(monkeypatch, noticias=falha, cripto=FonteIndisponivelError("c", "x"))
+
+    payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+    texto = previa(payload)
+
+    assert payload["noticias"] == {"erro": "todas as consultas falharam (HTTP 503)"}
+    assert "NOTÍCIAS DA SEMANA\n  indisponivel: todas as consultas falharam" in texto
+
+
+def test_previa_das_noticias(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch, cripto=FonteIndisponivelError("coingecko", "HTTP 429"))
+    payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+
+    texto = previa(payload)
+
+    assert "NOTÍCIAS DA SEMANA" in texto
+    assert " veículos | " in texto
+    assert "6 recebidas, 6 distintas, 6 na semana, 6 na imprensa" in texto
+    assert (
+        "descartes: boletim diário 0, não é notícia 0, fora da imprensa 0, fora da semana 0"
+        in texto
+    )
+    assert "AVISO: busca 'Fed' falhou: HTTP 503" in texto

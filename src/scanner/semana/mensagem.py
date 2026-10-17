@@ -4,16 +4,20 @@ Enxuta de proposito: so os numeros e as manchetes, com o completo no app (o link
 fecha a mensagem). Funcao pura sobre o payload gravado em `resumos_semanais`: nao
 toca rede nem banco, e e o que os testes exercitam.
 
-Tabelas ficam em `<pre>` com no maximo 32 colunas, para nao quebrar no celular.
-Titulo, link e negrito ficam fora do `<pre>`. Todo texto que vem de fora
-(manchete, nome de empresa, evento) passa por `html.escape`.
+Sem `<pre>`, de proposito. A primeira versao alinhava os numeros em tabelas
+monoespacadas, e no Telegram do iPhone (17/10/2026) o bloco aparecia como codigo:
+borda laranja, fonte de terminal e o botao de copiar POR CIMA da primeira linha,
+cobrindo o "-1,7%" do Ibovespa e o "-22,3%" da maior queda. Agora e lista na
+fonte normal: cada linha le sozinha, com o nome em negrito e uma seta para a
+direcao. Todo texto que vem de fora (manchete, nome de empresa, evento) passa
+por `html.escape`.
 """
 
 from __future__ import annotations
 
 import html
 import re
-from collections.abc import Mapping, Sequence
+from collections.abc import Mapping
 from datetime import date
 from typing import Any
 
@@ -21,7 +25,6 @@ from scanner.notify.telegram import br, pct
 
 # O Telegram recusa mensagem com mais de 4096 caracteres.
 LIMITE_TELEGRAM = 4096
-COLUNAS = 32
 LADO_DO_RANKING = 5
 NOTICIAS_NA_MENSAGEM = 5
 INDISPONIVEL = "<i>indisponível</i>"
@@ -33,8 +36,13 @@ def _esc(texto: object) -> str:
     return html.escape(str(texto), quote=True)
 
 
-def _pre(linhas: Sequence[str]) -> str:
-    return "<pre>" + "\n".join(_esc(linha.rstrip()) for linha in linhas) + "</pre>"
+def _seta(variacao: float | None, casas: int = 1) -> str:
+    """'▲ 1,6%', '▼ 1,7%': a seta diz a direcao, o numero vai sem sinal."""
+    if variacao is None:
+        return "-"
+    if round(variacao * 100, casas) == 0:
+        return f"{br(0.0, casas)}%"
+    return f"{'▲' if variacao > 0 else '▼'} {br(abs(variacao) * 100, casas)}%"
 
 
 def _erro(bloco: Any) -> bool:
@@ -61,48 +69,46 @@ def _periodo(semana: Mapping[str, Any]) -> str:
 def _abertura(bloco: Any) -> str:
     if _erro(bloco):
         return "<i>Abertura indisponível</i>"
+    # (chave, nome, moeda na frente do valor, casas)
     itens = (
-        ("ibovespa", "Ibovespa", 0),
-        ("dolar", "Dólar", 4),
-        ("brent", "Brent", 2),
-        ("ouro", "Ouro", 2),
+        ("ibovespa", "Ibovespa", "", 0),
+        ("dolar", "Dólar", "R$ ", 2),
+        ("brent", "Brent", "US$ ", 2),
+        ("ouro", "Ouro", "US$ ", 0),
     )
     linhas: list[str] = []
-    for chave, nome, casas in itens:
+    for chave, nome, moeda, casas in itens:
         ativo = bloco.get(chave)
         if _erro(ativo):
-            linhas.append(f"{nome:<9}indisponível")
+            linhas.append(f"<b>{nome}</b> {INDISPONIVEL}")
             continue
-        linhas.append(f"{nome:<9}{br(ativo['valor'], casas):>9} {pct(ativo['semana']):>7}")
+        valor = f"{moeda}{br(ativo['valor'], casas)}"
+        linhas.append(f"<b>{nome}</b> {valor} {_seta(ativo['semana'])}")
         if chave == "ibovespa":
-            linhas.append(f" mês {pct(ativo['mes'])}   ano {pct(ativo['ano'])}")
-    return _pre(linhas)
+            linhas.append(f"mês {pct(ativo['mes'])} · ano {pct(ativo['ano'])}")
+    return "\n".join(linhas)
 
 
 # --- ações ------------------------------------------------------------------
 
 
-def _celula(acao: Mapping[str, Any] | None) -> str:
-    if acao is None:
-        return ""
-    marca = "*" if acao.get("ajustado") else " "
-    return f"{acao['ticker']:<6} {pct(acao['variacao']):>7}{marca}"
+def _linha_acao(acao: Mapping[str, Any]) -> str:
+    marca = "*" if acao.get("ajustado") else ""
+    return f"{_esc(acao['ticker'])} {pct(acao['variacao'])}{marca}"
 
 
 def _acoes(bloco: Any) -> str:
-    titulo = "<b>Ações</b> · maiores altas e quedas"
     if _erro(bloco):
-        return f"{titulo}\n{INDISPONIVEL}"
+        return f"📈 <b>Ações</b>\n{INDISPONIVEL}"
     altas = list(bloco["altas"])[:LADO_DO_RANKING]
     quedas = list(bloco["quedas"])[:LADO_DO_RANKING]
     if not altas and not quedas:
-        return f"{titulo}\n{INDISPONIVEL}"
-    linhas = []
-    for i in range(max(len(altas), len(quedas))):
-        esquerda = _celula(altas[i] if i < len(altas) else None)
-        direita = _celula(quedas[i] if i < len(quedas) else None)
-        linhas.append(f"{esquerda:<15} {direita}")
-    texto = f"{titulo}\n{_pre(linhas)}"
+        return f"📈 <b>Ações</b>\n{INDISPONIVEL}"
+    partes = [
+        "📈 <b>Maiores altas</b>\n" + "\n".join(_linha_acao(a) for a in altas),
+        "📉 <b>Maiores quedas</b>\n" + "\n".join(_linha_acao(a) for a in quedas),
+    ]
+    texto = "\n\n".join(partes)
     if any(a.get("ajustado") for a in (*altas, *quedas)):
         texto += "\n<i>* ajustada por proventos ou desdobramento</i>"
     return texto
@@ -126,7 +132,7 @@ def _historias(bloco: Any) -> list[str] | None:
 
 
 def _bloco_noticias(historias: list[str] | None) -> str:
-    titulo = "<b>Notícias da semana</b>"
+    titulo = "📰 <b>Notícias da semana</b>"
     if historias is None:
         return f"{titulo}\n{INDISPONIVEL}"
     if not historias:
@@ -138,17 +144,17 @@ def _bloco_noticias(historias: list[str] | None) -> str:
 
 
 def _cripto(bloco: Any) -> str:
-    titulo = "<b>Cripto</b> · 7 dias"
+    titulo = "🪙 <b>Cripto</b> · 7 dias"
     if _erro(bloco):
         return f"{titulo}\n{INDISPONIVEL}"
     linhas = [
-        f"{moeda['simbolo']:<5}{br(moeda['preco'], 0):>8} {pct(moeda['variacao_7d']):>7}"
+        f"<b>{_esc(moeda['simbolo'])}</b> US$ {br(moeda['preco'], 0)} {_seta(moeda['variacao_7d'])}"
         for moeda in (bloco.get("btc"), bloco.get("eth"))
         if moeda
     ]
     if not linhas:
         return f"{titulo}\n{INDISPONIVEL}"
-    return f"{titulo}\n{_pre(linhas)}"
+    return titulo + "\n" + "\n".join(linhas)
 
 
 # --- juros ------------------------------------------------------------------
@@ -158,13 +164,13 @@ def _bp(valor: float | None) -> str:
     if valor is None:
         return ""
     n = round(valor)
-    return f"{'+' if n >= 0 else '-'}{abs(n)} bp"
+    return f" ({'+' if n >= 0 else '-'}{abs(n)} bp)"
 
 
 def _linha_juros(nome: str, taxa: float | None, variacao_bp: float | None = None) -> str:
     if taxa is None:
-        return f"{nome:<9}indisponível"
-    return f"{nome:<9}{br(taxa) + '%':>7}  {_bp(variacao_bp):>6}".rstrip()
+        return f"{nome} {INDISPONIVEL}"
+    return f"{nome} {br(taxa)}%{_bp(variacao_bp)}"
 
 
 def _juros(payload: Mapping[str, Any]) -> str:
@@ -191,14 +197,13 @@ def _juros(payload: Mapping[str, Any]) -> str:
 
     selic = None if _erro(indicadores) else indicadores.get("selic_meta")
     linhas = [
-        " " * 9 + f"{'taxa':>7}  {'semana':>6}",
-        com_variacao("Pré 1a", vertice(252)),
-        com_variacao("Pré 10a", vertice(2520)),
+        com_variacao("Pré 1 ano", vertice(252)),
+        com_variacao("Pré 10 anos", vertice(2520)),
         _linha_juros("Selic", selic),
-        com_variacao("UST 2a", vencimento("2 Yr")),
-        com_variacao("UST 10a", vencimento("10 Yr")),
+        com_variacao("Treasury 2 anos", vencimento("2 Yr")),
+        com_variacao("Treasury 10 anos", vencimento("10 Yr")),
     ]
-    return f"<b>Juros</b>\n{_pre(linhas)}"
+    return "💰 <b>Juros</b> · na semana\n" + "\n".join(linhas)
 
 
 # --- semana que vem ---------------------------------------------------------
@@ -234,7 +239,7 @@ def _balanco(b: Mapping[str, Any]) -> tuple[tuple[str, str], str]:
 
 
 def _proxima_semana(bloco: Any) -> str:
-    titulo = "<b>Semana que vem</b>"
+    titulo = "📅 <b>Semana que vem</b>"
     if _erro(bloco):
         return f"{titulo}\n{INDISPONIVEL}"
     itens = [_evento(e) for e in bloco.get("agenda", [])]
@@ -265,8 +270,8 @@ def _proxima_semana(bloco: Any) -> str:
 def formatar_mensagem(payload: Mapping[str, Any], base_url: str) -> str:
     """O resumo da semana em HTML do Telegram, sempre abaixo de 4.096 caracteres.
 
-    Estourou o limite: corta manchetes do fim ate caber. O resto nao e cortado,
-    porque e tabela de tamanho fixo.
+    Estourou o limite: corta manchetes do fim ate caber. O resto nao e cortado:
+    tem tamanho fixo.
     """
     semana = payload["semana"]
     link = f"{base_url.rstrip('/')}/semana/{semana['sexta']}"

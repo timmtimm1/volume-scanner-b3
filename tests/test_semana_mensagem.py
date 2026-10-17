@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import copy
-import html
 import json
 import re
 from pathlib import Path
@@ -22,10 +21,18 @@ def payload() -> dict[str, Any]:
     return dict(json.loads(FIXTURE.read_text(encoding="utf-8")))
 
 
-def _blocos_pre(texto: str) -> list[list[str]]:
-    return [
-        html.unescape(bloco).split("\n") for bloco in re.findall(r"<pre>(.*?)</pre>", texto, re.S)
-    ]
+def _bloco(texto: str, titulo: str) -> list[str]:
+    """As linhas do bloco que comeca com `titulo`, sem a linha do titulo."""
+    for bloco in texto.split("\n\n"):
+        linhas = bloco.split("\n")
+        if titulo in linhas[0]:
+            return linhas[1:]
+    raise AssertionError(f"bloco {titulo!r} nao achado")
+
+
+def _abertura(texto: str) -> list[str]:
+    """A abertura nao tem titulo: e o segundo bloco, logo depois do cabecalho."""
+    return texto.split("\n\n")[1].split("\n")
 
 
 def test_cabecalho_com_o_primeiro_e_o_ultimo_pregao(payload: dict[str, Any]) -> None:
@@ -39,32 +46,43 @@ def test_cabecalho_quando_a_semana_vira_o_mes(payload: dict[str, Any]) -> None:
 
 
 def test_abertura(payload: dict[str, Any]) -> None:
-    abertura = _blocos_pre(formatar_mensagem(payload, BASE))[0]
-    assert abertura[0].split() == ["Ibovespa", "205.430", "-1,7%"]
-    assert abertura[1].split() == ["mês", "+10,2%", "ano", "+27,5%"]
-    assert abertura[2].split() == ["Dólar", "5,0966", "+1,6%"]
-    assert abertura[3].split() == ["Brent", "109,86", "+4,9%"]
-    assert abertura[4].split() == ["Ouro", "4.181,10", "-0,8%"]
+    assert _abertura(formatar_mensagem(payload, BASE)) == [
+        "<b>Ibovespa</b> 205.430 ▼ 1,7%",
+        "mês +10,2% · ano +27,5%",
+        "<b>Dólar</b> R$ 5,10 ▲ 1,6%",
+        "<b>Brent</b> US$ 109,86 ▲ 4,9%",
+        "<b>Ouro</b> US$ 4.181 ▼ 0,8%",
+    ]
+
+
+def test_variacao_zero_vai_sem_seta(payload: dict[str, Any]) -> None:
+    payload["abertura"]["ouro"]["semana"] = 0.0001
+    assert _abertura(formatar_mensagem(payload, BASE))[4] == "<b>Ouro</b> US$ 4.181 0,0%"
 
 
 def test_item_da_abertura_com_erro_diz_indisponivel(payload: dict[str, Any]) -> None:
     payload["abertura"]["brent"] = {"erro": "Yahoo fora do ar"}
-    abertura = _blocos_pre(formatar_mensagem(payload, BASE))[0]
-    assert abertura[3].split() == ["Brent", "indisponível"]
+    abertura = _abertura(formatar_mensagem(payload, BASE))
+    assert abertura[3] == "<b>Brent</b> <i>indisponível</i>"
     assert "Yahoo" not in "\n".join(abertura)
 
 
 def test_cinco_altas_e_cinco_quedas(payload: dict[str, Any]) -> None:
-    acoes = _blocos_pre(formatar_mensagem(payload, BASE))[1]
-    assert len(acoes) == 5
-    esperado = [
-        ("AZEV3", "+22,2%", "PTBL3", "-22,3%"),
-        ("PRIO3", "+8,8%", "GFSA3", "-20,5%"),
-        ("ALPA4", "+7,3%", "PLPL3", "-19,1%"),
-        ("PETR4", "+6,6%", "JSLG3", "-18,2%"),
-        ("TGMA3", "+6,2%", "QUAL3", "-17,7%"),
+    texto = formatar_mensagem(payload, BASE)
+    assert _bloco(texto, "Maiores altas") == [
+        "AZEV3 +22,2%",
+        "PRIO3 +8,8%",
+        "ALPA4 +7,3%",
+        "PETR4 +6,6%",
+        "TGMA3 +6,2%",
     ]
-    assert [tuple(linha.split()) for linha in acoes] == esperado
+    assert _bloco(texto, "Maiores quedas") == [
+        "PTBL3 -22,3%",
+        "GFSA3 -20,5%",
+        "PLPL3 -19,1%",
+        "JSLG3 -18,2%",
+        "QUAL3 -17,7%",
+    ]
 
 
 def test_sem_ajuste_nao_ha_nota_de_rodape(payload: dict[str, Any]) -> None:
@@ -74,9 +92,9 @@ def test_sem_ajuste_nao_ha_nota_de_rodape(payload: dict[str, Any]) -> None:
 def test_ajustada_leva_asterisco_e_nota(payload: dict[str, Any]) -> None:
     payload["acoes"]["altas"][1]["ajustado"] = True
     texto = formatar_mensagem(payload, BASE)
-    acoes = _blocos_pre(texto)[1]
-    assert acoes[1].split()[:2] == ["PRIO3", "+8,8%*"]
-    assert acoes[0].split()[1] == "+22,2%"
+    altas = _bloco(texto, "Maiores altas")
+    assert altas[1] == "PRIO3 +8,8%*"
+    assert altas[0] == "AZEV3 +22,2%"
     assert "<i>* ajustada por proventos ou desdobramento</i>" in texto
 
 
@@ -116,38 +134,35 @@ def test_bloco_indisponivel_mantem_o_titulo(payload: dict[str, Any]) -> None:
     payload["cripto"] = {"erro": "CoinGecko 429"}
     payload["noticias"] = {"erro": "Google fora"}
     texto = formatar_mensagem(payload, BASE)
-    assert "<b>Cripto</b> · 7 dias\n<i>indisponível</i>" in texto
-    assert "<b>Notícias da semana</b>\n<i>indisponível</i>" in texto
+    assert "🪙 <b>Cripto</b> · 7 dias\n<i>indisponível</i>" in texto
+    assert "📰 <b>Notícias da semana</b>\n<i>indisponível</i>" in texto
     assert "CoinGecko" not in texto
 
 
 def test_cripto(payload: dict[str, Any]) -> None:
-    cripto = _blocos_pre(formatar_mensagem(payload, BASE))[2]
-    assert [linha.split() for linha in cripto] == [
-        ["BTC", "81.289", "-1,7%"],
-        ["ETH", "2.407", "-3,7%"],
+    assert _bloco(formatar_mensagem(payload, BASE), "Cripto") == [
+        "<b>BTC</b> US$ 81.289 ▼ 1,7%",
+        "<b>ETH</b> US$ 2.407 ▼ 3,7%",
     ]
 
 
 def test_juros(payload: dict[str, Any]) -> None:
-    juros = _blocos_pre(formatar_mensagem(payload, BASE))[3]
-    assert juros[0].split() == ["taxa", "semana"]
-    assert [linha.split() for linha in juros[1:]] == [
-        ["Pré", "1a", "12,92%", "+34", "bp"],
-        ["Pré", "10a", "13,07%", "+56", "bp"],
-        ["Selic", "13,75%"],
-        ["UST", "2a", "4,74%", "-6", "bp"],
-        ["UST", "10a", "5,09%", "-15", "bp"],
+    assert _bloco(formatar_mensagem(payload, BASE), "Juros") == [
+        "Pré 1 ano 12,92% (+34 bp)",
+        "Pré 10 anos 13,07% (+56 bp)",
+        "Selic 13,75%",
+        "Treasury 2 anos 4,74% (-6 bp)",
+        "Treasury 10 anos 5,09% (-15 bp)",
     ]
 
 
 def test_juros_com_fonte_fora_diz_indisponivel(payload: dict[str, Any]) -> None:
     payload["eua"]["treasuries"] = {"erro": "Tesouro fora"}
     payload["juros_br"]["indicadores"] = {"erro": "BCB fora"}
-    juros = _blocos_pre(formatar_mensagem(payload, BASE))[3]
-    assert juros[3].split() == ["Selic", "indisponível"]
-    assert juros[4].split() == ["UST", "2a", "indisponível"]
-    assert juros[1].split()[-1] == "bp"
+    juros = _bloco(formatar_mensagem(payload, BASE), "Juros")
+    assert juros[2] == "Selic <i>indisponível</i>"
+    assert juros[3] == "Treasury 2 anos <i>indisponível</i>"
+    assert juros[0].endswith("bp)")
 
 
 def test_semana_que_vem(payload: dict[str, Any]) -> None:
@@ -178,7 +193,7 @@ def test_semana_que_vem_vazia(payload: dict[str, Any]) -> None:
     prox = payload["proxima_semana"]
     prox["agenda"] = []
     prox["balancos"] = {"confirmados": [], "provaveis": [], "avisos": []}
-    assert "<b>Semana que vem</b>\n<i>nada na agenda</i>" in formatar_mensagem(payload, BASE)
+    assert "📅 <b>Semana que vem</b>\n<i>nada na agenda</i>" in formatar_mensagem(payload, BASE)
 
 
 def test_link_do_app_usa_a_sexta_e_ignora_barra_final(payload: dict[str, Any]) -> None:
@@ -186,16 +201,11 @@ def test_link_do_app_usa_a_sexta_e_ignora_barra_final(payload: dict[str, Any]) -
     assert texto.endswith(f'<a href="{BASE}/semana/2026-10-16">Resumo completo no app</a>')
 
 
-def test_linhas_do_pre_cabem_em_32_colunas(payload: dict[str, Any]) -> None:
-    payload["acoes"]["altas"][0]["ticker"] = "BPAC11"
-    payload["acoes"]["quedas"][0]["ticker"] = "TAEE11"
-    payload["acoes"]["altas"][0]["ajustado"] = True
-    payload["acoes"]["quedas"][0]["ajustado"] = True
-    blocos = _blocos_pre(formatar_mensagem(payload, BASE))
-    assert len(blocos) == 4
-    for bloco in blocos:
-        for linha in bloco:
-            assert len(linha) <= 32, linha
+def test_sem_bloco_de_codigo(payload: dict[str, Any]) -> None:
+    # No Telegram do iPhone o <pre> vira bloco de codigo com o botao de copiar
+    # por cima da primeira linha, cobrindo o numero (visto em 17/10/2026).
+    texto = formatar_mensagem(payload, BASE)
+    assert "<pre>" not in texto and "<code>" not in texto
 
 
 def test_tamanho_abaixo_do_limite_do_telegram(payload: dict[str, Any]) -> None:

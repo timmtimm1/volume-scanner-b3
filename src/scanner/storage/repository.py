@@ -1463,3 +1463,78 @@ def existe_barra_em(engine: Engine, dia: date) -> bool:
     stmt = select(DailyBar.ticker).where(DailyBar.trade_date == dia).limit(1)
     with engine.connect() as conn:
         return conn.execute(stmt).first() is not None
+
+
+def papeis_por_empresa(engine: Engine, universo: Sequence[str]) -> pd.DataFrame:
+    """Empresas com papel no universo: `cd_cvm`, `empresa`, `tickers` (lista ordenada).
+
+    O nome segue o criterio do site (`NOME_DA_EMPRESA` em web/src/lib/db.ts): o
+    comercial quando preenchido, senao o da CVM. Uma consulta so, sem loop.
+    """
+    colunas = ["cd_cvm", "empresa", "tickers"]
+    if not universo:
+        return pd.DataFrame({c: pd.Series(dtype="object") for c in colunas})
+    stmt = text(
+        f"""
+        SELECT e.cd_cvm,
+               COALESCE(NULLIF(TRIM(e.nome_comercial), ''), e.nome) AS empresa,
+               array_agg(et.ticker ORDER BY et.ticker) AS tickers
+          FROM {SCHEMA}.empresa_tickers et
+          JOIN {SCHEMA}.empresas e ON e.cd_cvm = et.cd_cvm
+         WHERE et.ticker = ANY(:universo)
+         GROUP BY e.cd_cvm, e.nome_comercial, e.nome
+         ORDER BY empresa
+        """
+    )
+    with engine.connect() as conn:
+        linhas = conn.execute(stmt, {"universo": list(universo)}).all()
+    return pd.DataFrame(linhas, columns=colunas)
+
+
+def balancos_do_ano_anterior(
+    engine: Engine, universo: Sequence[str], de: date, ate: date, fim_da_semana: date
+) -> pd.DataFrame:
+    """Empresas do universo cujo ITR/DFP do ano passado chegou na CVM entre `de` e `ate`.
+
+    Fica de fora a empresa que ja entregou o documento correspondente deste ano
+    (mesmo tipo, `dt_refer` + 1 ano) ate `fim_da_semana`: ela ja publicou, nao e
+    mais "provavel". Se uma empresa tem mais de um documento na janela, vale o
+    que chegou primeiro. Colunas: `cd_cvm`, `empresa`, `tickers`, `tipo`,
+    `dt_refer`, `entregue_em`.
+    """
+    colunas = ["cd_cvm", "empresa", "tickers", "tipo", "dt_refer", "entregue_em"]
+    if not universo:
+        return pd.DataFrame({c: pd.Series(dtype="object") for c in colunas})
+    stmt = text(
+        f"""
+        WITH anterior AS (
+            SELECT DISTINCT ON (d.cd_cvm) d.cd_cvm, d.tipo, d.dt_refer, d.recebido_original
+              FROM {SCHEMA}.cvm_documentos d
+             WHERE d.recebido_original BETWEEN :de AND :ate
+             ORDER BY d.cd_cvm, d.recebido_original, d.dt_refer
+        ), papeis AS (
+            SELECT et.cd_cvm, array_agg(et.ticker ORDER BY et.ticker) AS tickers
+              FROM {SCHEMA}.empresa_tickers et
+             WHERE et.ticker = ANY(:universo)
+             GROUP BY et.cd_cvm
+        )
+        SELECT a.cd_cvm,
+               COALESCE(NULLIF(TRIM(e.nome_comercial), ''), e.nome) AS empresa,
+               p.tickers, a.tipo, a.dt_refer, a.recebido_original AS entregue_em
+          FROM anterior a
+          JOIN papeis p ON p.cd_cvm = a.cd_cvm
+          JOIN {SCHEMA}.empresas e ON e.cd_cvm = a.cd_cvm
+         WHERE NOT EXISTS (
+                 SELECT 1 FROM {SCHEMA}.cvm_documentos n
+                  WHERE n.cd_cvm = a.cd_cvm
+                    AND n.tipo = a.tipo
+                    AND n.dt_refer = (a.dt_refer + INTERVAL '1 year')::date
+                    AND n.recebido_original <= :fim_da_semana
+               )
+         ORDER BY a.recebido_original, empresa
+        """
+    )
+    params = {"de": de, "ate": ate, "universo": list(universo), "fim_da_semana": fim_da_semana}
+    with engine.connect() as conn:
+        linhas = conn.execute(stmt, params).all()
+    return pd.DataFrame(linhas, columns=colunas)

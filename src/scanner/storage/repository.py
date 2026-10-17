@@ -1423,6 +1423,31 @@ def resumo_semanal(engine: Engine, semana: date) -> dict[str, Any] | None:
     return None if linha is None else dict(linha[0])
 
 
+def resumo_semanal_enviado(engine: Engine, semana: date) -> bool:
+    """Se o resumo da semana (identificada pela sexta) ja foi enviado."""
+    stmt = select(ResumoSemanal.enviado_em).where(ResumoSemanal.semana == semana)
+    with engine.connect() as conn:
+        linha = conn.execute(stmt).first()
+    return linha is not None and linha[0] is not None
+
+
+def marcar_resumo_semanal_enviado(
+    engine: Engine, semana: date, *, sobrescrever: bool = False
+) -> bool:
+    """Marca o resumo como enviado agora. Devolve se marcou.
+
+    Por padrao so marca o que ainda nao foi enviado, e uma segunda chamada
+    devolve False sem mexer na hora do primeiro envio. `sobrescrever` e o
+    reenvio explicito: atualiza a hora mesmo com o resumo ja marcado.
+    """
+    stmt = update(ResumoSemanal).where(ResumoSemanal.semana == semana)
+    if not sobrescrever:
+        stmt = stmt.where(ResumoSemanal.enviado_em.is_(None))
+    stmt = stmt.values(enviado_em=func.now()).returning(ResumoSemanal.semana)
+    with engine.begin() as conn:
+        return conn.execute(stmt).first() is not None
+
+
 def papeis_com_emissor(engine: Engine, tickers: Sequence[str]) -> list[dict[str, Any]]:
     """Ticker, ISIN e emissor da B3 de cada papel, pela ligacao ticker -> empresa.
 

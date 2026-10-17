@@ -564,3 +564,202 @@ def test_semana_montar_rejeita_data_invalida() -> None:
     result = runner.invoke(app, ["semana", "montar", "--semana", "ontem"])
 
     assert result.exit_code != 0
+
+
+# --- semana enviar ---------------------------------------------------------
+
+
+class _Enviador:
+    """Notificador falso: guarda o que seria enviado, ou falha como o Telegram."""
+
+    def __init__(self, *, falha: bool = False) -> None:
+        self.falha = falha
+        self.enviados: list[str] = []
+
+    def send_text(self, text: str) -> bool:
+        from scanner.notify.telegram import TelegramError
+
+        if self.falha:
+            raise TelegramError("envio recusado: HTTP 500")
+        self.enviados.append(text)
+        return True
+
+
+class _Cenario:
+    def __init__(self) -> None:
+        self.eventos: list[tuple[str, object]] = []
+        self.enviador = _Enviador()
+        self.ja_enviado = False
+
+
+def _enviar_falso(
+    monkeypatch: pytest.MonkeyPatch,
+    *,
+    ja_enviado: bool = False,
+    pregao_ausente: bool = False,
+    falha_no_envio: bool = False,
+) -> _Cenario:
+    """Troca banco, montagem, gravacao e notificador. Nada toca a rede."""
+    from scanner import cli
+    from scanner.semana import mensagem, montagem
+    from scanner.storage import engine as engine_mod
+    from scanner.storage import migracao, repository
+
+    cenario = _Cenario()
+    cenario.ja_enviado = ja_enviado
+    cenario.enviador = _Enviador(falha=falha_no_envio)
+    payload = {"versao": 1, "semana": {"sexta": "2026-10-16"}}
+
+    def montar(engine: object, config: object, semana: object) -> dict[str, object]:
+        if pregao_ausente:
+            raise montagem.PregaoAusenteError("o pregao de 2026-10-16 ainda nao esta em daily_bars")
+        cenario.eventos.append(("montou", semana))
+        return payload
+
+    def gravar(engine: object, **kw: object) -> bool:
+        cenario.eventos.append(("gravou", kw))
+        return True
+
+    def marcar(engine: object, semana: date, *, sobrescrever: bool = False) -> bool:
+        cenario.eventos.append(("marcou", sobrescrever))
+        return True
+
+    monkeypatch.setattr(engine_mod, "build_engine", lambda: object())
+    monkeypatch.setattr(migracao, "migrar_se_preciso", lambda engine: None)
+    monkeypatch.setattr(montagem, "montar_dados_de_mercado", montar)
+    monkeypatch.setattr(repository, "gravar_resumo_semanal", gravar)
+    monkeypatch.setattr(repository, "resumo_semanal_enviado", lambda e, s: cenario.ja_enviado)
+    monkeypatch.setattr(repository, "marcar_resumo_semanal_enviado", marcar)
+    monkeypatch.setattr(cli, "_notificador", lambda settings, *, dry_run: cenario.enviador)
+    monkeypatch.setattr(mensagem, "formatar_mensagem", lambda p, base: "MENSAGEM DE TESTE")
+    return cenario
+
+
+def _nomes(cenario: _Cenario) -> list[str]:
+    return [nome for nome, _ in cenario.eventos]
+
+
+def test_semana_enviar_pula_quando_ja_foi_enviado(monkeypatch: pytest.MonkeyPatch) -> None:
+    cenario = _enviar_falso(monkeypatch, ja_enviado=True)
+
+    result = runner.invoke(app, ["semana", "enviar", "--semana", "2026-10-16"])
+
+    assert result.exit_code == 0
+    assert "[pulado] o resumo da semana de 16/10/2026 ja foi enviado." in result.output
+    assert cenario.eventos == [] and cenario.enviador.enviados == []
+
+
+def test_semana_enviar_adiado_sai_com_codigo_3_sem_aviso(monkeypatch: pytest.MonkeyPatch) -> None:
+    cenario = _enviar_falso(monkeypatch, pregao_ausente=True)
+
+    result = runner.invoke(app, ["semana", "enviar", "--semana", "2026-10-16"])
+
+    assert result.exit_code == 3
+    assert "[adiado] o pregao de 16/10/2026 ainda nao esta no banco" in result.output
+    assert cenario.enviador.enviados == [] and cenario.eventos == []
+
+
+def test_semana_enviar_adiado_avisa_no_telegram_quando_pedido(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cenario = _enviar_falso(monkeypatch, pregao_ausente=True)
+
+    result = runner.invoke(
+        app, ["semana", "enviar", "--semana", "2026-10-16", "--avisar-se-adiado"]
+    )
+
+    assert result.exit_code == 3
+    assert cenario.enviador.enviados == [
+        "⚠️ <b>Resumo da semana adiado</b>\n"
+        "O pregão de 16/10/2026 ainda não está no banco. O resumo sai quando ele chegar."
+    ]
+    assert cenario.eventos == []
+
+
+def test_semana_enviar_adiado_com_dry_run_nao_avisa(monkeypatch: pytest.MonkeyPatch) -> None:
+    cenario = _enviar_falso(monkeypatch, pregao_ausente=True)
+
+    result = runner.invoke(
+        app, ["semana", "enviar", "--semana", "2026-10-16", "--avisar-se-adiado", "--dry-run"]
+    )
+
+    assert result.exit_code == 3
+    assert cenario.enviador.enviados == []
+
+
+def test_semana_enviar_dry_run_nao_grava_nem_envia(monkeypatch: pytest.MonkeyPatch) -> None:
+    cenario = _enviar_falso(monkeypatch)
+
+    result = runner.invoke(app, ["semana", "enviar", "--semana", "2026-10-16", "--dry-run"])
+
+    assert result.exit_code == 0
+    assert "MENSAGEM DE TESTE" in result.output
+    assert _nomes(cenario) == ["montou"]
+    assert cenario.enviador.enviados == []
+
+
+def test_semana_enviar_grava_envia_e_so_depois_marca(monkeypatch: pytest.MonkeyPatch) -> None:
+    cenario = _enviar_falso(monkeypatch)
+    enviador = cenario.enviador
+    original = enviador.send_text
+
+    def enviar(text: str) -> bool:
+        cenario.eventos.append(("enviou", text))
+        return original(text)
+
+    monkeypatch.setattr(enviador, "send_text", enviar)
+
+    result = runner.invoke(app, ["semana", "enviar", "--semana", "2026-10-16"])
+
+    assert result.exit_code == 0
+    assert "[enviado] resumo da semana de 16/10/2026" in result.output
+    assert _nomes(cenario) == ["montou", "gravou", "enviou", "marcou"]
+    assert enviador.enviados == ["MENSAGEM DE TESTE"]
+    gravado = cenario.eventos[1][1]
+    assert gravado["semana"] == date(2026, 10, 16)  # type: ignore[index]
+    assert gravado["substituir_enviado"] is False  # type: ignore[index]
+
+
+def test_semana_enviar_falha_de_envio_nao_marca(monkeypatch: pytest.MonkeyPatch) -> None:
+    cenario = _enviar_falso(monkeypatch, falha_no_envio=True)
+
+    result = runner.invoke(app, ["semana", "enviar", "--semana", "2026-10-16"])
+
+    assert result.exit_code == 1
+    assert "[enviado]" not in result.output
+    assert "marcou" not in _nomes(cenario)
+
+
+def test_semana_enviar_reenviar_substitui_e_marca_de_novo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    cenario = _enviar_falso(monkeypatch, ja_enviado=True)
+
+    result = runner.invoke(app, ["semana", "enviar", "--semana", "2026-10-16", "--reenviar"])
+
+    assert result.exit_code == 0
+    assert "[enviado] resumo da semana de 16/10/2026" in result.output
+    assert len(cenario.enviador.enviados) == 1
+    assert _nomes(cenario) == ["montou", "gravou", "marcou"]
+    assert cenario.eventos[1][1]["substituir_enviado"] is True  # type: ignore[index]
+    assert cenario.eventos[2] == ("marcou", True)
+
+
+def test_semana_enviar_sem_telegram_configurado_nao_marca(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Sem segredo o notificador cai no terminal: isso nao pode virar 'enviado'."""
+    from scanner import cli
+    from scanner.notify.telegram import ConsoleNotifier
+
+    cenario = _enviar_falso(monkeypatch)
+    monkeypatch.setattr(cli, "_notificador", lambda settings, *, dry_run: ConsoleNotifier())
+
+    result = runner.invoke(app, ["semana", "enviar", "--semana", "2026-10-16"])
+
+    assert result.exit_code == 1
+    assert "[enviado]" not in result.output
+    assert "marcou" not in _nomes(cenario)
+
+
+def test_semana_enviar_rejeita_data_invalida() -> None:
+    result = runner.invoke(app, ["semana", "enviar", "--semana", "ontem"])
+    assert result.exit_code != 0

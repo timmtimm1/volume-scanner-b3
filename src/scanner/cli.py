@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import json
 from datetime import date
-from typing import Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any
 
 import pandas as pd
 import typer
@@ -16,6 +16,9 @@ import typer
 from scanner import __version__
 from scanner.calendar import hoje_na_b3, ultimo_pregao_encerrado
 from scanner.config import load_config
+
+if TYPE_CHECKING:
+    from scanner.semana.periodo import Semana
 
 app = typer.Typer(
     name="scanner",
@@ -885,6 +888,20 @@ def fundamentos_proventos(
 SAIDA_PREGAO_AUSENTE = 3
 
 
+def _periodo_da_semana(semana: str) -> Semana:
+    """'ultima' ou uma data AAAA-MM-DD dentro da semana, como `Semana`."""
+    from scanner.semana.periodo import semana_da_data, semana_encerrada
+
+    if semana.lower() == "ultima":
+        return semana_encerrada(hoje_na_b3())
+    try:
+        return semana_da_data(date.fromisoformat(semana))
+    except ValueError as exc:
+        raise typer.BadParameter(
+            f"semana invalida: {semana!r} (use 'ultima' ou AAAA-MM-DD)"
+        ) from exc
+
+
 @semana_app.command("montar")
 def semana_montar(
     semana: Annotated[
@@ -911,19 +928,10 @@ def semana_montar(
     (o arquivo do COTAHIST nao saiu). Nada e montado nem gravado.
     """
     from scanner.semana.montagem import PregaoAusenteError, montar_dados_de_mercado, previa
-    from scanner.semana.periodo import semana_da_data, semana_encerrada
     from scanner.storage.engine import build_engine
     from scanner.storage.repository import gravar_resumo_semanal
 
-    if semana.lower() == "ultima":
-        periodo = semana_encerrada(hoje_na_b3())
-    else:
-        try:
-            periodo = semana_da_data(date.fromisoformat(semana))
-        except ValueError as exc:
-            raise typer.BadParameter(
-                f"semana invalida: {semana!r} (use 'ultima' ou AAAA-MM-DD)"
-            ) from exc
+    periodo = _periodo_da_semana(semana)
 
     engine = build_engine()
     try:
@@ -952,6 +960,118 @@ def semana_montar(
             "use --substituir-enviado para sobrescrever",
             fg=typer.colors.YELLOW,
         )
+
+
+@semana_app.command("enviar")
+def semana_enviar(
+    semana: Annotated[
+        str,
+        typer.Option(
+            "--semana",
+            help="'ultima' (a semana encerrada mais recente) ou uma data AAAA-MM-DD dentro dela.",
+        ),
+    ] = "ultima",
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Mostra a mensagem sem gravar nem enviar.")
+    ] = False,
+    reenviar: Annotated[
+        bool, typer.Option("--reenviar", help="Monta e envia de novo um resumo ja enviado.")
+    ] = False,
+    avisar_se_adiado: Annotated[
+        bool,
+        typer.Option(
+            "--avisar-se-adiado",
+            help="Se o pregao de sexta ainda faltar, avisa no Telegram em vez de calar.",
+        ),
+    ] = False,
+) -> None:
+    """Monta o resumo da semana, grava, envia no Telegram e marca como enviado.
+
+    Codigo de saida 3: o ultimo pregao da semana ainda nao esta no banco; quem
+    agenda tenta de novo mais tarde. Resumo ja enviado e pulado (sai 0), a
+    menos que `--reenviar`. So marca como enviado depois que o Telegram aceitou:
+    falha de envio sai 1 e a proxima passada tenta de novo.
+    """
+    from scanner.config import get_settings
+    from scanner.notify.telegram import ConsoleNotifier, TelegramError, console_safe
+    from scanner.semana.mensagem import formatar_mensagem
+    from scanner.semana.montagem import PregaoAusenteError, montar_dados_de_mercado
+    from scanner.storage.engine import build_engine
+    from scanner.storage.migracao import migrar_se_preciso
+    from scanner.storage.repository import (
+        gravar_resumo_semanal,
+        marcar_resumo_semanal_enviado,
+        resumo_semanal_enviado,
+    )
+
+    periodo = _periodo_da_semana(semana)
+    sexta = periodo.sexta.strftime("%d/%m/%Y")
+    settings = get_settings()
+    engine = build_engine()
+    revisao = migrar_se_preciso(engine)
+    if revisao is not None:
+        typer.echo(f"[migrado] schema atualizado para {revisao}")
+
+    if not reenviar and resumo_semanal_enviado(engine, periodo.sexta):
+        typer.secho(
+            f"[pulado] o resumo da semana de {sexta} ja foi enviado.", fg=typer.colors.YELLOW
+        )
+        return
+
+    try:
+        payload = montar_dados_de_mercado(engine, load_config(), periodo)
+    except PregaoAusenteError:
+        fim = periodo.fim.strftime("%d/%m/%Y")
+        typer.secho(f"[adiado] o pregao de {fim} ainda nao esta no banco", fg=typer.colors.YELLOW)
+        if avisar_se_adiado and not dry_run:
+            aviso = (
+                "⚠️ <b>Resumo da semana adiado</b>\n"
+                f"O pregão de {fim} ainda não está no banco. O resumo sai quando ele chegar."
+            )
+            try:
+                _notificador(settings, dry_run=False).send_text(aviso)
+            except TelegramError as exc:
+                typer.secho(f"[erro] aviso de adiamento nao enviado: {exc}", fg=typer.colors.RED)
+        raise typer.Exit(code=SAIDA_PREGAO_AUSENTE) from None
+
+    mensagem = formatar_mensagem(payload, settings.web_base_url)
+    if dry_run:
+        typer.echo(console_safe(mensagem))
+        typer.echo(f"\n[dry-run] {len(mensagem)} caracteres; nada foi gravado nem enviado")
+        return
+
+    gravou = gravar_resumo_semanal(
+        engine,
+        semana=periodo.sexta,
+        inicio=periodo.inicio,
+        fim=periodo.fim,
+        payload=payload,
+        substituir_enviado=reenviar,
+    )
+    if not gravou:
+        typer.secho(
+            f"[pulado] o resumo da semana de {sexta} ja foi enviado.", fg=typer.colors.YELLOW
+        )
+        return
+
+    notificador = _notificador(settings, dry_run=False)
+    if isinstance(notificador, ConsoleNotifier):
+        # Sem segredo o `_notificador` cai no terminal; marcar como enviado o que
+        # nunca chegou no Telegram esconderia o resumo de todas as proximas passadas.
+        typer.secho(
+            "[erro] Telegram nao configurado; o resumo nao foi enviado nem marcado.",
+            fg=typer.colors.RED,
+            err=True,
+        )
+        raise typer.Exit(code=1)
+    try:
+        notificador.send_text(mensagem)
+    except TelegramError as exc:
+        typer.secho(f"[erro] o Telegram recusou o resumo: {exc}", fg=typer.colors.RED, err=True)
+        raise typer.Exit(code=1) from exc
+
+    marcar_resumo_semanal_enviado(engine, periodo.sexta, sobrescrever=reenviar)
+    typer.secho(f"[enviado] resumo da semana de {sexta}", fg=typer.colors.GREEN)
 
 
 if __name__ == "__main__":  # pragma: no cover

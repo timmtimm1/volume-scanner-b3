@@ -283,14 +283,67 @@ def detalhe_da_empresa(
     )
 
 
-def proventos_recentes(
+@dataclass(frozen=True)
+class EventoEmAcoes:
+    """Um evento que muda a quantidade de acoes: desdobramento, grupamento, bonificacao.
+
+    `isin` e o da acao QUE SOFRE o evento (`isinCode` da B3). `assetIssued` e o
+    que se emite, e na cisao e outro papel (ITUB com CIS RED CAP emite XPAR):
+    casar por ele colaria o evento no papel errado.
+    """
+
+    isin: str
+    tipo: str
+    fator: Decimal
+    data_com: date
+    data_aprovacao: date | None
+    # `assetIssued`: o papel que o acionista recebe. Vazio nos itens antigos
+    # (BBAS 1996), e ai e o proprio papel.
+    isin_emitido: str | None = None
+
+    @property
+    def em_outro_papel(self) -> bool:
+        """O acionista recebe acoes de OUTRO papel, e nao mais do mesmo."""
+        return self.isin_emitido is not None and self.isin_emitido != self.isin
+
+    @property
+    def multiplicador(self) -> Decimal | None:
+        """Acoes depois do evento por acao antes. None = nao se ajusta por fator.
+
+        Medido em 17/10/2026: DESDOBRAMENTO 100 em BBAS e 1 acao virando 2
+        (fator em %), GRUPAMENTO 0,1 em MGLU e 10 viram 1 (fator ja e a
+        razao), BONIFICACAO 5 em MGLU e +5%. CIS RED CAP (cisao) nao tem
+        razao por acao: o valor sai de um papel e vai para outro.
+
+        Bonificacao paga em OUTRA classe (quem tem ON recebe PN) tambem nao:
+        a quantidade de ON nao muda, e o que sai do preco e o valor das PN
+        recebidas, que o fator sozinho nao diz.
+        """
+        if self.em_outro_papel:
+            return None
+        if self.tipo in ("DESDOBRAMENTO", "BONIFICACAO"):
+            return 1 + self.fator / 100
+        if self.tipo == "GRUPAMENTO":
+            return self.fator
+        return None
+
+
+@dataclass(frozen=True)
+class Suplemento:
+    """O que o suplemento da B3 traz: proventos em dinheiro e eventos em acoes."""
+
+    proventos: list[Provento]
+    eventos_em_acoes: list[EventoEmAcoes]
+
+
+def suplemento(
     cliente: httpx.Client,
     emissor: str,
     *,
     tentativas: int = TENTATIVAS_PADRAO,
     espera: float = ESPERA_PADRAO,
-) -> list[Provento]:
-    """Proventos em dinheiro dos ultimos ~12 meses, com o ISIN de cada um.
+) -> Suplemento:
+    """Proventos em dinheiro e eventos em acoes dos ultimos ~12 meses, com ISIN.
 
     A consulta so aceita o codigo do emissor, entao quem chama precisa conferir
     que os ISINs que voltam sao mesmo da empresa esperada -- ver `carga.py`.
@@ -302,14 +355,11 @@ def proventos_recentes(
     if isinstance(dados, list):
         dados = dados[0] if dados else None
     if not isinstance(dados, dict):
-        return []
-
-    linhas = dados.get("cashDividends")
-    if not isinstance(linhas, list):
-        return []
+        return Suplemento([], [])
 
     proventos: list[Provento] = []
-    for item in linhas:
+    linhas = dados.get("cashDividends")
+    for item in linhas if isinstance(linhas, list) else []:
         if not isinstance(item, dict):
             continue
         valor = _decimal_br(item.get("rate"))
@@ -330,7 +380,40 @@ def proventos_recentes(
                 preco_data_com=None,
             )
         )
-    return proventos
+
+    eventos: list[EventoEmAcoes] = []
+    linhas = dados.get("stockDividends")
+    for item in linhas if isinstance(linhas, list) else []:
+        if not isinstance(item, dict):
+            continue
+        fator = _decimal_br(item.get("factor"))
+        data_com = _data_br(item.get("lastDatePrior"))
+        isin = _texto(item.get("isinCode"))
+        tipo = _texto(item.get("label"))
+        if fator is None or fator <= 0 or data_com is None or isin is None or tipo is None:
+            continue
+        eventos.append(
+            EventoEmAcoes(
+                isin=isin.upper(),
+                tipo=tipo.upper(),
+                fator=fator,
+                data_com=data_com,
+                data_aprovacao=_data_br(item.get("approvedOn")),
+                isin_emitido=(_texto(item.get("assetIssued")) or isin).upper(),
+            )
+        )
+    return Suplemento(proventos, eventos)
+
+
+def proventos_recentes(
+    cliente: httpx.Client,
+    emissor: str,
+    *,
+    tentativas: int = TENTATIVAS_PADRAO,
+    espera: float = ESPERA_PADRAO,
+) -> list[Provento]:
+    """Proventos em dinheiro dos ultimos ~12 meses, com o ISIN de cada um."""
+    return suplemento(cliente, emissor, tentativas=tentativas, espera=espera).proventos
 
 
 def proventos_historicos(

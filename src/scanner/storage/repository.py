@@ -37,6 +37,7 @@ from scanner.storage.models import (
     Event,
     FundamentoTrimestre,
     PriceAlert,
+    ResumoSemanal,
     Trade,
     TradeOperacao,
     TradeSnapshot,
@@ -1380,3 +1381,85 @@ def balanco_da_empresa(engine: Engine, cd_cvm: int, tipo: str, dt_refer: date) -
     )
     with engine.connect() as conn:
         return pd.read_sql(stmt, conn)
+
+
+def gravar_resumo_semanal(
+    engine: Engine,
+    *,
+    semana: date,
+    inicio: date,
+    fim: date,
+    payload: dict[str, Any],
+    substituir_enviado: bool = False,
+) -> bool:
+    """Grava (ou regrava) o resumo da semana. Devolve se gravou.
+
+    Resumo que ja foi enviado fica congelado como saiu: sem `substituir_enviado`
+    a linha nao e tocada e a funcao devolve False. O `WHERE` do upsert faz a
+    checagem no proprio comando, sem janela entre ler e escrever. O RETURNING
+    diz se a linha entrou ou mudou; sem linha de volta, o WHERE barrou.
+    """
+    valores = {"semana": semana, "inicio": inicio, "fim": fim, "payload": payload}
+    inserir = insert(ResumoSemanal).values(**valores)
+    stmt = inserir.on_conflict_do_update(
+        index_elements=[ResumoSemanal.semana],
+        set_={
+            "inicio": inserir.excluded.inicio,
+            "fim": inserir.excluded.fim,
+            "payload": inserir.excluded.payload,
+            "gerado_em": func.now(),
+        },
+        where=None if substituir_enviado else ResumoSemanal.enviado_em.is_(None),
+    ).returning(ResumoSemanal.semana)
+    with engine.begin() as conn:
+        return conn.execute(stmt).first() is not None
+
+
+def resumo_semanal(engine: Engine, semana: date) -> dict[str, Any] | None:
+    """O payload do resumo da semana (identificada pela sexta), ou None."""
+    stmt = select(ResumoSemanal.payload).where(ResumoSemanal.semana == semana)
+    with engine.connect() as conn:
+        linha = conn.execute(stmt).first()
+    return None if linha is None else dict(linha[0])
+
+
+def papeis_com_emissor(engine: Engine, tickers: Sequence[str]) -> list[dict[str, Any]]:
+    """Ticker, ISIN e emissor da B3 de cada papel, pela ligacao ticker -> empresa.
+
+    A ligacao vem de `empresa_tickers`, que nunca se baseia no prefixo do
+    ticker. Papel sem empresa, sem ISIN ou sem emissor da B3 nao aparece.
+    """
+    if not tickers:
+        return []
+    stmt = (
+        select(EmpresaTicker.ticker, EmpresaTicker.isin, Empresa.emissor_b3)
+        .join(Empresa, Empresa.cd_cvm == EmpresaTicker.cd_cvm)
+        .where(
+            EmpresaTicker.ticker.in_(list(tickers)),
+            EmpresaTicker.isin.is_not(None),
+            Empresa.emissor_b3.is_not(None),
+        )
+        .order_by(EmpresaTicker.ticker)
+    )
+    with engine.connect() as conn:
+        return [linha._asdict() for linha in conn.execute(stmt)]
+
+
+def barras_de_fechamento(engine: Engine, desde: date, ate: date) -> pd.DataFrame:
+    """ticker, trade_date, close das barras em [desde, ate]."""
+    stmt = (
+        select(DailyBar.ticker, DailyBar.trade_date, DailyBar.close)
+        .where(DailyBar.trade_date >= desde, DailyBar.trade_date <= ate)
+        .order_by(DailyBar.ticker, DailyBar.trade_date)
+    )
+    with engine.connect() as conn:
+        frame = pd.read_sql(stmt, conn)
+    frame["close"] = frame["close"].astype(float)
+    return frame
+
+
+def existe_barra_em(engine: Engine, dia: date) -> bool:
+    """Se ha ao menos uma barra diaria neste pregao."""
+    stmt = select(DailyBar.ticker).where(DailyBar.trade_date == dia).limit(1)
+    with engine.connect() as conn:
+        return conn.execute(stmt).first() is not None

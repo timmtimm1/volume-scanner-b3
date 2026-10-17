@@ -40,6 +40,8 @@ def test_nomes_das_tabelas() -> None:
     # dinheiro por papel, que e de onde sai o dividend yield.
     # `fundamentos_trimestre` (migration 0009) e derivada: o trimestre ja
     # calculado que a ficha le, refeito a partir das tabelas acima.
+    # `resumos_semanais` (migration 0010) guarda o resumo semanal de mercado ja
+    # montado, um por semana, para o envio e o site lerem sem refazer as consultas.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -58,6 +60,7 @@ def test_nomes_das_tabelas() -> None:
         "arquivos_externos",
         "proventos",
         "fundamentos_trimestre",
+        "resumos_semanais",
     }
 
 

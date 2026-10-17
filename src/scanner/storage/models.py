@@ -589,3 +589,24 @@ class ArquivoExterno(Base):
     escopo_hash: Mapped[str | None] = mapped_column(Text)
     verificado_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
     processado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+class ResumoSemanal(Base):
+    """O resumo semanal de mercado, montado e guardado (resumo da semana fase 1).
+
+    A chave e a sexta-feira nominal da semana, mesmo quando e feriado. O payload
+    e o resumo inteiro em JSON: guardar pronto congela os numeros como sairam
+    (a janela de 7 dias da CoinGecko nao se reconstroi depois) e poupa refazer
+    as consultas para reenviar. `enviado_em` nulo = ainda nao saiu.
+    """
+
+    __tablename__ = "resumos_semanais"
+
+    semana: Mapped[date] = mapped_column(Date, primary_key=True)
+    inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    fim: Mapped[date] = mapped_column(Date, nullable=False)
+    payload: Mapped[dict[str, Any]] = mapped_column(JSONB, nullable=False)
+    gerado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    enviado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))

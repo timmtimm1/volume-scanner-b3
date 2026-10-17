@@ -6,3 +6,5 @@ tests/fixtures/*.txt binary
 # Recortes dos CSVs da CVM: latin-1 com CRLF, como a CVM publica. Converter a
 # quebra de linha faria o teste rodar sobre um arquivo diferente do real.
 tests/fixtures/cvm/*.csv binary
+# Recortes da curva da ANBIMA: latin-1 com CRLF, como o CZ-down.asp responde.
+tests/fixtures/semana/anbima_*.csv binary

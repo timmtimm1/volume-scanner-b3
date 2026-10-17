@@ -152,6 +152,53 @@ class FundamentosConfig(BaseModel):
         return value
 
 
+class SemanaConfig(BaseModel):
+    """Resumo semanal: o bloco de dados de mercado."""
+
+    # Quantas acoes entram em cada lista (altas e quedas).
+    acoes_por_lado: int = 10
+    # Moedas do ranking de cripto depois de tirar as excluidas, e quantas altas e
+    # quedas destacar entre elas.
+    cripto_top: int = 20
+    cripto_destaques: int = 5
+    # Categorias da CoinGecko que nao sao "cripto" no sentido que o resumo quer:
+    # medido em 17/10/2026, o top 40 tinha 10 stablecoins e papeis tokenizados.
+    cripto_categorias_excluidas: list[str] = Field(
+        default_factory=lambda: [
+            "stablecoins",
+            "tokenized-products",
+            "tokenized-btc",
+            "liquid-staking-tokens",
+        ]
+    )
+    # Vertices da curva prefixada, em dias uteis (252 por ano).
+    curva_vertices_du: list[int] = Field(default_factory=lambda: [252, 504, 1260, 2520])
+    treasuries: list[str] = Field(
+        default_factory=lambda: ["3 Mo", "6 Mo", "2 Yr", "5 Yr", "10 Yr", "30 Yr"]
+    )
+
+    @field_validator("acoes_por_lado", "cripto_top", "cripto_destaques")
+    @classmethod
+    def _validate_inteiros(cls, value: int, info: ValidationInfo) -> int:
+        if value < 1:
+            raise ValueError(f"semana.{info.field_name} precisa ser ao menos 1")
+        return value
+
+    @field_validator("cripto_categorias_excluidas", "curva_vertices_du", "treasuries")
+    @classmethod
+    def _validate_listas(cls, value: list[Any], info: ValidationInfo) -> list[Any]:
+        if not value:
+            raise ValueError(f"semana.{info.field_name} nao pode ser vazio")
+        return value
+
+    @field_validator("curva_vertices_du")
+    @classmethod
+    def _validate_vertices(cls, value: list[int]) -> list[int]:
+        if any(v < 1 for v in value):
+            raise ValueError("semana.curva_vertices_du: vertice minimo e 1 dia util")
+        return value
+
+
 class ScannerConfig(BaseModel):
     """Conteudo completo de `config.yaml`."""
 
@@ -161,6 +208,7 @@ class ScannerConfig(BaseModel):
     universe: UniverseConfig = Field(default_factory=UniverseConfig)
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     fundamentos: FundamentosConfig = Field(default_factory=FundamentosConfig)
+    semana: SemanaConfig = Field(default_factory=SemanaConfig)
 
 
 class Settings(BaseSettings):

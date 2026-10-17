@@ -1,0 +1,63 @@
+# Agenda fixa do resumo da semana: o que nao da para ler por maquina.
+# Fontes e conferencia: conferido em 17/10/2026.
+#
+# Copom: reuniao de 2 dias; a decisao sai no 2o dia a partir das 18:30; a ata na
+# terca seguinte as 08:00 (em 2027, a ata de outubro sai na quarta 03/11, por causa de Finados).
+# Fonte: calendario publicado pelo BC (2026 em 24/06/2025; 2027 em 23/06/2026),
+# conferido a mao na pagina oficial em 17/10/2026:
+# https://www.bcb.gov.br/publicacoes/calendarioreunioescopom (montada por JavaScript,
+# por isso nao e lida pelo pipeline).
+copom:
+  2026:
+    - {reuniao: 1, dias: [2026-01-27, 2026-01-28], ata: 2026-02-03}
+    - {reuniao: 2, dias: [2026-03-17, 2026-03-18], ata: 2026-03-24}
+    - {reuniao: 3, dias: [2026-04-28, 2026-04-29], ata: 2026-05-05}
+    - {reuniao: 4, dias: [2026-06-16, 2026-06-17], ata: 2026-06-23}
+    - {reuniao: 5, dias: [2026-08-04, 2026-08-05], ata: 2026-08-11}
+    - {reuniao: 6, dias: [2026-09-15, 2026-09-16], ata: 2026-09-22}
+    - {reuniao: 7, dias: [2026-11-03, 2026-11-04], ata: 2026-11-10}
+    - {reuniao: 8, dias: [2026-12-08, 2026-12-09], ata: 2026-12-15}
+  2027:
+    - {reuniao: 1, dias: [2027-01-26, 2027-01-27], ata: 2027-02-02}
+    - {reuniao: 2, dias: [2027-03-16, 2027-03-17], ata: 2027-03-23}
+    - {reuniao: 3, dias: [2027-04-27, 2027-04-28], ata: 2027-05-04}
+    - {reuniao: 4, dias: [2027-06-15, 2027-06-16], ata: 2027-06-22}
+    - {reuniao: 5, dias: [2027-08-03, 2027-08-04], ata: 2027-08-10}
+    - {reuniao: 6, dias: [2027-09-21, 2027-09-22], ata: 2027-09-28}
+    - {reuniao: 7, dias: [2027-10-26, 2027-10-27], ata: 2027-11-03}
+    - {reuniao: 8, dias: [2027-12-07, 2027-12-08], ata: 2027-12-14}
+
+# BLS, 08:30 de Nova York. Fonte: https://www.bls.gov/schedule/news_release/cpi.htm e
+# .../empsit.htm (lidas em 17/10/2026; o site barra acesso automatizado).
+# referencia = mes a que o dado se refere.
+bls:
+  cpi:
+    - {data: 2026-11-10, referencia: 2026-10}
+    - {data: 2026-12-10, referencia: 2026-11}
+    - {data: 2027-01-13, referencia: 2026-12}
+    - {data: 2027-02-11, referencia: 2027-01}
+    - {data: 2027-03-10, referencia: 2027-02}
+    - {data: 2027-04-13, referencia: 2027-03}
+    - {data: 2027-05-12, referencia: 2027-04}
+    - {data: 2027-06-10, referencia: 2027-05}
+    - {data: 2027-07-14, referencia: 2027-06}
+    - {data: 2027-08-11, referencia: 2027-07}
+    - {data: 2027-09-14, referencia: 2027-08}
+    - {data: 2027-10-14, referencia: 2027-09}
+    - {data: 2027-11-10, referencia: 2027-10}
+    - {data: 2027-12-10, referencia: 2027-11}
+  payroll:
+    - {data: 2026-11-06, referencia: 2026-10}
+    - {data: 2026-12-04, referencia: 2026-11}
+    - {data: 2027-01-08, referencia: 2026-12}
+    - {data: 2027-02-05, referencia: 2027-01}
+    - {data: 2027-03-05, referencia: 2027-02}
+    - {data: 2027-04-02, referencia: 2027-03}
+    - {data: 2027-05-07, referencia: 2027-04}
+    - {data: 2027-06-04, referencia: 2027-05}
+    - {data: 2027-07-02, referencia: 2027-06}
+    - {data: 2027-08-06, referencia: 2027-07}
+    - {data: 2027-09-03, referencia: 2027-08}
+    - {data: 2027-10-08, referencia: 2027-09}
+    - {data: 2027-11-05, referencia: 2027-10}
+    - {data: 2027-12-03, referencia: 2027-11}

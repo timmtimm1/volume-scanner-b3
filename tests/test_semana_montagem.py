@@ -8,10 +8,11 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import pytest
 
 from scanner.config import ScannerConfig
-from scanner.semana import montagem
+from scanner.semana import agenda, balancos, montagem
 from scanner.semana.fontes import FonteIndisponivelError, anbima, bcb, cripto, fed, treasury, yahoo
 from scanner.semana.montagem import (
     PregaoAusenteError,
@@ -67,6 +68,49 @@ BLOCO_ACOES = {
 }
 
 
+EVENTO = {
+    "data": "2026-10-23",
+    "hora": "09:00",
+    "pais": "BR",
+    "evento": "IPCA-15",
+    "detalhe": "outubro",
+    "consenso": None,
+    "fonte": "IBGE",
+}
+BLOCO_BALANCOS = {
+    "confirmados": [
+        {
+            "empresa": "BANCO BRADESCO S.A.",
+            "cd_cvm": 906,
+            "tickers": ["BBDC3", "BBDC4"],
+            "data": "2026-10-22",
+            "horario": "após o fechamento",
+            "trimestre": "3T26",
+            "fonte": "Nasdaq",
+        }
+    ],
+    "provaveis": [
+        {
+            "empresa": "WEG SA",
+            "cd_cvm": 5410,
+            "tickers": ["WEGE3"],
+            "documento": "ITR 3T25",
+            "entregue_em": "2025-10-22",
+        }
+    ],
+    "avisos": [],
+}
+
+
+def vivo_agenda(falhas: dict[str, Exception]) -> Any:
+    def f(*_a: Any, **_k: Any) -> tuple[list[dict[str, Any]], list[str]]:
+        if "agenda" in falhas:
+            raise falhas["agenda"]
+        return [EVENTO], ["Focus indisponível (HTTP 503): eventos sem consenso"]
+
+    return f
+
+
 def _patch_fontes(monkeypatch: pytest.MonkeyPatch, **falhas: Exception) -> None:
     def vivo(nome: str, valor: dict[str, Any]) -> Any:
         def f(*_a: Any, **_k: Any) -> dict[str, Any]:
@@ -112,6 +156,9 @@ def _patch_fontes(monkeypatch: pytest.MonkeyPatch, **falhas: Exception) -> None:
             "treasuries", {"data": "2026-10-16", "data_anterior": "2026-10-09", "vencimentos": []}
         ),
     )
+    monkeypatch.setattr(montagem, "load_universe", lambda *_a: pd.DataFrame())
+    monkeypatch.setattr(agenda, "montar_agenda", vivo_agenda(falhas))
+    monkeypatch.setattr(balancos, "montar_balancos", vivo("balancos", BLOCO_BALANCOS))
     monkeypatch.setattr(
         fed,
         "dot_plot",
@@ -210,3 +257,83 @@ def test_previa_mostra_cada_bloco_e_o_motivo_de_quem_falhou(
     assert "Selic meta 13,75% a.a." in texto
     assert "CDI acumulado: mes +0,50%, ano +11,00% (ate 15/10/2026)" in texto
     assert "Fed, mediana dos juros (16/09/2026): 2026 4,1%" in texto
+
+
+def test_proxima_semana_no_payload(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch)
+
+    bloco = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)["proxima_semana"]
+
+    assert bloco["inicio"] == "2026-10-19" and bloco["fim"] == "2026-10-23"
+    assert bloco["feriados_b3"] == []
+    assert bloco["agenda"] == [EVENTO]
+    assert bloco["agenda_avisos"] == ["Focus indisponível (HTTP 503): eventos sem consenso"]
+    assert bloco["balancos"]["confirmados"][0]["tickers"] == ["BBDC3", "BBDC4"]
+
+
+def test_feriado_de_novembro_aparece_como_dia_util_sem_pregao(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_fontes(monkeypatch)
+    semana = semana_da_data(date(2026, 11, 13))  # a seguinte, 16 a 20/11, tem o 20/11
+
+    bloco = montar_dados_de_mercado(ENGINE, ScannerConfig(), semana, agora=AGORA)["proxima_semana"]
+
+    assert bloco["feriados_b3"] == ["2026-11-20"]
+
+
+def test_agenda_que_cai_nao_derruba_balancos_nem_o_resto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_fontes(monkeypatch, agenda=FonteIndisponivelError("ibge", "HTTP 500"))
+
+    payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+
+    bloco = payload["proxima_semana"]
+    assert bloco["agenda"] == []
+    assert bloco["agenda_avisos"] == ["agenda indisponível: HTTP 500"]
+    assert bloco["balancos"]["confirmados"]
+    assert payload["eua"]["fed"]["data_projecao"] == "2026-09-16"
+
+
+def test_balancos_que_caem_viram_erro_e_a_agenda_segue(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch)
+
+    def cai(*_a: Any, **_k: Any) -> dict[str, Any]:
+        raise RuntimeError("banco fora")
+
+    monkeypatch.setattr(balancos, "montar_balancos", cai)
+
+    bloco = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)["proxima_semana"]
+
+    assert bloco["balancos"] == {"erro": "erro inesperado (RuntimeError: banco fora)"}
+    assert bloco["agenda"] == [EVENTO]
+
+
+def test_previa_da_semana_que_vem(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch, cripto=FonteIndisponivelError("coingecko", "HTTP 429"))
+    payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+    payload["proxima_semana"]["agenda"][0]["consenso"] = {
+        "mediana": 0.45,
+        "unidade": "%",
+        "fonte": "Focus",
+        "data": "2026-10-16",
+    }
+
+    texto = previa(payload)
+
+    assert "SEMANA QUE VEM (19/10 a 23/10)" in texto
+    assert "Feriados B3 (dia útil sem pregão): nenhum" in texto
+    assert "  Sex 23/10  09:00  BR  IPCA-15 (outubro)   Focus: 0,45%" in texto
+    assert "AVISO: Focus indisponível (HTTP 503)" in texto
+    assert "Qui 22/10  após o fechamento  BANCO BRADESCO S.A. (BBDC3, BBDC4)" in texto
+    assert "trimestre 3T26   [Nasdaq]" in texto
+    assert "WEG SA (WEGE3)   ITR 3T25 entregue em 22/10/2025" in texto
+
+
+def test_previa_com_balancos_indisponiveis(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch, cripto=FonteIndisponivelError("coingecko", "HTTP 429"))
+    payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+    payload["proxima_semana"]["balancos"] = {"erro": "banco fora"}
+
+    assert "Balanços: indisponivel: banco fora" in previa(payload)

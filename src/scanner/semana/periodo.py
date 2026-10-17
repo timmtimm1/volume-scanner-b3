@@ -67,3 +67,13 @@ def semana_encerrada(hoje: date) -> Semana:
         return semana_da_data(hoje)
     domingo_anterior = hoje - timedelta(days=hoje.weekday() + 1)
     return semana_da_data(domingo_anterior)
+
+
+def proxima_semana(semana: Semana) -> tuple[date, date]:
+    """Segunda e sexta da semana SEGUINTE, contadas a partir da sexta nominal.
+
+    Pela sexta nominal e nao por `fim`: na Sexta-feira Santa o `fim` e a quinta,
+    e a semana seguinte continua comecando na segunda depois da sexta.
+    """
+    segunda = semana.sexta + timedelta(days=3)
+    return segunda, segunda + timedelta(days=4)

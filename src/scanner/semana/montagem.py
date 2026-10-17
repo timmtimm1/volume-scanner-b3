@@ -26,14 +26,23 @@ from scanner.calendar import is_holiday, sessions_before
 from scanner.config import ScannerConfig
 from scanner.fundamentos.b3 import novo_cliente
 from scanner.notify.telegram import br, pct
-from scanner.semana import agenda, balancos
+from scanner.semana import agenda, balancos, noticias
 from scanner.semana.acoes import (
     PREGOES_DE_BASE,
     buscar_eventos_da_semana,
     ranking,
     variacoes_da_semana,
 )
-from scanner.semana.fontes import FonteIndisponivelError, anbima, bcb, cripto, fed, treasury, yahoo
+from scanner.semana.fontes import (
+    FonteIndisponivelError,
+    anbima,
+    bcb,
+    cripto,
+    fed,
+    google_noticias,
+    treasury,
+    yahoo,
+)
 from scanner.semana.periodo import Semana, proxima_semana
 from scanner.storage import repository
 from scanner.universe import load_universe, tickers
@@ -161,6 +170,21 @@ def _bloco_proxima_semana(engine: Engine, config: ScannerConfig, semana: Semana)
     }
 
 
+def _bloco_noticias(config: ScannerConfig, semana: Semana, momento: datetime) -> dict[str, Any]:
+    """As historias mais repetidas da semana; busca que falha vira aviso."""
+    cfg = config.semana
+    brutas, avisos = google_noticias.coletar(cfg.noticias_buscas, semana.segunda)
+    inicio = noticias.inicio_da_semana(semana.segunda)
+    historias, contagem = noticias.selecionar(brutas, inicio, momento, cfg.noticias_top)
+    return {
+        "janela": {"de": inicio, "ate": momento},
+        "buscas": list(cfg.noticias_buscas),
+        "historias": historias,
+        "contagem": contagem,
+        "avisos": avisos,
+    }
+
+
 def montar_dados_de_mercado(
     engine: Engine, config: ScannerConfig, semana: Semana, *, agora: datetime | None = None
 ) -> dict[str, Any]:
@@ -200,6 +224,7 @@ def montar_dados_de_mercado(
             "treasuries": _isolado("treasuries", treasury.treasuries, semana, cfg.treasuries),
             "fed": _isolado("fed", fed.dot_plot, semana),
         },
+        "noticias": _isolado("noticias", _bloco_noticias, config, semana, momento),
         "proxima_semana": _bloco_proxima_semana(engine, config, semana),
     }
     limpo: dict[str, Any] = _limpo(payload)
@@ -387,6 +412,26 @@ def _linha_balanco_confirmado(b: dict[str, Any]) -> str:
     return f"  {quando}  {b['empresa']} ({', '.join(b['tickers'])}){trimestre}   [{b['fonte']}]"
 
 
+def _previa_noticias(bloco: dict[str, Any]) -> list[str]:
+    if (msg := _indisponivel(bloco)) is not None:
+        return ["NOTÍCIAS DA SEMANA", f"  {msg}"]
+    linhas = ["NOTÍCIAS DA SEMANA  (as histórias que mais veículos distintos deram)"]
+    for h in bloco["historias"]:
+        linhas.append(f"  {h['veiculos']:>2} veículos | {h['titulo']} ({h['fonte']})")
+    if not bloco["historias"]:
+        linhas.append("  (nenhuma)")
+    c = bloco["contagem"]
+    d = c["descartes"]
+    linhas.append(
+        f"  {c['recebidas']} recebidas, {c['distintas']} distintas, {c['na_semana']} na semana, "
+        f"{c['na_imprensa']} na imprensa; descartes: boletim diário {d['boletim_diario']}, "
+        f"não é notícia {d['nao_e_noticia']}, fora da imprensa {d['fora_da_imprensa']}, "
+        f"fora da semana {d['fora_da_semana']}"
+    )
+    linhas += [f"  AVISO: {a}" for a in bloco["avisos"]]
+    return linhas
+
+
 def _previa_balancos(balancos_: dict[str, Any]) -> list[str]:
     if (msg := _indisponivel(balancos_)) is not None:
         return [f" Balanços: {msg}"]
@@ -431,6 +476,7 @@ def previa(payload: dict[str, Any]) -> str:
         _previa_cripto(payload["cripto"]),
         _previa_juros(payload["juros_br"]),
         _previa_eua(payload["eua"]),
+        _previa_noticias(payload["noticias"]),
         _previa_proxima_semana(payload["proxima_semana"]),
     ]
     return "\n\n".join("\n".join(b) for b in blocos)

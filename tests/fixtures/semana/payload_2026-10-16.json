@@ -1,0 +1,1068 @@
+{
+ "eua": {
+  "fed": {
+   "medianas": [
+    {
+     "taxa": 4.1,
+     "periodo": "2026"
+    },
+    {
+     "taxa": 4.1,
+     "periodo": "2027"
+    },
+    {
+     "taxa": 3.9,
+     "periodo": "2028"
+    },
+    {
+     "taxa": 3.6,
+     "periodo": "2029"
+    },
+    {
+     "taxa": 3.2,
+     "periodo": "longo prazo"
+    }
+   ],
+   "data_projecao": "2026-09-16"
+  },
+  "treasuries": {
+   "data": "2026-10-16",
+   "vencimentos": [
+    {
+     "taxa": 4.26,
+     "prazo": "3 Mo",
+     "variacao_bp": 0.9999999999999787,
+     "taxa_anterior": 4.25
+    },
+    {
+     "taxa": 4.34,
+     "prazo": "6 Mo",
+     "variacao_bp": 1.9999999999999574,
+     "taxa_anterior": 4.32
+    },
+    {
+     "taxa": 4.74,
+     "prazo": "2 Yr",
+     "variacao_bp": -5.999999999999961,
+     "taxa_anterior": 4.8
+    },
+    {
+     "taxa": 4.89,
+     "prazo": "5 Yr",
+     "variacao_bp": -12.99999999999999,
+     "taxa_anterior": 5.02
+    },
+    {
+     "taxa": 5.09,
+     "prazo": "10 Yr",
+     "variacao_bp": -15.000000000000036,
+     "taxa_anterior": 5.24
+    },
+    {
+     "taxa": 5.43,
+     "prazo": "30 Yr",
+     "variacao_bp": -16.999999999999993,
+     "taxa_anterior": 5.6
+    }
+   ],
+   "data_anterior": "2026-10-09"
+  }
+ },
+ "acoes": {
+  "altas": [
+   {
+    "ticker": "AZEV3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.222005842259007,
+    "conferido": true,
+    "preco_fim": 12.55,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 10.27,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.222005842259007,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "PRIO3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.08766485647788969,
+    "conferido": true,
+    "preco_fim": 70.1,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 64.45,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.08766485647788969,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "ALPA4",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.07258548290341915,
+    "conferido": true,
+    "preco_fim": 17.88,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 16.67,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.07258548290341915,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "PETR4",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.06571428571428561,
+    "conferido": true,
+    "preco_fim": 59.68,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 56.0,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.06571428571428561,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "TGMA3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.06151803496348762,
+    "conferido": true,
+    "preco_fim": 47.97,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 45.19,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.06151803496348762,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "ALLD3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.059485530546623755,
+    "conferido": true,
+    "preco_fim": 6.59,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 6.22,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.059485530546623755,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "PETR3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.05439264192832205,
+    "conferido": true,
+    "preco_fim": 66.49,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 63.06,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.05439264192832205,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "ABEV3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.05315822388993108,
+    "conferido": true,
+    "preco_fim": 16.84,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 15.99,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.05315822388993108,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "VIVT3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.047116968698517336,
+    "conferido": true,
+    "preco_fim": 31.78,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 30.35,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.047116968698517336,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "TIMS3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": 0.045856353591160026,
+    "conferido": true,
+    "preco_fim": 18.93,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 18.1,
+    "multiplicador": 1.0,
+    "variacao_bruta": 0.045856353591160026,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   }
+  ],
+  "quedas": [
+   {
+    "ticker": "PTBL3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.22256097560975607,
+    "conferido": true,
+    "preco_fim": 2.55,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 3.28,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.22256097560975607,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "GFSA3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.20454545454545459,
+    "conferido": true,
+    "preco_fim": 0.35,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 0.44,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.20454545454545459,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "PLPL3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.19063545150501682,
+    "conferido": true,
+    "preco_fim": 7.26,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 8.97,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.19063545150501682,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "JSLG3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.18224299065420557,
+    "conferido": true,
+    "preco_fim": 10.5,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 12.84,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.18224299065420557,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "QUAL3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.17695473251028815,
+    "conferido": true,
+    "preco_fim": 2.0,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 2.43,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.17695473251028815,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "VAMO3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.17346938775510212,
+    "conferido": true,
+    "preco_fim": 5.67,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 6.86,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.17346938775510212,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "AZEV4",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.16546762589928055,
+    "conferido": true,
+    "preco_fim": 1.16,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 1.39,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.16546762589928055,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "SIMH3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.15990730011587495,
+    "conferido": true,
+    "preco_fim": 14.5,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 17.26,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.15990730011587495,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "LJQQ3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.15358361774744034,
+    "conferido": true,
+    "preco_fim": 2.48,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 2.93,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.15358361774744034,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   },
+   {
+    "ticker": "SAPR3",
+    "ajustado": false,
+    "data_fim": "2026-10-16",
+    "variacao": -0.14975845410628008,
+    "conferido": true,
+    "preco_fim": 8.8,
+    "data_inicio": "2026-10-09",
+    "preco_inicio": 10.35,
+    "multiplicador": 1.0,
+    "variacao_bruta": -0.14975845410628008,
+    "eventos_sem_ajuste": null,
+    "proventos_por_acao": 0.0
+   }
+  ],
+  "avaliados": 202,
+  "falhas_b3": [],
+  "conferidos": 201,
+  "fora_do_ranking": []
+ },
+ "cripto": {
+  "btc": {
+   "id": "bitcoin",
+   "nome": "Bitcoin",
+   "rank": 1,
+   "preco": 81289,
+   "simbolo": "BTC",
+   "market_cap": 1633822142075,
+   "variacao_7d": -0.017416
+  },
+  "eth": {
+   "id": "ethereum",
+   "nome": "Ethereum",
+   "rank": 2,
+   "preco": 2407.4,
+   "simbolo": "ETH",
+   "market_cap": 294040085674,
+   "variacao_7d": -0.03691
+  },
+  "altas": [
+   {
+    "id": "monero",
+    "nome": "Monero",
+    "rank": 10,
+    "preco": 561.83,
+    "simbolo": "XMR",
+    "market_cap": 10596474928,
+    "variacao_7d": 0.061999000000000005
+   },
+   {
+    "id": "leo-token",
+    "nome": "LEO Token",
+    "rank": 13,
+    "preco": 9.04,
+    "simbolo": "LEO",
+    "market_cap": 8317195475,
+    "variacao_7d": 0.02226
+   },
+   {
+    "id": "tron",
+    "nome": "TRON",
+    "rank": 6,
+    "preco": 0.333787,
+    "simbolo": "TRX",
+    "market_cap": 31711046084,
+    "variacao_7d": 0.010819
+   },
+   {
+    "id": "bitcoin-cash",
+    "nome": "Bitcoin Cash",
+    "rank": 18,
+    "preco": 276.08,
+    "simbolo": "BCH",
+    "market_cap": 5549987554,
+    "variacao_7d": -0.010683
+   },
+   {
+    "id": "whitebit",
+    "nome": "WhiteBIT Coin",
+    "rank": 11,
+    "preco": 79.61,
+    "simbolo": "WBT",
+    "market_cap": 9455061547,
+    "variacao_7d": -0.021936
+   }
+  ],
+  "moedas": [
+   {
+    "id": "bitcoin",
+    "nome": "Bitcoin",
+    "rank": 1,
+    "preco": 81289,
+    "simbolo": "BTC",
+    "market_cap": 1633822142075,
+    "variacao_7d": -0.017416
+   },
+   {
+    "id": "ethereum",
+    "nome": "Ethereum",
+    "rank": 2,
+    "preco": 2407.4,
+    "simbolo": "ETH",
+    "market_cap": 294040085674,
+    "variacao_7d": -0.03691
+   },
+   {
+    "id": "binancecoin",
+    "nome": "BNB",
+    "rank": 3,
+    "preco": 717.3,
+    "simbolo": "BNB",
+    "market_cap": 95512605421,
+    "variacao_7d": -0.04176
+   },
+   {
+    "id": "ripple",
+    "nome": "XRP",
+    "rank": 4,
+    "preco": 1.29,
+    "simbolo": "XRP",
+    "market_cap": 81611791638,
+    "variacao_7d": -0.073236
+   },
+   {
+    "id": "solana",
+    "nome": "Solana",
+    "rank": 5,
+    "preco": 103.19,
+    "simbolo": "SOL",
+    "market_cap": 60829062486,
+    "variacao_7d": -0.056936999999999995
+   },
+   {
+    "id": "tron",
+    "nome": "TRON",
+    "rank": 6,
+    "preco": 0.333787,
+    "simbolo": "TRX",
+    "market_cap": 31711046084,
+    "variacao_7d": 0.010819
+   },
+   {
+    "id": "zcash",
+    "nome": "Zcash",
+    "rank": 7,
+    "preco": 1132.28,
+    "simbolo": "ZEC",
+    "market_cap": 19240826958,
+    "variacao_7d": -0.05388
+   },
+   {
+    "id": "hyperliquid",
+    "nome": "Hyperliquid",
+    "rank": 8,
+    "preco": 78.52,
+    "simbolo": "HYPE",
+    "market_cap": 17459554613,
+    "variacao_7d": -0.071424
+   },
+   {
+    "id": "dogecoin",
+    "nome": "Dogecoin",
+    "rank": 9,
+    "preco": 0.079534,
+    "simbolo": "DOGE",
+    "market_cap": 12434870744,
+    "variacao_7d": -0.068217
+   },
+   {
+    "id": "monero",
+    "nome": "Monero",
+    "rank": 10,
+    "preco": 561.83,
+    "simbolo": "XMR",
+    "market_cap": 10596474928,
+    "variacao_7d": 0.061999000000000005
+   },
+   {
+    "id": "whitebit",
+    "nome": "WhiteBIT Coin",
+    "rank": 11,
+    "preco": 79.61,
+    "simbolo": "WBT",
+    "market_cap": 9455061547,
+    "variacao_7d": -0.021936
+   },
+   {
+    "id": "chainlink",
+    "nome": "Chainlink",
+    "rank": 12,
+    "preco": 12.0,
+    "simbolo": "LINK",
+    "market_cap": 9199284432,
+    "variacao_7d": -0.074687
+   },
+   {
+    "id": "leo-token",
+    "nome": "LEO Token",
+    "rank": 13,
+    "preco": 9.04,
+    "simbolo": "LEO",
+    "market_cap": 8317195475,
+    "variacao_7d": 0.02226
+   },
+   {
+    "id": "cardano",
+    "nome": "Cardano",
+    "rank": 14,
+    "preco": 0.220356,
+    "simbolo": "ADA",
+    "market_cap": 8275319512,
+    "variacao_7d": -0.119001
+   },
+   {
+    "id": "near",
+    "nome": "NEAR Protocol",
+    "rank": 15,
+    "preco": 4.89,
+    "simbolo": "NEAR",
+    "market_cap": 6409627397,
+    "variacao_7d": -0.06004400000000001
+   },
+   {
+    "id": "stellar",
+    "nome": "Stellar",
+    "rank": 16,
+    "preco": 0.177718,
+    "simbolo": "XLM",
+    "market_cap": 6254667924,
+    "variacao_7d": -0.09176999999999999
+   },
+   {
+    "id": "rain",
+    "nome": "Rain",
+    "rank": 17,
+    "preco": 0.0087286,
+    "simbolo": "RAIN",
+    "market_cap": 6198940450,
+    "variacao_7d": -0.249506
+   },
+   {
+    "id": "bitcoin-cash",
+    "nome": "Bitcoin Cash",
+    "rank": 18,
+    "preco": 276.08,
+    "simbolo": "BCH",
+    "market_cap": 5549987554,
+    "variacao_7d": -0.010683
+   },
+   {
+    "id": "litecoin",
+    "nome": "Litecoin",
+    "rank": 19,
+    "preco": 58.75,
+    "simbolo": "LTC",
+    "market_cap": 4566402471,
+    "variacao_7d": -0.07367
+   },
+   {
+    "id": "uniswap",
+    "nome": "Uniswap",
+    "rank": 20,
+    "preco": 7.12,
+    "simbolo": "UNI",
+    "market_cap": 4450320075,
+    "variacao_7d": -0.047720000000000005
+   }
+  ],
+  "quedas": [
+   {
+    "id": "rain",
+    "nome": "Rain",
+    "rank": 17,
+    "preco": 0.0087286,
+    "simbolo": "RAIN",
+    "market_cap": 6198940450,
+    "variacao_7d": -0.249506
+   },
+   {
+    "id": "cardano",
+    "nome": "Cardano",
+    "rank": 14,
+    "preco": 0.220356,
+    "simbolo": "ADA",
+    "market_cap": 8275319512,
+    "variacao_7d": -0.119001
+   },
+   {
+    "id": "stellar",
+    "nome": "Stellar",
+    "rank": 16,
+    "preco": 0.177718,
+    "simbolo": "XLM",
+    "market_cap": 6254667924,
+    "variacao_7d": -0.09176999999999999
+   },
+   {
+    "id": "chainlink",
+    "nome": "Chainlink",
+    "rank": 12,
+    "preco": 12.0,
+    "simbolo": "LINK",
+    "market_cap": 9199284432,
+    "variacao_7d": -0.074687
+   },
+   {
+    "id": "litecoin",
+    "nome": "Litecoin",
+    "rank": 19,
+    "preco": 58.75,
+    "simbolo": "LTC",
+    "market_cap": 4566402471,
+    "variacao_7d": -0.07367
+   }
+  ],
+  "coletado_em": "2026-10-17T21:27:43.969185+00:00"
+ },
+ "semana": {
+  "fim": "2026-10-16",
+  "sexta": "2026-10-16",
+  "inicio": "2026-10-09",
+  "pregoes": [
+   "2026-10-13",
+   "2026-10-14",
+   "2026-10-15",
+   "2026-10-16"
+  ]
+ },
+ "versao": 1,
+ "abertura": {
+  "ouro": {
+   "ano": -0.03685701697742094,
+   "mes": -0.0013375922313519917,
+   "data": "2026-10-16",
+   "valor": 4181.10009765625,
+   "semana": -0.00834848294993551
+  },
+  "brent": {
+   "ano": 0.8054232270371204,
+   "mes": 0.06114171646566757,
+   "data": "2026-10-16",
+   "valor": 109.86000061035156,
+   "semana": 0.04908326327093526
+  },
+  "dolar": {
+   "ano": -0.06931814777998446,
+   "mes": -0.020430890184022554,
+   "data": "2026-10-16",
+   "valor": 5.09660005569458,
+   "semana": 0.01572430741393993
+  },
+  "ibovespa": {
+   "ano": 0.27497284716834747,
+   "mes": 0.10244713963722218,
+   "data": "2026-10-16",
+   "valor": 205430.0,
+   "semana": -0.01739633705941157
+  }
+ },
+ "juros_br": {
+  "curva": {
+   "data": "2026-10-16",
+   "vertices": [
+    {
+     "du": 252,
+     "anos": 1.0,
+     "taxa": 12.9234,
+     "variacao_bp": 34.42000000000007,
+     "taxa_anterior": 12.5792
+    },
+    {
+     "du": 504,
+     "anos": 2.0,
+     "taxa": 12.7898,
+     "variacao_bp": 48.41999999999995,
+     "taxa_anterior": 12.3056
+    },
+    {
+     "du": 1260,
+     "anos": 5.0,
+     "taxa": 13.0456,
+     "variacao_bp": 55.489999999999995,
+     "taxa_anterior": 12.4907
+    },
+    {
+     "du": 2520,
+     "anos": 10.0,
+     "taxa": 13.0723,
+     "variacao_bp": 55.71999999999999,
+     "taxa_anterior": 12.5151
+    }
+   ],
+   "data_anterior": "2026-10-09"
+  },
+  "indicadores": {
+   "cdi_ano": 0.1106900084303919,
+   "cdi_mes": 0.0050904231286643675,
+   "cdi_data": "2026-10-15",
+   "ipca_12m": 4.58,
+   "selic_meta": 13.75,
+   "ipca_referencia": "2026-09"
+  }
+ },
+ "noticias": {
+  "avisos": [],
+  "buscas": [
+   "Ibovespa",
+   "Copom OR Selic",
+   "dólar",
+   "juros",
+   "Fed OR \"Federal Reserve\"",
+   "inflação",
+   "economia",
+   "fiscal OR arcabouço OR \"contas públicas\""
+  ],
+  "janela": {
+   "de": "2026-10-12T03:00:00+00:00",
+   "ate": "2026-10-17T21:27:43.969185+00:00"
+  },
+  "contagem": {
+   "descartes": {
+    "nao_e_noticia": 3,
+    "boletim_diario": 99,
+    "fora_da_semana": 11,
+    "fora_da_imprensa": 278
+   },
+   "distintas": 765,
+   "na_semana": 754,
+   "recebidas": 855,
+   "na_imprensa": 476
+  },
+  "historias": [
+   {
+    "link": "https://news.google.com/rss/articles/CBMitwFBVV95cUxNTDl6c3BDNUJxYW1KVDNSekFGZS1jVUJZdndXazBTUTdtRzBGRU1xMlc4MmZqeVhIeXlPdm11MWNNenBXN1phaklGejIybzRzY3BTbHB5MEwzaHh3Wm1na25sTE05TDVVYWhRNnhKZDYzTkJ0amE4d09fai1icnJKT1BSWnBRUzZudHNtNVZway0tdVp2djByTzdhOVlkalZGVFRFSU80ZXNoU0NMZ2ZLcnNQZTUxX1XSAbwBQVVfeXFMTndhSEZfVVZ4Zi03WVpTeTJSeE1sMGx0MmdBUGVsT1ljTFdKUTB3aXA4cWxyTDN0SXhacndlODYxYkhRcTB3QlVKTnlJRVdxSkVZWmQzM3FIQ3VlUEFuQUk0N28xM2tNSzdSRWVmdHZwMWVEbHVqTzBVV1BHR09NTHhvOW1fRUhzWmJQRHBkWWJITlYyVHphbXgwVkhnX3RPeW0xb1FRTWJSSFNkM2gydlJsMklFTVFwSWFDU18?oc=5",
+    "fonte": "InfoMoney",
+    "titulo": "Brasil deve voltar ao posto de 8ª maior economia do mundo em 2027, projeta FMI",
+    "veiculos": 8,
+    "publicada_em": "2026-10-16T10:16:38+00:00",
+    "outras_fontes": [
+     {
+      "link": "https://news.google.com/rss/articles/CBMi3AFBVV95cUxNT3hNa19lM0JLUDhhRFRKZ0lobFJ0Tk40VEZtaHpTVURVWmdnblFOS3FBbkV4UWFYVi1FOWlEOG5qcEw2UGVZN1Z2eWkteFZ4Y3lDRjduYlhMclRYemhIdS1wQzE5Znd6Y1RaRXItemJBX1dxZWtOaW1aRFFZbm9QSy1Cdy1XMmdhOUh0R0cyZkdWc21BLWFiaC1ZeVcwWjFRMTdLTFVfXy1JLVhpUHQzcXlJU2otZjRFLWdmNUctX1M2dVNoR01VZzRpWmFnUV9Fb0J4bmV3YVNMZlBN?oc=5",
+      "fonte": "Folha de S.Paulo"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMirAFBVV95cUxOcDVXRmkwQk9xbEdRTW1xM1JhVlVWNG45cGEzclNPSHk1STd1dzFELXo1M0xkcHpRVE1faWJQbHJKZUNFMkRoOVhxRHBvX25VcmVvUG1RMHlmYTBBMUVGVFRRcXlKS2p2aTFsd3BZRkxuOWtuNTk5WDJXWm5CMEZKSXdvZFJ1WnV0R2ZXY0o1b2hoVDRWWUl2WE5naGJIT2kwQ0hjblpyZ3FmM0Jw?oc=5",
+      "fonte": "VEJA"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMi0AFBVV95cUxQdU5yalNUanhFeUh4WDE4cW1MbmljYi1IMEJXWFBENW9NUHZxak43QWdZN0VKMlFob2NORURDWnpPTGp3SGRnOF9nLW5NblJLMUhqdWRMcjBSZFdzZ3RPVjRtc1I1VTh0d1dCVjVjZHBKWjR2M1A4QjNkQWNpODBXUWN5ZVdBYklWUDZUa2FPZEJyOUh1eUVQOTdTZHpUMjlXZnVfZGJMVkVTS2hTdWI0Q0lhRllfSUFGMklCNUN1YmE5V05uaEtxNW1GVUZqclJf0gHfAUFVX3lxTE9fdTFwaWhqbEM5ZWI1MTc1MlozbThreDVNaEFDTmZMTXpTcHRuUTZxM3BxWHpEZ3BVSDFvLTZXOHZDZHRmQVhJWHVMSmNpNkt0OHJUS1huS1FHR1B1dVNmVFdPMmdGTkRERi1ONmNCQjJJS0IwbmdnTkU0d2VCbDlpMnk3MFNocEREbkpRNXl6U2pDZHVaeTBUSElqUlNkNnRJVG5Gb01uQmNhbVFWcDllbXI2Z0lUa3VVWUdnaXFsaHBtWERrME5EajV4eTdtX3lNOEVUbmRSZkJVd1dEXzA?oc=5",
+      "fonte": "O GLOBO"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiswFBVV95cUxPdWxkb3kyNGdrYVVJeTJNVm9xbEVidGkwTFNzSUg4Q3FMN004X2E3V0JzRDc4R3pKd1JoeTJ3V2pVRW80M1Y0UW1BR2trU2g2bkIzc19iQVZ5WHY5ZUJCSDNJWVN3ZVYxTkJUWnVIV3Y0QkxmYVJPb1l6d1RGejhlLTlUcTdERkFYbmtFWGN5WEpmaGpCSVFqb1pQRkdaMTRIdHZoRGYtQVhSTHBGMTJ2NmF5aw?oc=5",
+      "fonte": "Poder360"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMizAFBVV95cUxOVmhBUHQzM2tjXzMtY2Y0N2J0NXJyZ3ExS2JBWENIZW5BWkRoOUZmaE5OaW1sWkdPWHVaNm1QY3dZZHJDV2tLeVRfWjVhb2ROR3B4UTJqZ2YyRGRmcW5BYnhGZTF3X3lvb2g2RWl1MEJmSDZldElNY0NHMEwyRldVbGZJV0tjWnQ5blBJcnpjWHAyMzhvbmNOWWlKaWYtY252aFFoMDlwVEw1c2toNTBWbjhPb0JuRThKNFl0bU9JM0JVMVR3SV9BRVhvNDA?oc=5",
+      "fonte": "CNN Brasil"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMisAFBVV95cUxNaVRpTEpMNkxHM1pzLS1CWTRJMk5LSDZENHFzTkFfSGR4dGZyb1Z6YnYta05ReFRxVVpzZXZTQVM2Njhxc2MxWFY1N2hMcC1ocTNqYjBTdFRQdy11Y3g0VEpkVnJrdS0za2dMWkdsZ0diWm9hRE5CVFVDaU4zRzIxam9CRlFEd1BNS2U5dnlHaVBJd2hFMnlFNkVaYzU0YlA4YkZQb3dGTHY0cW9meVZlcA?oc=5",
+      "fonte": "Exame"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMipwFBVV95cUxNSGR3UmhMLWtVUUpqRmZZd0RYbnBpOF9DVDVJMndNVk5ONF9UaDZpYnd6OXQ0WmJQaDlMNFRjaWt5cmw0RGxtbmd1VWhiQ2NsOVFzR1BrcEpweXdTdVdlRDBRQmlpZ3JsX0pXc0ZWZHBmNVJhenRsc3o3VXp1STBuUllPdDBFZXB3T1dJOEtkOWdOQ2dIb0NfOEJJbjZGVUpGdFBUMEd1SQ?oc=5",
+      "fonte": "Metrópoles"
+     }
+    ]
+   },
+   {
+    "link": "https://news.google.com/rss/articles/CBMi2gFBVV95cUxQTE43U3pXOHFxT21sUWhQSWoxNlMwanBwNEd5WXlOWjFvdkRfZnFnYWFXU1JHaV9nNV95Q012QmxVdFY4SmVSRC1xemRwNmVIT2VZclRETWNXanVaSDJCdkcwYXdMQjZXbWNISGxQdXdOeDJFT1JqMWFXXzc2RVNiajdILTFZb3FjdDVseE5NV05iWGtOemh5Y2x6T2VEY3RURk9RakttcllfZ1JHUFRrMVlndFI2dER2NmhsdFBlbVI3QU1DWHhycFJYczgtSGZXRWtiVktldFpUQQ?oc=5",
+    "fonte": "Kinvo",
+    "titulo": "Economistas projetam inflação pra cima e Selic para abaixo após primeiro turno; veja o Focus desta terça-feira (13)",
+    "veiculos": 7,
+    "publicada_em": "2026-10-15T08:00:00+00:00",
+    "outras_fontes": [
+     {
+      "link": "https://news.google.com/rss/articles/CBMi_wFBVV95cUxOYzVjTHZzYm5xSVVzaGYwOG9hZG9JUy13eVQweUhTMU5LX3htQkVzX1Z5d2JjemV3MVhSWTc5eGhudGVlYmdOZG9QQTJtcVpqSV9YdFNHU3ZJQlVSVnViVDh2djRCeGx5bmgzbzdjVzhuWDdsQnNibHJBdFlQM3BUNmZ0Ukx6SFNqbGZ1bzZWRVhaaEdTUmc5cmRucjhyMnFoaXpUSHVIWmcyWnpNM0FQcEphTHg1TjFyRzM4TGFiR1gxWXppR21LUl9aZTVPVTYyb1hWT2JhVWMzTE5HUWZNRmNvSW4wQkhCYWtoOUtObmJrejNZSF9VTVVUTmdmTmPSAY4CQVVfeXFMUHRUSm9GWVJ0d3EwWjdSSTgyazM4SVd0QzZhSjMwRDZPTzR4Sy14TUJ0RDZxRDZfTzA2dVdJUmlVX1d5VnRyRTBfeHNRcVJ0Ymx0aG5NM1dYMHRveXF6Nk5aY3JQMndibVYxOEo1cjhwaFFJS0gxNFNoSjZNTTlmSzVqR3pINy1NeDZmT3hYMkoyYlpRNmZqU0ZvZmxDTnRzUEllYWlQeTBqSGdncjdqTXdrdm4tSXRHQTE4aE1MdzA3MGNhRmVVSllrXzg3NTJ5c3JOUU8tT0lWR09CWFktT2xnYW1CUWtXR25LZ2ZHWXNfZzhFaTBMLWN1dHZsWkNoMG5tcHk3OURfNUVmLU93?oc=5",
+      "fonte": "O GLOBO"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiswFBVV95cUxPaXZZMVRTbVQydmQ5Vm9uMm0wWjJoMXZjNWpiWTd1VUFiQjgxUUJDMGdUVHpOTFZMTGw2VElrR245eXVMcXFIdzZOU00tekppOVgtOHpJdzlwWUJnOXVkeWM3bnJ0X3BtbGhONXk5aG9rV2piUHRHczJQVENGNGRaWEE4WVU2QXoyazU5SVZPQlc1NjViVVZLTWhsSTJtNUxYN29HWmxFY2hHNW9PUUk3Q05DNA?oc=5",
+      "fonte": "Poder360"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMi4wFBVV95cUxQNzhXc1UtRXdlcHNxTGZfQV8wODZ4cHJWUmdiRFV0U1UwbnMzZW12UDNDYU1IdDdMZnJZd2o2bko5RkJnT0UyYUJvckU2WjRJbFJwSkQ2NDM4VGdyTHhmTWRMMnN0Z2lDZmRuWklqcUdHTDFGTjJMTk9RV0pQc0NfMkI4SlduQlFXdWpfeUtEZ29UbEFvbTNOTm9OVGFCR0xVWndjODNyd2JIcVY1dS1QUEtQQlhleWQyS1UxTHl0dUQ2SHk3cUZHX3NQazdzS2dqV1BERnI0NEFGVUk5M0pIdUMzMA?oc=5",
+      "fonte": "Money Times"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMikgFBVV95cUxQRTB2QmRiNEdNOFZscU5KSDRid2t2MHBvUVZsUGp2WktjTi1EMWNyUGZVTFFib3laT01GdFlIUkdKd0JQcE5MbzFmQXBjNjBUYnQ2OG5yMDIyeW5yZldHWlBsOHpZVjd3TDNnOEZWbjA2UDQ1cC1BbVN5cFZMdmJuaFAyX21odUVQMkxSMXRPbUJfUQ?oc=5",
+      "fonte": "SpaceMoney"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMixAFBVV95cUxOSGY0dXgxNE0tYWlwLWhGY1JyNGstX3hpaTVaNHNJZHNEOEFzdzBLNk0zMlMteW1CRWNRZ0Vtbm9NaXA3Zkg3ZVBqREo1ODh3cUI3M0c5QnpHSUl3dUNZNmxWR1NTbHl3TkZVQWpyT3BoVjlBR3lvdE8xeGhSVFpsWng4ZDFHRkEzWHVUQjNXNkU2Zm1NcGVNaXVJLVN6RXZneUtXSk1LSHJjNVRHcFlGRnpHMDRWWExNaDIyVTVLd3JydzQ00gHTAUFVX3lxTE9YVDBIWWJlSVpOTWM5WWtjdlgxcU5INDluX09OZmdkMEdzS3BJRENEWEpKcHcxYVpfTGRmbXpwM21mT0Jyd0o5bHlneGQyNUpFeTBSVnZFeDMtaG1PV2tEalA2YVJiNHQ5MEg5cWZObTlqaDdVY1NrbXFTR3l5TUdkaVZMNldQcWdtTnh0UEhQZGhZX1A3VEtPR1VKcmJmajBCWlBxQWVReG82X2c1WW41ekdQc0s1LTRMUjJMSjdBaldqMXNKSGdWZlhhWHZIaDlKUzQ?oc=5",
+      "fonte": "Valor Econômico"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMixAFBVV95cUxPRnE5R3RTUXZwcUZpNVpIemJPQTdnRFNXWTAxV0dnQWdGUDh5WlR6Qzh6bzkxUDdiYkJPdWFpTkQweDhPbUlQOE91aldmMUZZX1psSUFFbXhicl8tWFUzSmF5X1JHOXdmOV8wVlNfbnhxUmItYWNVR1REUGM2d0N5a1JtQ29vdlN2TXRmRkktQUpFakNSNVFud1NJaU9aSEhpZXJ6azNuMkg4b2tFNG5DZmUyVjdQREdrSmZteVIwNUw0Mmpn?oc=5",
+      "fonte": "Folha de S.Paulo"
+     }
+    ]
+   },
+   {
+    "link": "https://news.google.com/rss/articles/CBMikwFBVV95cUxOQnF2UE9IMGZRT2ZQU1Q2dk9hMGdWN2Y0Q3h5YVNvZTJlU3ZUT0xIalBKM2pCQ1pDWHRXMF92QlRLakxmQTJsNTJubjlTZldyUkpUczdxdW1OQ05NeHJaQVllUFNtY2ZLamk1RG1odmcwVHh6bmNtRDItV0VxOEJWSjdlVURQV3JlaXRlRlQwQmJTaUE?oc=5",
+    "fonte": "BPMoney",
+    "titulo": "Inflação dos EUA acelera em setembro e reacende debate sobre juros do Fed",
+    "veiculos": 6,
+    "publicada_em": "2026-10-16T12:36:21+00:00",
+    "outras_fontes": [
+     {
+      "link": "https://news.google.com/rss/articles/CBMi2wFBVV95cUxNdmlEZTRLRTcwQk15di0tczJrdDJLTnJkYTZFaVhTNGlwazU1clJpSmJzMk5yZ00tUmYzblRvSDhJX2hZMEpwdk96MmlGMGFxTFVSZlVEZG5aQ0ZWbFZiczk0SU54Yy1rdFRvZjFrTFZoVWpOd2Y0bFhwR2l4WGxDTk1OTmZDaTFuTTRpeHZoV21sSmdfYm1CYVJyajY0ZncwZkRKTGFlRXk3MVZPSEZldE9JRE1KTGVaLUZrVnNpMUVtLVdLcXNkWmVieF9oWWdoRDZMUmwxM3MyTWs?oc=5",
+      "fonte": "CNN Brasil"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMivgFBVV95cUxNUlEwNWRBdzZpbFNHN2dpUjZaWE1hbWszTEd1UWFpdlpMY3dWYVl5X1pLWnNoV3MtMGZZaEdqeUszb0lzTFY4Z0RGaWcwZnJKa3NfRjhpUGlsTl9mV0cwVnNxcFFwQzB0R0Mtb21RdUNpMFBaZTRqSFUyOXlYbjd6bXlVVHNkOHJZSTZtQ3J5N0lOSGxCUzRReWhnaDdONF9XaE16MDVPWVRXUFo3S0x1Z2xCOE9zVjc4SlVZRHV30gHMAUFVX3lxTFBhbGdfYnFXdVV6eV9zYjc3NWpxc0xWdVF0ZXVPbjlCTGFaODFUVFRFNTVBazFtMkIyYVhXNE1HVWZyWjRVTXpDdUF4RWF4cG5zUHVCWFBsR0l4ZGZ3X1lmYVJOUWhiTXN4RVZXbENGMnV5N1pTNkJDZ0c2YVNBTndtc2gyNWkzTlR2aFd2b1UtN3JwS0FqVkhCTEo3TEVfcl9faHZhMHNxTlRLX1RESTNoSHZkX2JqWlZkdVR6M3RSdGhFRGh6RV9pc2hoSA?oc=5",
+      "fonte": "Valor Econômico"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMivwFBVV95cUxQUnFjSzJXNng4QVpMYk55RFdjOWhqNkdNdUZ4NEY0SWlza0V6RzZuQ1R3ZlhWMk82U1o2N0poMEJyWkxlR2ZXZ3BOUHVCR0NYNFVBSjdCXzgybEZlZWs3UDNNdmhLWWs2bmZiX1Q4RWtLcXJJMUpiME5xMnd4b3k2b3c0TnM5eF85TkItNm1pelNsQzJ5clh5QjY2TlZ1TTF1WWh2STRwdF95OGtMWnRfVnFZaEl3a2F4dlFaVjVQMA?oc=5",
+      "fonte": "Folha de S.Paulo"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiowFBVV95cUxNUkk2UklqMHkydi1uRndkTEdkNS0zajBrbHEtb0xzajJiSUYyNEE4NnQ0bXhta3hwMThHOUViZ0RtOTdseUpzcHZyc3FndTUzRXVWMFdUdkZDQ1I2VHYyRWktRGcwR01CZ1I2TVhlSkpkNDhaRmNyQ2c5VnlsRXR4Y2NHWDBwc3FLT1VHcFhYTlJMTllZWGJiNERJSmlBRWtZaGJ3?oc=5",
+      "fonte": "Poder360"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMijgFBVV95cUxOSk0yOG8tRk1VYWgtV1NDR2Yzb2NYcU9nMlo2emZKejdtMVNHeG03TWtha1pWRHhKbFI1cGtrc2piQl8yVXVqN0laRmtRWmQ0Vl9fT20tNDdjOWh1VHFTSFV6Z2VUNFU3bzlSOHBfc1NWY3VqWGxta05PVG43bEt0YVJWU1NwdVpwRnZtZkt3?oc=5",
+      "fonte": "ADVFN"
+     }
+    ]
+   },
+   {
+    "link": "https://news.google.com/rss/articles/CBMiowFBVV95cUxPZ2otYVViWDN0b3lzZVc3XzRTTndWWGRtTlNnQ3piSlM2a0ZObU1WLVR4c2o4dlU1ZTlzSkNRRU9mVW9ac3dWc3M2OGR6SmF4WlJMako5TkhyMC1zYzFmZnMyOGdJSy1ONUF5a2QyQkdDZkFSTDU3UV9sNllaT2ViaHV2c2EycEt4aWliMEFKQUVmWmU3X2w5RVlpT3EyRWlrTnJn0gGoAUFVX3lxTFBxelV1Q2hzeFI3WXlZMGFqNzJIWk1QMjhiY0RJbElSSUkwUFYwTlZEWG5xVk14U2RuLVZ4VVlhMTI3ek1sLVhtQjBmbHl2NHVjTDlETGpMRDJUTXRFRXNzWVJ2eGd3YWRxOXV1eS1JR0VQMVY1aDZmcHJ2ZGxRbnJoS3llRWtJNkZMSFRqRklndHQxUEVjbzlrSmpMOXY2OW13ekNwU0pMag?oc=5",
+    "fonte": "InfoMoney",
+    "titulo": "Nobel de Economia 2026 premia Robert E. Hall e Michael Woodford",
+    "veiculos": 6,
+    "publicada_em": "2026-10-12T19:34:19+00:00",
+    "outras_fontes": [
+     {
+      "link": "https://news.google.com/rss/articles/CBMiugFBVV95cUxQbDJBQTlSSmxta0RMemhYWlpiWFhtTm1DcFNFMDN5bm55RTdKaFJOR3FhSDZwVkIzWE5pUnY0bTJsbThVUlZPNlVsTm5LZmNFdUFibnViQmN4blVYVjJYV3liSXVlRVJjbWpKUXNfRU9fekFaVDJWdUZmdGc5X2txUTBTRzZ1TC1zekFyanhEeTBZT01FZl90ZFd2RVdqdC1RN3pWd1hPbkR5MEU0TnJJaGJlLWVGZGM5Mnc?oc=5",
+      "fonte": "CNN Brasil"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiuwFBVV95cUxPZTR6R0EyNmRGTzB5RVZINDJYTjdzNzUwLTNyemNMQnJkbE1xOXRicXFRX1NwbG54ZTlSdlNMQ0ZJaUtkbDVJWFhjMVZmcXZaMU02V3gyNzFMVWpkSHlNNzFKUW5jX1RDdGlsUEFSTDdBdlZVekZkYTYtLXZDWXB6b243SUJTZzBVY3lEYVpOeUk1X2YxWDl5b19FMHExT29BMC0wTjZOOHVIYnVxY1RLS2VxR3M2QVZaU1Fj0gHKAUFVX3lxTE54UDdtQURnVTF4OTh3NzZOakRzcENjV3E4eFhCanVVSm1sWW1pX1cwMDBJRllobGV5UDdMNnRWUnNpX0N3N2o4YUFaTnU2T0dCUVlzV3RpbWVUN2t0U1dkZTZmUEFDbmRvRjJCd293R1h1T3I5Rks2WlMyVFBIS0h5OEVQcWlueXBfSmFhNElYSDJqRGRFUFFoY3FoSUxwZnVjTTVBRmhEN2hUOE8xR0N5RmU4NWZPZFhvYXJ1RWdGQkhyalh1VW1vanc?oc=5",
+      "fonte": "G1"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiwgFBVV95cUxQOUxHZGtsZzhYbExSb1o3c2N1Q0ZQaS1RYzVIREc3ckJiWVpSdG1GN2RjSnd5aXZrSzFSVExKckZ0Q1d0LTIxUFIxRjFhUUdfdl9iTTBDUWpHTnBrdjgyS3E2dnlzMmJzbEpYYnBPdGstalMtQ1JRdlFycjFDSHprQU1zaWtBS2JzblBoMGdLcDdOWjdfOWppTDFqQkphLUdXWUZaZldzbm9aM3lPanZVblJtZGg4SThnYzRHb0pLaUhCUQ?oc=5",
+      "fonte": "Valor Econômico"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMimAFBVV95cUxPOVpiYTlRZHlfN0NrU25IY2RWWEpXbjliUU1fbHRGQUNUdFJZQ3F3eWpNTzRxVm5heTU1Y3lSRFZfZHc1bTluX1paV25NQ0JvcUlRRDhxR3pXX0xRQlE2QTFnSjV5d0RpMk9val9PLXNYYlNta3U0U25WVWdVS0VncmpnSDFrV2xkYUpKRTUwM2pQSUZmXy1GV9IBpwFBVV95cUxNTHQ4VzJTNW14VkFnUzU1SGNfWTZXRjl0dFhkdmdBQ3lZZmxveE5zdFdUY0lQN0Z3TkFINTRuVU96VmJ5cnRMNVlKY1lMWnoyRENNQktRdzQ5aWRzb01UOVdWQUw5aWRrY09XeVJhT3FvMGpuU3lGNFJQZEJ2VjVfNjUxNmNQS3pYMV9kQW0tSXlaMFhvSXpPZVFGUm4wYlNTbGFmNHVyRQ?oc=5",
+      "fonte": "O GLOBO"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMivgFBVV95cUxNelliQWNkR24xQXpiRjNXcnpJY0x1NjFOTXdjaUJsaDZBZFFuajB3UzVmZ2RkNmJLNWNSb3lmSld4aGJDZHdzdGYwcG1JV1F5RzJ6NnhhQ1daZ0VZRmFHcG1XVnZrTHBEd1p4cGlPVW5EWHRJbGFwMnBJcGFnY1NOT3VRbFhTLXVjajN6TlY5R2NMbTNIT1JJRjExejBmRzhxeE9QNHZHWlN3LXNuU2JSeVF3eUpycHVmSE1JLW1n?oc=5",
+      "fonte": "Folha de S.Paulo"
+     }
+    ]
+   },
+   {
+    "link": "https://news.google.com/rss/articles/CBMiggJBVV95cUxOa2IwbkFjVWxqdW9oZXVIRDZnOEw3X2s2SXNrb0RPemxmdFRqNGxLUmVtR0FTdnFsYlhqdm9peGxWaDJKdkJfRnY3WnoyZDZYa3UtZmdCSW9xazdnZ08xbGNJQUd0UmxQQkw3YzdfR1NETE9zSjlMRl8wMk5TcTNMSThUMUJpZTlGc205TDRuSzBSLVRkUHd3WFlpTDljRV9UVy1hMG4xdGlEMUJvLWhyYXpzS1g4VHlFemt0WGZTaFRVV09mR0M4d05Sa3BrY0hJOHVTYnEtZXQtaTBPUk5DNG9MT0xkOXg2cXVRdGU1OThsRndheGlxT2g1QXNoeVd3dkE?oc=5",
+    "fonte": "Seu Dinheiro",
+    "titulo": "Flávio Bolsonaro eleito? Expectativa após 1° turno derruba dólar abaixo dos R$ 5 e coloca estas 4 ações no radar dos bancões",
+    "veiculos": 6,
+    "publicada_em": "2026-10-15T14:33:02+00:00",
+    "outras_fontes": [
+     {
+      "link": "https://news.google.com/rss/articles/CBMixAFBVV95cUxPNXgxRVlRRHdtUlV4OGtnazRGbWJGV3V4c19sWFFScW1qTWZjTGFCdFdyLWZxa3lyNk9qa09UdW5veVNTTGNwRzRwT2FPWThoYmk2YkVtYkFFSWlJQXB3bTM3U3BWVWZzU0VQbW1zZ1FKQXZXcXBqN2ViVV9DQVFadm1udTlwZXpxcE12cDlKRlJvQ19TQk9sZmRaeDNMYjh6T09YMHlyWFRadW5mV01rQVFzZVJzejlRU0Ixb25PeG5qRWNj?oc=5",
+      "fonte": "CNN Brasil"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiwAFBVV95cUxPekRSMjVrMDZrQVJwTWJpSGp5bG9lTlJGRC1UTzlDT0UtQkVpMmJqTEhPV0wyUUpzOTNrcFFZWFMzanpHRERrRUlfTWhNdzJXanNraXlYQWdVQ0V0OVNxN29SdFRKekJ2UmVNVjRVOVZQVmtna2JQNWFISXJYTTZOSjNQbDU1QXJicl92aXcyMEFmQjFOSlUyeE0yUlgxQVpZRkdRQWlLR1NHUV9xWDVIeGNBQmszZHlFWUN0SmFTS3nSAdQBQVVfeXFMTWdpbTJ5STY5YkthVFJ2ZllQSEtfTEczV1p4LWJZX0NyY3ozMnFEaVR1cjRibWlxUG9xZm43THNiZ2xBY2FzeVVkUTM4ajl6OXczZTlLMUcxQVpmX0ZKckpmeW1CbVNRV1JmanpjU1lETl9Wb1pfakQ2UXAtV2FJSzNqdkVGRGtma3VjMVpfdHJicExMUmllbjA5WTNCbXFSLWVfNm16aTgyb29XWU9PVGVvU2traWxnZHllVEE5Sm1STkxZVWE4dTJHeTQwSFlzWmZZMHk?oc=5",
+      "fonte": "Bloomberg Línea Brasil"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiuAFBVV95cUxQTlRJcnZ5UW14Snp3WW1Gczd4N0lvblBCWnF0cHl6VXZ1R01SeXllUmxpa0JXMDhHWTRjc2RabTB6QVBzZlJYWTFyaUhCQUE4NjF5d2Q1VTFvbXpmbDFMSEtRS2hVMWc2X2xoTUJKQUVfVlBPdkZzNFJCVm1kNFVLR0ZsWlltRWJxSmJhVnF1Rm8yT3kzdUlJdVhTTG5ZQTMyS25wQkJsSWFZYzdaV2FNc21mRVZ4a2pY?oc=5",
+      "fonte": "VEJA"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMi1AFBVV95cUxPT1B5WnFZUWpDRXZ5ZWtLSVJkcVE0QkgxUjBSaHBpR2Q2MnJqWWJNeVo0ZFVpSEdtdEpXNXFSRzE1QTdyaWFhZVJFYTVtRVZldUJjYXEyTENXSzQ1TlBTQlN4ZHNiOG1mS3VvQlRqdHg0SHhLNklrZUotdENZNXE2aVRuNG9EVzZKTlRlazZVaUh5SkxwQWFiVmR3bzFHdkRYSzE4QzAtaXVzVzVTRWxGU1gwOHRleFlRcmQwWmFJQl9ncXNrcGpkS2RFQnU5S3pEUUprZQ?oc=5",
+      "fonte": "Money Times"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMirAFBVV95cUxNU29lZE9QalIwZFh0ZE1KbFNsM3BTaWEwYWhPSkRGc1U2Uk5kX1RIUG5LcnlDM3RLWFctYUR1VC1RMlMzaWxxMi1LQ0o0ZWx1dDZhVHpzLWFGTl9kU1NMUWMzS2I5VVE2d3YxcmF1b1pmMGktX2NZRUtfNUJyc3pPc2JxTjB0T3NjdzVlbzM3Yzc1UmJpOW9CNlNxRVBlYjhnbFhaMkxaWVBLRjNo0gGsAUFVX3lxTE1Tb2VkT1BqUjBkWHRkTUpsU2wzcFNpYTBhaE9KREZzVTZSTmRfVEhQbktyeUMzdEtYVy1hRHVULVEyUzNpbHEyLUtDSjRlbHV0NmFUenMtYUZOX2RTU0xRYzNLYjlVUTZ3djFyYXVvWmYwaS1fY1lFS181QnJzek9zYnFOMHRPc2N3NWVvMzdjNzVSYmk5b0I2U3FFUGViOGdsWFoyTFpZUEtGM2g?oc=5",
+      "fonte": "G1"
+     }
+    ]
+   },
+   {
+    "link": "https://news.google.com/rss/articles/CBMixwFBVV95cUxPZGpOVXZveGdvRExOOWV2TlJKTEVVWmg3enc5S1lUdEFLb3FiUW5XMGF2ekFidnhIRjhnUm5ib3A4TzdsUExsR0xWcEhsQmZMMWFETFNlVjFJOFlpcnVyVmRBM3VWaHhOclF1WU1sTDlOeHZWdEZ4b3hhUmJ0cWdXalh2TkNsX3lHZG8xdV9nR1ZBUUFIOFBhOER6YThoaW9tSGwtZ1dXVHFEVlUwVWQ5UE5MTUdjS3FBUW1JWDFVR3RybUk0dmp30gHWAUFVX3lxTE4tMDFIS05WNlpmZ1l4OHNTdjJuT2o0T3lzVVhicTdDdGNZYVJrdnZjM0dYdElwemx5bmE1YkM1cHVqRG9fdGdTbExPQ1dLSnZ0bVVJc1ZCMTJVbXUyY3VYb1RDUks4YkNfbExWU1ZaQU5DMG1lYnVqNkh1c0IwOVFFaEREb0EzUjJvWUZacWRYb2NDVGZiQUtUclVBSFNjU2x6LUtaZUozVjhFdWdRNVNfQnh0ejBHVGlySFpsMjJIdXcyUnlQRndFWU1HQ24tczhHZTI1d1E?oc=5",
+    "fonte": "Valor Econômico",
+    "titulo": "Estresse com quadro eleitoral se amplia e juros futuros têm forte alta",
+    "veiculos": 5,
+    "publicada_em": "2026-10-15T20:26:57+00:00",
+    "outras_fontes": [
+     {
+      "link": "https://news.google.com/rss/articles/CBMic0FVX3lxTE9IZm4xNmpuc3lCWVZ2bk5wLVNVM3NzZ3k1RzhOeGRNZHJhb2pNRTVCV0dQMjJoSDVpX01ZSjV0N3RuRkJYenRERE4yck1SRXYxdW5QbVpnTWJteGpnbHVOa3g5dURJNWQ4ZVN4VlhDWjVwVzQ?oc=5",
+      "fonte": "ISTOÉ DINHEIRO"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMilAJBVV95cUxOa0pONGFOYk93TDRTUUp5SnZKbEY0N2N4OUhFdHRlaEpYSFZmTElGSzN6cXdBeFMzN2p0MlZjSkdEb0tXTnczeVNoT0U0c3RSWVB5NVRzZlBqM012TGF6SmtwTFFEV09uNmhnOVplNmZXUFdscUlhNkI2QVc2RTZqdDB0bEZIZlU1WlJIMlJ2WUhLZWZkTy04aXJMVEdwTlZMbVUyRXZNcHpfa2JCS3B4QzFVcTR6VGFWd1RSVzZzTUlaVlFwUDBCc2x6NGJGSllFTWVvek9JVnBLUmtxVGI0NzdqWXgwRzJQbm96eUM1XzF3MVNDczFzUGhVTEp6S3g1LUtUVXdLQ0FFTzRyMzBONnEta0rSAaMCQVVfeXFMT3prYlZ6R1pUSE1ObUI0djZ6QmlZZ1IwQW5wcllva1JEOGo3V05NdXRVWVhwaVQ3SUpPNlo3SlBVb09RRHV5ck9wY05FYjFkclZ5Rk5XOW9TekdzRFNLWGg1SzVVWkZ4bU9EZEY4QXFSTFlFODJpdENDOUtVcHVXOXZXWWpNaHdCeVlocURBR3E5b2FnejNOWnFfeXpkc3h0Wm9SMlJYaUhXb3o4a1dpSHpyU0VNM2huSUh4bDdPWTBzdm41eWFUS0s2NjY0ejc0X3BXUkd1c01ieFVkNnM0VXF0OUYzcmFZMjBtSDhDM0VyZ0FVRGZmRlFtU096d3RacGt1U3IxMEFsU0dVNnI4Zl90U1MxQVR0LUhmNU9mYzdtVWJJ?oc=5",
+      "fonte": "Valor Investe"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMi0wFBVV95cUxNVlprT2JDM1RsXzZ6ZmlkZkhRYnBEbEJ3amlTbEplRlkyelRpa1JydU5jbE0ybkQ2QkJ2MXhJcGFyVEZZMlJ0cXlPaHJfb080UmxZQ1NmekdITXV6RmxfVk4zd1R4OU45QU5Gb1BOWXlhQlRJc0FBS2otVlNCcWYtazlGeF9DQUpPeEJIWjZxanFialJQMEM2T2o0WlpDNlNhOXNvZTZVX3lleFJ2UmoxQ1ZpUHJZVVFoVlQ1STdiN2o0MTBjaERESWVuM1hwX1MxYlZn?oc=5",
+      "fonte": "Investing.com Brasil - Finanças, Câmbio e Investimentos"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiowFBVV95cUxOdEtDczRxVjhFRThPRW5NTkpWdVg3eEFNOVVKSnZObXZQak9fdjU4eTRyZ2JNUV9HdkE5WkFXUWJ4dVFNLUN3RjFRYm5rLXNJNnE2VlJIR0V5eVNrZlNmUW9HemlaQkxsajR1VjBTTzM4bnFScldGbDJXeEFJbDQwU015NUVDazgxWnJvNDBIcEU5M1Fabkt6ajFPUkdlNGZTY0RF?oc=5",
+      "fonte": "Monitor Mercantil"
+     }
+    ]
+   },
+   {
+    "link": "https://news.google.com/rss/articles/CBMiuAFBVV95cUxOZ0hXbWdqV19DbmVtWlB4a0VkQ0Y3RldWWlo1aS1jNkg4Vi1SNUJzS0E1c2t4RjF0XzdDa3VBRGpQbDlQTUZSSFQyMXJaS3hiWDdGNGhFZ0VvQzVnRm9wTW1zVjR4VXFvT3ZQVmhiY2JERkl2cnRGeVlqcXk0MlE4VWkxWjY5VDFhZDBFNjUtbVJEamFXMlZ0Njh0Zm5VXzdsdnN0TnZEWW5mbEJJU2xHbkhFeW44elZs?oc=5",
+    "fonte": "ADVFN",
+    "titulo": "O déficit orçamentário dos EUA se aproxima de US$ 2 trilhões no ano fiscal de 2026",
+    "veiculos": 5,
+    "publicada_em": "2026-10-16T20:00:00+00:00",
+    "outras_fontes": [
+     {
+      "link": "https://news.google.com/rss/articles/CBMixwFBVV95cUxPNklyQk9hRFotaVRzRW1EbXR5eVJzNWhST2tCQzh0U0U0dk5COURFdWpSUXdsVTVqWkRQMlM5ZU9lelpIeDk5SGljQWRxSUh5WUdNSlhiWDBGRG1yUzIzUFFYTHUtano5UUNMbjd4NzZiMkpnVjNGQ3NxS1Y1dTl4azR1aHZSTDhmbDM2WHREMENWRTVoMkt1d3lLdC1ydzFZemlJYllkLUM1c3V3YVlsLXhIZzVOdGptbThDVlctZXJHYU1CMURz0gHWAUFVX3lxTE8zZHdfb0dhekZuS0RhTWFIY1VkZ1lJWHk4SlVkQ1NnT3pxbnphdmswZEZyZXpxdXg1MWdHdGZmcGpQa2xXUWp5UlN0cVkxTEVBRW1OWGkwRkxJeGxSUzU0NWhsRW9JYncxMjZXSTVJY1ExVk16VkxVeFlYa0V3dnl5MmthX1UyNG5nLWJCbkJBd3hBVDNNMEtDOXZRSjdzWUpHRlk1WW9fZTlzb3JyY3J3aldMbVRuTWltMmd4MGxKZEVJT0V2YlVqVk1xMHhXVE4tUFBjcUE?oc=5",
+      "fonte": "G1"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMitAFBVV95cUxPallqbHF3NllYMmVaNzdOaHhCNEZvTzJNWFBWTGZCaTc4VFNPMjBqU0lKZ3RvRjRRdVVkVHJISm0yeXdNZm5DNnhJZHBSSkNjMGY2S0drNTBhQkJVanFnQlB1RmNHekZpSEJuLWlVM3JLSUtrNVREbUc2WkdfbkstcUZxWXIxckhVZjBGSEVlZDZfWlZTQ05oZjc1NkZ1dlhHdGpvOC02TDd5MDNUMWZublF6bEU?oc=5",
+      "fonte": "UOL Economia"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMisgFBVV95cUxPWEl5cE1sVkhpeEw4UWZfcEFxaFYzdElMbndNVmtLLV9BQjdZMWF6V0MwNGN3UXd5UWRqeWF5TUxVUHlOSUlQOW0ycHowUkQxLTRoTFoyLVVlZV80TVE4MDlDOEptTTExdkd1aUZxTTA0dWJDbTJkUDBreG9ZSURTQUF0aE1oeWhWanQyZEhQeWg4bTJ5UDVyS3Z2NWFyemVxNTlReVY3a3BsdEZSV0FMcnZn?oc=5",
+      "fonte": "VEJA"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMitgFBVV95cUxNeVZKLXFRWTRnUnN4T3VpOXVsdkRwQ2U3OUxjNTNJeWlFS1VsdC1nT1UzWTA1Q0pVVlBZYUY1Qkk2WkxMcUxiVEpmcUlCRXZIRVhTTFJPU1BQSWlGLXlKTC1ZbDhZV2toaTFORnhYSmh6NlFSNlFsVWpseVlsREJvLVdBXzhRQVBMTXh4RlA5SWlua05mUnZUZ3Y1NExQdld1a1ZuZTd4UEYtVW45U3NKTmVUQmZudw?oc=5",
+      "fonte": "Folha de S.Paulo"
+     }
+    ]
+   },
+   {
+    "link": "https://news.google.com/rss/articles/CBMi_AFBVV95cUxQSlRMcXY2dDEtWXZpWG9QTm5RaS0xTG9MdTU5Rm1mLWZtdHVlWmdIYk1zOVkzRjlaTHdBUWpBYTRyVVVZVTgyLWpIVVZfby1SWnBESXNQUzZEN3J2ZU5ReUlDQmJQMjlqM3ZDQXlkYXU3VnlSUzZoSkdZRnBSZjVnTWlyblpiM0c5a1J3Qm1mdUhOMHVkRkJkVDJoSEpzdl9CdmFleGlKV3hzWDQyYzk5c0ZpNGZmcHItRk1HVXZWSjF0Umo1a3hkQlBJdjQzZXBFT3phNHRrZGU0OXpBNzdlTklBbnVrVTBwdFZUR1p3S0JuNFozU0hkQ2ZuOFXSAYsCQVVfeXFMUG9vY1dteXpfY0FseXNQby11cXpnZHo0YzRYVjhuYnBiczJNbVRuNGJNUUpwLVZ0Y0hYdHRMazZiaGFvbzlNU0dlTjJNQTIxTkxwa2NsdkczRWI2MF9sUVBwQ1lwM2RDaUlTcWhHYVF5V2dJYlh6MVVqcnBkRW5pcno3c2M3cExiRTBYSDloS0g4V3lNbVZDVHdxSGtNaTFkTlR5RTV4Q0ZELWR3NDE5cGFjTmhqdV9WQVRrNVBLY29XclhTOVF2T3VLdDA2ZkV1UGtZVU9fVERWMFBWT3lzTUptajlsT0Q4RnZncFJ3WlJJR2dTTDBzN1gwODMwTVctakh1WGZDcTJueGxR?oc=5",
+    "fonte": "Valor Econômico",
+    "titulo": "Juros dos Treasuries de longo prazo aceleram alta após sinal ‘fraco’ do Tesouro sobre a redução de vendas de títulos",
+    "veiculos": 4,
+    "publicada_em": "2026-10-16T18:57:53+00:00",
+    "outras_fontes": [
+     {
+      "link": "https://news.google.com/rss/articles/CBMisgFBVV95cUxObFdiVEh4WWJkeDA5Q19DVlZmUjNaeTFPTFRkVnRBLW53TzY4Nkx5Y3NNSGRTRlMwZ3hJd1ExUlZxb0JxaWw5WnJheVI5VTN0ZDhXNEZUV1JJdUxpd01KOTd3MzlsZzVEaHUxLWU0dkxRd3I3ZUJsRTU5emNfdE5hdWVzTW9rLWRuTTFsQXEzUnFlT1lEVi14N2NIbjFxeU1jUXdOeVI1YkJQZUF3UjgzSWZ3?oc=5",
+      "fonte": "CNN Brasil"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMiiAFBVV95cUxQblRkUUEzajBmWlcxMUNNc0JrbG5kOFZ2blBnZDBScmFCb1dnZkhzU01yRXdtMkVpQ0tSN1FhTE1sTE5zVExrbXV4SDNWWU13ckJLOTNzX2FhYkR3d1YtY3FhcEJaMlNmWW9CMkJPaXQ3SFV3LTZXVW4zUFBEOTBDM293cElVbGRR?oc=5",
+      "fonte": "ADVFN"
+     },
+     {
+      "link": "https://news.google.com/rss/articles/CBMilwFBVV95cUxOQThVWkJaU05walRhNW8wN1UtUHBHVUlBWHFSeWptOVlIY3JhOU1FWFQ0cXBIanlOSXIwOEREY2pSMG05QkRSUFpwUXd6S0llVklnRzh0ZmhheXFQX1FZc3dwbUpvNEwtVU5NOHNzcHZpa2NkMkFrVlVGRmxnUlAzWGU2SW1KR09tR193YkFBV1U2dHdLQmdF?oc=5",
+      "fonte": "BPMoney"
+     }
+    ]
+   }
+  ]
+ },
+ "gerado_em": "2026-10-17T21:27:43.969185+00:00",
+ "proxima_semana": {
+  "fim": "2026-10-23",
+  "agenda": [
+   {
+    "data": "2026-10-23",
+    "hora": "09:00",
+    "pais": "BR",
+    "fonte": "IBGE",
+    "evento": "IPCA-15",
+    "detalhe": "outubro",
+    "consenso": null
+   }
+  ],
+  "inicio": "2026-10-19",
+  "balancos": {
+   "avisos": [],
+   "provaveis": [
+    {
+     "cd_cvm": 7510,
+     "empresa": "ROMI S.A.",
+     "tickers": [
+      "ROMI3"
+     ],
+     "documento": "ITR 3T25",
+     "entregue_em": "2025-10-21"
+    },
+    {
+     "cd_cvm": 5410,
+     "empresa": "WEG SA",
+     "tickers": [
+      "WEGE3"
+     ],
+     "documento": "ITR 3T25",
+     "entregue_em": "2025-10-22"
+    },
+    {
+     "cd_cvm": 14320,
+     "empresa": "USIMINAS",
+     "tickers": [
+      "USIM3",
+      "USIM5"
+     ],
+     "documento": "ITR 3T25",
+     "entregue_em": "2025-10-24"
+    }
+   ],
+   "confirmados": [
+    {
+     "data": "2026-10-22",
+     "fonte": "Nasdaq",
+     "cd_cvm": 906,
+     "empresa": "BANCO BRADESCO S.A.",
+     "horario": "após o fechamento",
+     "tickers": [
+      "BBDC3",
+      "BBDC4"
+     ],
+     "trimestre": "3T26"
+    }
+   ]
+  },
+  "feriados_b3": [],
+  "agenda_avisos": []
+ }
+}

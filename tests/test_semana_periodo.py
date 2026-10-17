@@ -67,3 +67,22 @@ def test_semana_sem_nenhum_pregao(monkeypatch: pytest.MonkeyPatch) -> None:
 
     with pytest.raises(SemanaSemPregaoError):
         semana_da_data(date(2026, 10, 16))
+
+
+def test_proxima_semana_a_partir_de_16_de_outubro() -> None:
+    from scanner.semana.periodo import proxima_semana
+
+    assert proxima_semana(semana_da_data(date(2026, 10, 16))) == (
+        date(2026, 10, 19),
+        date(2026, 10, 23),
+    )
+
+
+def test_proxima_semana_depois_da_sexta_feira_santa_comeca_na_segunda() -> None:
+    from scanner.semana.periodo import proxima_semana
+
+    # A sexta nominal e 03/04 (feriado, fim = quinta 02/04): a seguinte e 06/04 a 10/04.
+    assert proxima_semana(semana_da_data(date(2026, 4, 3))) == (
+        date(2026, 4, 6),
+        date(2026, 4, 10),
+    )

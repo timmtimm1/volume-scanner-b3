@@ -81,3 +81,21 @@ jobs:
       dia, e nada aqui alimenta o alerta. Domingo porque o mercado esta
       fechado e nao ha pressa nenhuma: da folga inteira antes da abertura de
       segunda para qualquer coisa que precise de atencao.
+
+  semana-manha:
+    workflow: semana.yml
+    cron: "30 8 * * 6"
+    porque: >-
+      Sabado as 08:30. Monta e envia o resumo da semana que fechou na sexta.
+      Vem 50 minutos depois da reserva do pregao das 07:40 (daily-manha), que e
+      quem garante o pregao de sexta no banco; se ele ainda faltar, o job
+      termina como adiado, sem falha.
+
+  semana-reserva:
+    workflow: semana.yml
+    cron: "30 10 * * 6"
+    porque: >-
+      Sabado as 10:30. Reserva da das 08:30, para quando ela adiou ou falhou. Se
+      ela ja enviou, esta nao repete nada: o resumo fica marcado como enviado.
+      Nesta passada, pregao ainda ausente vira aviso no Telegram, em vez de
+      silencio.

@@ -34,6 +34,7 @@ O sistema **detecta e apresenta**.
 - [Recriar do zero](#recriar-do-zero)
 - [Dificuldades conhecidas](#dificuldades-conhecidas)
 - [Notícias na ficha](#notícias-na-ficha)
+- [Resumo da semana](#resumo-da-semana)
 - [Desempenho](#desempenho)
 - [Segredos](#segredos)
 
@@ -532,6 +533,13 @@ erDiagram
         date data_com
         text fonte
     }
+    resumos_semanais {
+        date semana PK
+        date inicio
+        date fim
+        jsonb payload
+        timestamptz enviado_em
+    }
 
     daily_bars ||--o{ volume_metrics : "ticker + trade_date"
     daily_bars ||--o{ daily_features : "ticker + trade_date"
@@ -566,6 +574,7 @@ erDiagram
 | `fundamentos_trimestre` | O trimestre já calculado que a ficha lê: receita, EBITDA e lucro do trimestre e de 12 meses, patrimônio dos controladores, dívida líquida, liquidez e ações em circulação. É derivada — pode ser apagada e refeita a partir das tabelas acima |
 | `proventos` | Dividendos e JCP por papel, com a data com. Uma linha por provento e por classe: a ON e a PN da mesma empresa recebem valores diferentes |
 | `arquivos_externos` | Controle de download condicional dos arquivos da CVM: o que já foi baixado, e quando a CVM publicou |
+| `resumos_semanais` | O [resumo da semana](#resumo-da-semana) inteiro, em JSON, um por semana. Depois de enviado, não muda mais |
 
 Migrations via Alembic, em `src/scanner/storage/migrations/versions/` — nunca schema por SQL solto.
 `scanner db status` mostra pregões, linhas e tamanho de cada tabela no banco atual.
@@ -1050,6 +1059,70 @@ Medido em 24/09/2026 com o primeiro protótipo, antes da tabela das 321 empresas
 | MGLU3 | 48 | 14 | 10 | 9 promoções de loja |
 
 O ponto de restauração antes desta feature é a tag `v0.5-antes-das-noticias`.
+
+## Resumo da semana
+
+Todo sábado de manhã, um panorama da semana que fechou na sexta: as ações do universo que mais subiram e mais caíram, Ibovespa, dólar, Brent e ouro, criptomoedas, juros no Brasil e nos EUA, as notícias principais e a agenda da semana seguinte. Chega no Telegram e fica guardado numa aba do site, uma edição por semana.
+
+Nada disto alimenta a regra do alerta. É um retrato do mercado, não um julgamento sobre os eventos de volume.
+
+> **Em construção, por fases.** A fase 1 (esta) monta os dados de mercado e grava o resumo no banco. Agenda e balanços, notícias, envio no Telegram e a aba no site vêm nas próximas.
+
+```bash
+scanner semana montar                          # a última semana encerrada, só a prévia
+scanner semana montar --semana 2026-10-16      # qualquer dia da semana serve
+scanner semana montar --semana 2026-10-16 --gravar
+```
+
+Sem o último pregão da semana em `daily_bars`, o comando para com código de saída 3. O bloco de ações é o único obrigatório. Cada fonte externa é independente: se a CoinGecko ou o Fed não respondem, aquele bloco sai como "indisponível" e o resto vai.
+
+**A semana.** Vai do fechamento do último pregão da semana anterior (a base) ao fechamento do último pregão da semana. Em 13–16/10/2026, com o feriado de 12/10, a base é 09/10. Na semana da Sexta-feira Santa, o fim é a quinta. O resumo é identificado pela sexta-feira, mesmo quando ela é feriado.
+
+**A variação das ações é ajustada.** O COTAHIST traz o preço nominal: um papel que pagou R$ 2 de dividendo cai R$ 2 na data ex sem ter perdido nada, e um desdobramento 1:2 aparece como −50%. A variação aqui é a de quem comprou uma ação no fechamento da base:
+
+- provento em dinheiro com data ex na semana vai para o caixa (JCP bruto, antes do imposto);
+- desdobramento, grupamento e bonificação multiplicam as ações;
+- `variação = (ações × preço final + caixa) / preço inicial − 1`.
+
+Na semana de 16/10/2026, o BBDC4 foi de R$ 21,61 a R$ 20,36 (−5,8% no preço) e pagou R$ 0,356 de JCP com data com em 13/10. A variação ajustada é −4,1%.
+
+Os dividendos e os eventos vêm da B3 no próprio sábado (`GetListedSupplementCompany`, uma consulta por emissor, ~1 minuto para o universo). Não vêm da tabela `proventos`, que só é atualizada no domingo: um JCP aprovado na terça com data com na quinta ficaria de fora. Cada item é ligado ao papel pelo ISIN, nunca pelas 4 letras do ticker.
+
+O fator da B3 tem convenções diferentes por tipo, conferidas em casos reais:
+
+| Tipo | Fator | Caso real | Ações depois, por ação antes |
+|---|---|---|---|
+| Desdobramento | % de ações novas | BBAS, 15/04/2024: `100` | 2 |
+| Grupamento | a própria razão | MGLU, 24/05/2024: `0,1` | 0,1 |
+| Bonificação | % de ações novas | ITUB, 23/12/2025: `3` | 1,03 |
+
+Cisão, e bonificação paga em **outro** papel (quem tem ON recebe PN), não têm razão por ação que corrija o preço. O papel sai do ranking e aparece numa nota "fora do ranking", com o motivo. Papel que a B3 não conseguiu conferir fica marcado, porque "não houve evento" e "não deu para saber" não são a mesma coisa.
+
+**As fontes**, todas gratuitas e sem chave:
+
+| Bloco | Fonte | O que entra |
+|---|---|---|
+| Ações | COTAHIST + B3 | 10 maiores altas e 10 maiores quedas do universo, ajustadas |
+| Abertura | Yahoo (`^BVSP`, `BRL=X`, `BZ=F`, `GC=F`) | valor e variação na semana, no mês e no ano |
+| Cripto | CoinGecko | top 20 por valor de mercado, BTC e ETH, as 5 que mais subiram e as 5 que mais caíram em 7 dias |
+| Curva de juros | ANBIMA (ETTJ prefixada) | 1, 2, 5 e 10 anos, com a variação em pontos-base |
+| Indicadores | Banco Central (SGS 432, 12, 13522) | Selic meta, CDI no mês e no ano, IPCA em 12 meses |
+| Treasuries | Tesouro dos EUA (CSV diário) | 3 e 6 meses, 2, 5, 10 e 30 anos |
+| Fed | Projeções do FOMC (dot plot) | mediana dos juros por ano e no longo prazo |
+
+Detalhes que mudam a leitura:
+
+- **Cripto não é só valor de mercado.** O top 40 da CoinGecko em 17/10/2026 tinha 8 stablecoins e 2 ativos tokenizados (ouro e crédito imobiliário). Sem tirá-los, um quarto do ranking seriam moedas que não se mexem. Saem as categorias da própria CoinGecko listadas em `semana.cripto_categorias_excluidas`.
+- **A janela da cripto termina na hora da coleta,** não na sexta: a API gratuita só dá "últimos 7 dias". O resumo guarda o horário da coleta.
+- **O Yahoo recusa User-Agent de navegador** (429) e aceita o do projeto, o mesmo de `cotacoes/yahoo.py`.
+- **A projeção do Fed** usada é a mais recente publicada até a sexta da semana. Ela só muda quatro vezes por ano.
+- **Minério de ferro ficou de fora:** o contrato do Yahoo (`TIO=F`) parou de atualizar em agosto de 2021, e não há outra fonte gratuita semanal.
+
+**Unidades no payload.** Taxa (juro, inflação, yield) em % ao ano, como a fonte publica. Retorno (variação de preço, CDI acumulado) em fração: `0,051` é +5,1%.
+
+**Banco.** Tabela `resumos_semanais` (migration 0010), uma linha por semana, chaveada pela sexta, com o resumo inteiro em JSON. Depois de enviado (`enviado_em`), o resumo não é mais sobrescrito, só com `--substituir-enviado`: a aba do site mostra cada edição exatamente como ela saiu.
+
+O ponto de restauração antes desta feature é a tag `v0.7-antes-do-resumo-semanal`.
 
 ## Desempenho
 

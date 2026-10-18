@@ -36,6 +36,7 @@ from scanner.storage.models import (
     EmpresaTicker,
     Event,
     FundamentoTrimestre,
+    JurosHistorico,
     PriceAlert,
     ResumoSemanal,
     Trade,
@@ -1446,6 +1447,62 @@ def marcar_resumo_semanal_enviado(
     stmt = stmt.values(enviado_em=func.now()).returning(ResumoSemanal.semana)
     with engine.begin() as conn:
         return conn.execute(stmt).first() is not None
+
+
+JUROS_COLUNAS = ["semana", "serie", "taxa", "data_base", "fonte"]
+# 5 colunas por linha: 2.000 linhas ficam bem abaixo do limite de 65.535 parametros.
+JUROS_LOTE = 2000
+
+
+def gravar_juros_historico(engine: Engine, frame: pd.DataFrame) -> int:
+    """Upsert em lote do historico de juros (semana, serie, taxa, data_base, fonte).
+
+    Idempotente: regravar a mesma semana atualiza taxa, data_base e fonte. Nada e
+    apagado. Devolve quantas linhas foram enviadas.
+    """
+    if frame.empty:
+        return 0
+    registros = [
+        {
+            "semana": linha["semana"],
+            "serie": linha["serie"],
+            "taxa": Decimal(str(round(float(linha["taxa"]), 4))),
+            "data_base": linha["data_base"],
+            "fonte": linha["fonte"],
+        }
+        for linha in frame[JUROS_COLUNAS].to_dict(orient="records")
+    ]
+    with engine.begin() as conn:
+        for i in range(0, len(registros), JUROS_LOTE):
+            inserir = insert(JurosHistorico).values(registros[i : i + JUROS_LOTE])
+            conn.execute(
+                inserir.on_conflict_do_update(
+                    index_elements=[JurosHistorico.semana, JurosHistorico.serie],
+                    set_={
+                        "taxa": inserir.excluded.taxa,
+                        "data_base": inserir.excluded.data_base,
+                        "fonte": inserir.excluded.fonte,
+                    },
+                )
+            )
+    return len(registros)
+
+
+def juros_historico(engine: Engine, ate: date | None = None) -> pd.DataFrame:
+    """O historico de juros ate a semana `ate` (inclusive), em ordem de semana e serie."""
+    stmt = select(
+        JurosHistorico.semana,
+        JurosHistorico.serie,
+        JurosHistorico.taxa,
+        JurosHistorico.data_base,
+        JurosHistorico.fonte,
+    ).order_by(JurosHistorico.semana, JurosHistorico.serie)
+    if ate is not None:
+        stmt = stmt.where(JurosHistorico.semana <= ate)
+    with engine.connect() as conn:
+        frame = pd.read_sql(stmt, conn)
+    frame["taxa"] = frame["taxa"].astype(float)
+    return frame
 
 
 def papeis_com_emissor(engine: Engine, tickers: Sequence[str]) -> list[dict[str, Any]]:

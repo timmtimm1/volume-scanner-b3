@@ -699,35 +699,36 @@
  },
  "juros_br": {
   "curva": {
-   "data": "2026-10-16",
+   "data": "2026-10-15",
+   "fonte": "tesouro_direto",
    "vertices": [
     {
      "du": 252,
      "anos": 1.0,
-     "taxa": 12.9234,
-     "variacao_bp": 34.42000000000007,
-     "taxa_anterior": 12.5792
+     "taxa": 12.8978,
+     "variacao_bp": 22.64999999999997,
+     "taxa_anterior": 12.6713
     },
     {
      "du": 504,
      "anos": 2.0,
-     "taxa": 12.7898,
-     "variacao_bp": 48.41999999999995,
-     "taxa_anterior": 12.3056
+     "taxa": 12.6679,
+     "variacao_bp": 32.399999999999984,
+     "taxa_anterior": 12.3439
     },
     {
      "du": 1260,
      "anos": 5.0,
-     "taxa": 13.0456,
-     "variacao_bp": 55.489999999999995,
-     "taxa_anterior": 12.4907
+     "taxa": 12.8466,
+     "variacao_bp": 32.7300000000001,
+     "taxa_anterior": 12.5193
     },
     {
      "du": 2520,
      "anos": 10.0,
-     "taxa": 13.0723,
-     "variacao_bp": 55.71999999999999,
-     "taxa_anterior": 12.5151
+     "taxa": 12.8743,
+     "variacao_bp": 29.969999999999963,
+     "taxa_anterior": 12.5746
     }
    ],
    "data_anterior": "2026-10-09"
@@ -739,6 +740,27 @@
    "ipca_12m": 4.58,
    "selic_meta": 13.75,
    "ipca_referencia": "2026-09"
+  },
+  "curva_real": {
+   "data": "2026-10-15",
+   "fonte": "tesouro_direto",
+   "vertices": [
+    {
+     "du": 1260,
+     "anos": 5.0,
+     "taxa": 6.7958,
+     "variacao_bp": 14.149999999999974,
+     "taxa_anterior": 6.6543
+    },
+    {
+     "du": 2520,
+     "anos": 10.0,
+     "taxa": 6.8329,
+     "variacao_bp": 17.290000000000028,
+     "taxa_anterior": 6.66
+    }
+   ],
+   "data_anterior": "2026-10-09"
   }
  },
  "noticias": {

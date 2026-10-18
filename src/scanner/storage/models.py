@@ -610,3 +610,30 @@ class ResumoSemanal(Base):
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     enviado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+
+SERIES_DE_JUROS = ("pre_1a", "pre_2a", "pre_5a", "pre_10a", "ipca_5a", "ipca_10a", "selic")
+
+
+class JurosHistorico(Base):
+    """Uma taxa de juros por semana e por serie (grafico de 10 anos da aba Semana).
+
+    `semana` e a sexta-feira nominal; `data_base` e o dia de onde o numero saiu
+    (a taxa do Tesouro Direto ou a Selic vigente), que pode ser antes da sexta.
+    A serie so cresce: a montagem da semana regrava tudo desde `juros_desde`
+    (upsert) e nada e apagado.
+    """
+
+    __tablename__ = "juros_historico"
+    __table_args__ = (
+        CheckConstraint(
+            "serie IN ('pre_1a', 'pre_2a', 'pre_5a', 'pre_10a', 'ipca_5a', 'ipca_10a', 'selic')",
+            name="ck_juros_historico_serie",
+        ),
+    )
+
+    semana: Mapped[date] = mapped_column(Date, primary_key=True)
+    serie: Mapped[str] = mapped_column(Text, primary_key=True)
+    taxa: Mapped[Decimal] = mapped_column(Numeric(8, 4), nullable=False)
+    data_base: Mapped[date] = mapped_column(Date, nullable=False)
+    fonte: Mapped[str] = mapped_column(Text, nullable=False)

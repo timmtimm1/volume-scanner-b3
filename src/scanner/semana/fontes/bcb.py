@@ -12,13 +12,15 @@ from __future__ import annotations
 
 import math
 import time
+from bisect import bisect_right
 from datetime import date, datetime, timedelta
 from typing import Any
 
 import httpx
+import pandas as pd
 
 from scanner.semana.fontes import FonteIndisponivelError, baixar
-from scanner.semana.periodo import Semana
+from scanner.semana.periodo import Semana, sextas
 
 FONTE = "bcb"
 URL = (
@@ -31,6 +33,11 @@ IPCA_12M = 13522
 # O SGS responde 502 de vez em quando e acerta na tentativa seguinte (medido
 # em 17/10/2026: uma em quatro chamadas seguidas da serie 432).
 ESPERA_APOS_5XX = 2.0
+# A API diaria do SGS recusa janela maior que 10 anos; pedacos de 5 ficam folgados.
+ANOS_POR_PEDIDO = 5
+# Folga antes da primeira sexta: a Selic meta so aparece quando muda, e o valor
+# vigente na primeira sexta pode ter vindo de uma decisao de semanas antes.
+FOLGA_INICIAL_DIAS = 90
 
 
 def ler_sgs(dados: Any) -> list[tuple[date, float]]:
@@ -115,3 +122,48 @@ def indicadores(semana: Semana, *, cliente: httpx.Client | None = None) -> dict[
         _serie(CDI_DIARIO, date(fim.year, 1, 1), fim, cliente),
         _serie(IPCA_12M, fim - timedelta(days=400), fim, cliente),
     )
+
+
+def _pedacos(de: date, ate: date) -> list[tuple[date, date]]:
+    """[(de, ate)] em janelas de `ANOS_POR_PEDIDO` anos, sem buraco nem repeticao."""
+    pedacos: list[tuple[date, date]] = []
+    inicio = de
+    while inicio <= ate:
+        # Dia seguinte a (inicio + N anos): o pedaco seguinte comeca nele.
+        try:
+            limite = inicio.replace(year=inicio.year + ANOS_POR_PEDIDO)
+        except ValueError:  # 29/02
+            limite = inicio.replace(year=inicio.year + ANOS_POR_PEDIDO, day=28)
+        fim = min(ate, limite - timedelta(days=1))
+        pedacos.append((inicio, fim))
+        inicio = fim + timedelta(days=1)
+    return pedacos
+
+
+def selic_por_semana(pontos: list[tuple[date, float]], sextas: list[date]) -> pd.DataFrame:
+    """A Selic meta vigente em cada sexta: o ultimo ponto com data <= a sexta.
+
+    Colunas como as da tabela `juros_historico`. Sexta sem ponto anterior
+    (antes do inicio da serie) nao entra.
+    """
+    datas = [d for d, _ in pontos]
+    linhas: list[dict[str, Any]] = []
+    for sexta in sextas:
+        posicao = bisect_right(datas, sexta) - 1
+        if posicao < 0:
+            continue
+        data, valor = pontos[posicao]
+        linhas.append(
+            {"semana": sexta, "serie": "selic", "taxa": valor, "data_base": data, "fonte": FONTE}
+        )
+    return pd.DataFrame(linhas, columns=["semana", "serie", "taxa", "data_base", "fonte"])
+
+
+def selic_semanal(desde: date, ate: date, *, cliente: httpx.Client | None = None) -> pd.DataFrame:
+    """A Selic meta de cada sexta entre `desde` e `ate` (SGS 432), em pedacos de 5 anos."""
+    pontos: dict[date, float] = {}
+    for de, fim in _pedacos(desde - timedelta(days=FOLGA_INICIAL_DIAS), ate):
+        pontos.update(_serie(SELIC_META, de, fim, cliente))
+    if not pontos:
+        raise FonteIndisponivelError(FONTE, "Selic meta sem nenhum ponto no periodo")
+    return selic_por_semana(sorted(pontos.items()), sextas(desde, ate))

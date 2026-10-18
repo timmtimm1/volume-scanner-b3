@@ -42,6 +42,8 @@ def test_nomes_das_tabelas() -> None:
     # calculado que a ficha le, refeito a partir das tabelas acima.
     # `resumos_semanais` (migration 0010) guarda o resumo semanal de mercado ja
     # montado, um por semana, para o envio e o site lerem sem refazer as consultas.
+    # `juros_historico` (migration 0011) e a serie de juros do grafico de 10 anos:
+    # uma taxa por semana e por serie (Tesouro Direto e Selic meta).
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -61,6 +63,7 @@ def test_nomes_das_tabelas() -> None:
         "proventos",
         "fundamentos_trimestre",
         "resumos_semanais",
+        "juros_historico",
     }
 
 
@@ -89,6 +92,7 @@ def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
         ("cvm_resultados", ["cd_cvm", "tipo", "dt_refer", "dt_ini", "dt_fim"]),
         ("cvm_balancos", ["cd_cvm", "tipo", "dt_refer"]),
         ("arquivos_externos", ["url"]),
+        ("juros_historico", ["semana", "serie"]),
     ],
 )
 def test_chaves_primarias(name: str, expected: list[str]) -> None:

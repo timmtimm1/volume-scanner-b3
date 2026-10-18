@@ -64,8 +64,9 @@ semana:
   # Categorias da CoinGecko que nao entram: em 17/10/2026 o top 40 tinha 8
   # stablecoins, tether-gold e figure-heloc (papeis tokenizados).
   cripto_categorias_excluidas: [stablecoins, tokenized-products, tokenized-btc, liquid-staking-tokens]
-  # Vertices da curva prefixada da ANBIMA, em dias uteis: 1, 2, 5 e 10 anos.
-  curva_vertices_du: [252, 504, 1260, 2520]
+  # Primeira semana da serie historica de juros (Tesouro Direto e Selic): fixa em
+  # 14/10/2016, 10 anos antes da primeira execucao. A serie so cresce dali.
+  juros_desde: 2016-10-14
   # Vencimentos do Tesouro americano, como o CSV do Treasury os rotula.
   treasuries: ["3 Mo", "6 Mo", "2 Yr", "5 Yr", "10 Yr", "30 Yr"]
   # Noticias da semana (Google Noticias): quantas historias entram, e as buscas

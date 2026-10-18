@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { ResumoDaSemana, SemanaVazia } from "@/components/ResumoDaSemana";
-import { edicoesDaSemana, nomesDosPapeis, resumoDaSemana } from "@/lib/db";
+import { edicoesDaSemana, jurosHistorico, nomesDosPapeis, resumoDaSemana } from "@/lib/db";
 import { periodoDaSemana, tickersDasAcoes } from "@/lib/semana";
 
 /** A edicao mais recente. Mesma tela de `/semana/[sexta]`, sem redirecionar. */
@@ -19,6 +19,9 @@ export default async function Semana() {
   if (edicoes.length === 0) return <SemanaVazia />;
   const resumo = await resumoDaSemana(edicoes[0].sexta);
   if (!resumo) return <SemanaVazia />;
-  const nomes = await nomesDosPapeis(tickersDasAcoes(resumo.acoes));
-  return <ResumoDaSemana resumo={resumo} edicoes={edicoes} nomes={nomes} />;
+  const [nomes, juros] = await Promise.all([
+    nomesDosPapeis(tickersDasAcoes(resumo.acoes)),
+    jurosHistorico(resumo.semana.sexta),
+  ]);
+  return <ResumoDaSemana resumo={resumo} edicoes={edicoes} nomes={nomes} juros={juros} />;
 }

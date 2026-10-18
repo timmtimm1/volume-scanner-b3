@@ -16,11 +16,11 @@ from scanner.config import ScannerConfig
 from scanner.semana import agenda, balancos, montagem
 from scanner.semana.fontes import (
     FonteIndisponivelError,
-    anbima,
     bcb,
     cripto,
     fed,
     google_noticias,
+    tesouro_direto,
     treasury,
     yahoo,
 )
@@ -33,6 +33,20 @@ from scanner.semana.montagem import (
 from scanner.semana.periodo import semana_da_data
 from scanner.storage import repository
 
+FIXTURES = Path(__file__).parent / "fixtures" / "semana"
+# Recorte real do CSV do Tesouro Direto (13 e 14/10/2016, 13/10/2017, 09 e 15/10/2026).
+TITULOS = tesouro_direto.ler_csv((FIXTURES / "tesouro_direto_recorte.csv").read_bytes())
+SELIC_SEMANAL = pd.DataFrame(
+    [
+        {
+            "semana": date(2026, 10, 16),
+            "serie": "selic",
+            "taxa": 13.75,
+            "data_base": date(2026, 10, 16),
+            "fonte": "bcb",
+        }
+    ]
+)
 SEMANA = semana_da_data(date(2026, 10, 16))
 AGORA = datetime(2026, 10, 17, 19, 0, tzinfo=UTC)
 ENGINE: Any = object()
@@ -150,11 +164,8 @@ def _patch_fontes(monkeypatch: pytest.MonkeyPatch, **falhas: Exception) -> None:
         vivo("abertura", dict.fromkeys(("ibovespa", "dolar", "brent", "ouro"), ativo)),
     )
     monkeypatch.setattr(cripto, "buscar_cripto", vivo("cripto", {"moedas": []}))
-    monkeypatch.setattr(
-        anbima,
-        "curva_prefixada",
-        vivo("curva", {"data": "2026-10-16", "data_anterior": "2026-10-09", "vertices": []}),
-    )
+    monkeypatch.setattr(tesouro_direto, "baixar_titulos", vivo("tesouro_direto", TITULOS))
+    monkeypatch.setattr(bcb, "selic_semanal", vivo("selic_historica", SELIC_SEMANAL))
     monkeypatch.setattr(
         bcb,
         "indicadores",
@@ -412,3 +423,94 @@ def test_previa_das_noticias(monkeypatch: pytest.MonkeyPatch) -> None:
         in texto
     )
     assert "AVISO: busca 'Fed' falhou: HTTP 503" in texto
+
+
+def test_curva_e_curva_real_vem_do_tesouro_direto(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch)
+
+    juros = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)["juros_br"]
+
+    assert juros["curva"]["fonte"] == "tesouro_direto"
+    assert juros["curva"]["data"] == "2026-10-15"  # a data base real, nao a sexta
+    assert juros["curva"]["data_anterior"] == "2026-10-09"
+    assert [v["du"] for v in juros["curva"]["vertices"]] == [252, 504, 1260, 2520]
+    assert [v["du"] for v in juros["curva_real"]["vertices"]] == [1260, 2520]
+    assert set(juros["curva"]["vertices"][0]) == {
+        "du",
+        "anos",
+        "taxa",
+        "taxa_anterior",
+        "variacao_bp",
+    }
+
+
+def test_tesouro_direto_fora_derruba_so_as_duas_curvas(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(
+        monkeypatch,
+        tesouro_direto=FonteIndisponivelError("tesouro_direto", "HTTP 503"),
+        cripto=FonteIndisponivelError("coingecko", "HTTP 429"),
+    )
+
+    payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+
+    assert payload["juros_br"]["curva"] == {"erro": "HTTP 503"}
+    assert payload["juros_br"]["curva_real"] == {"erro": "HTTP 503"}
+    assert payload["juros_br"]["indicadores"]["selic_meta"] == 13.75
+    assert "Curva prefixada: indisponivel: HTTP 503" in previa(payload)
+
+
+def test_so_grava_o_historico_de_juros_quando_pedem(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch)
+    gravados: list[pd.DataFrame] = []
+    monkeypatch.setattr(
+        repository, "gravar_juros_historico", lambda _e, frame: gravados.append(frame) or 0
+    )
+
+    montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+    assert gravados == []
+
+    montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA, gravar_juros=True)
+    assert len(gravados) == 1
+    frame = gravados[0]
+    assert {"pre_1a", "pre_10a", "ipca_10a", "selic"} <= set(frame["serie"])
+    assert set(frame["fonte"]) == {"tesouro_direto", "bcb"}
+
+
+def test_selic_historica_fora_nao_derruba_os_prefixados(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch, selic_historica=FonteIndisponivelError("bcb", "HTTP 502"))
+    gravados: list[pd.DataFrame] = []
+    monkeypatch.setattr(
+        repository, "gravar_juros_historico", lambda _e, frame: gravados.append(frame) or 0
+    )
+
+    payload = montar_dados_de_mercado(
+        ENGINE, ScannerConfig(), SEMANA, agora=AGORA, gravar_juros=True
+    )
+
+    assert "erro" not in payload["juros_br"]["curva"]
+    assert "selic" not in set(gravados[0]["serie"])
+
+
+def test_falha_ao_gravar_o_historico_nao_derruba_o_resumo(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch)
+
+    def cai(*_a: Any) -> int:
+        raise RuntimeError("banco fora")
+
+    monkeypatch.setattr(repository, "gravar_juros_historico", cai)
+
+    payload = montar_dados_de_mercado(
+        ENGINE, ScannerConfig(), SEMANA, agora=AGORA, gravar_juros=True
+    )
+
+    assert "erro" not in payload["juros_br"]["curva"]
+
+
+def test_previa_mostra_as_duas_curvas_do_tesouro(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch, cripto=FonteIndisponivelError("coingecko", "HTTP 429"))
+    payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+
+    texto = previa(payload)
+
+    assert "Curva prefixada Tesouro Direto (15/10/2026 vs 09/10/2026)" in texto
+    assert "Juro real IPCA+ Tesouro Direto (15/10/2026 vs 09/10/2026)" in texto

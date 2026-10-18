@@ -179,11 +179,13 @@ def _juros(payload: Mapping[str, Any]) -> str:
     curva: Any = br_.get("curva")
     indicadores: Any = br_.get("indicadores")
     tesouro: Any = eua.get("treasuries")
+    real: Any = br_.get("curva_real")
 
-    def vertice(du: int) -> Mapping[str, Any] | None:
-        if _erro(curva):
+    def vertice(du: int, bloco: Any = curva) -> Mapping[str, Any] | None:
+        # Edicao antiga nao tem `curva_real`: a linha do IPCA+ simplesmente nao sai.
+        if bloco is None or _erro(bloco):
             return None
-        return next((v for v in curva["vertices"] if v["du"] == du), None)
+        return next((v for v in bloco["vertices"] if v["du"] == du), None)
 
     def vencimento(prazo: str) -> Mapping[str, Any] | None:
         if _erro(tesouro):
@@ -200,6 +202,7 @@ def _juros(payload: Mapping[str, Any]) -> str:
         com_variacao("Pré 1 ano", vertice(252)),
         com_variacao("Pré 10 anos", vertice(2520)),
         _linha_juros("Selic", selic),
+        *([com_variacao("IPCA+ 10 anos", vertice(2520, real))] if real is not None else []),
         com_variacao("Treasury 2 anos", vencimento("2 Yr")),
         com_variacao("Treasury 10 anos", vencimento("10 Yr")),
     ]

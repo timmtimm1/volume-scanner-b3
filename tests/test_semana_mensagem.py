@@ -85,6 +85,13 @@ def test_cinco_altas_e_cinco_quedas(payload: dict[str, Any]) -> None:
     ]
 
 
+def test_semana_sem_alta_diz_que_nenhuma_subiu(payload: dict[str, Any]) -> None:
+    payload["acoes"]["altas"] = []
+    texto = formatar_mensagem(payload, BASE)
+    assert _bloco(texto, "Maiores altas") == ["<i>nenhuma ação subiu</i>"]
+    assert len(_bloco(texto, "Maiores quedas")) == 5
+
+
 def test_sem_ajuste_nao_ha_nota_de_rodape(payload: dict[str, Any]) -> None:
     assert "ajustada" not in formatar_mensagem(payload, BASE)
 

@@ -417,9 +417,9 @@ def _previa_cripto(bloco: dict[str, Any]) -> list[str]:
     linhas.append(f" Top {len(bloco['moedas'])} sem stablecoins e tokenizados")
     linhas += [_linha_moeda(m) for m in bloco["moedas"]]
     linhas.append(" Maiores altas (sem BTC e ETH)")
-    linhas += [_linha_moeda(m) for m in bloco["altas"]]
+    linhas += [_linha_moeda(m) for m in bloco["altas"]] or ["  (nenhuma)"]
     linhas.append(" Maiores quedas (sem BTC e ETH)")
-    linhas += [_linha_moeda(m) for m in bloco["quedas"]]
+    linhas += [_linha_moeda(m) for m in bloco["quedas"]] or ["  (nenhuma)"]
     return linhas
 
 

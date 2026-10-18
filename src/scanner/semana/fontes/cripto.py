@@ -64,6 +64,10 @@ def montar_cripto(
     `moedas` sao as `top` maiores por valor de mercado depois da exclusao, com
     `rank` = posicao nessa lista filtrada. As altas e quedas saem dessas mesmas
     moedas, sem BTC e ETH (que ja vem em campo proprio).
+
+    Alta e so quem subiu e queda so quem caiu: numa semana em que tres moedas
+    subiram, a lista de altas tem tres, e nao duas quedas para completar.
+    Variacao zero nao entra em nenhuma.
     """
     validas = [m for m in mercado if isinstance(m, dict) and m.get("id") not in excluidos]
     moedas = [_moeda(m, posicao) for posicao, m in enumerate(validas[:top], start=1)]
@@ -72,8 +76,10 @@ def montar_cripto(
         return next((m for m in moedas if m["id"] == id_), None)
 
     candidatas = [m for m in moedas if m["id"] not in (BTC, ETH) and m["variacao_7d"] is not None]
-    altas = sorted(candidatas, key=lambda m: (-m["variacao_7d"], m["rank"]))[:destaques]
-    quedas = sorted(candidatas, key=lambda m: (m["variacao_7d"], m["rank"]))[:destaques]
+    subiram = [m for m in candidatas if m["variacao_7d"] > 0]
+    cairam = [m for m in candidatas if m["variacao_7d"] < 0]
+    altas = sorted(subiram, key=lambda m: (-m["variacao_7d"], m["rank"]))[:destaques]
+    quedas = sorted(cairam, key=lambda m: (m["variacao_7d"], m["rank"]))[:destaques]
     return {
         "moedas": moedas,
         "btc": destaque(BTC),

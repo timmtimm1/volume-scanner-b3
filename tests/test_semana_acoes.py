@@ -191,7 +191,7 @@ def test_cisao_fica_fora_do_ranking() -> None:
     assert _linha(out, "BOAA3")["eventos_sem_ajuste"] is None
     altas, quedas, fora = ranking(out, 10)
     assert list(altas["ticker"]) == ["BOAA3"]
-    assert list(quedas["ticker"]) == ["BOAA3"]
+    assert quedas.empty  # BOAA3 subiu: nao e queda
     assert list(fora["ticker"]) == ["CISA3"]
 
 
@@ -284,8 +284,24 @@ def test_ranking_com_empate_desempata_por_ticker() -> None:
     altas, quedas, fora = ranking(out, 2)
 
     assert list(altas["ticker"]) == ["AAAA3", "BBBB3"]
-    assert list(quedas["ticker"]) == ["DDDD3", "AAAA3"]
+    assert list(quedas["ticker"]) == ["DDDD3"]  # so ela caiu
     assert fora.empty
+
+
+def test_altas_so_com_quem_subiu_e_quedas_so_com_quem_caiu() -> None:
+    """18/10/2026: nas criptos, "Maiores altas" saiu com duas moedas em queda.
+
+    As acoes usam a mesma regra de ranking e tinham o mesmo defeito: numa
+    semana com uma alta so, a lista de altas era completada com quedas. Se o
+    ranking voltar a ser "as n maiores variacoes", este teste quebra.
+    """
+    barras = _barras(SOBE3=(10.0, 11.0), PARA3=(10.0, 10.0), CAI3=(10.0, 9.5), DESCE3=(10.0, 8.0))
+    out = _calc(barras)
+
+    altas, quedas, _ = ranking(out, 5)
+
+    assert list(altas["ticker"]) == ["SOBE3"]
+    assert list(quedas["ticker"]) == ["DESCE3", "CAI3"]
 
 
 # --- coleta ---------------------------------------------------------------

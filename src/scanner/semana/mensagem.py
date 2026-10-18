@@ -104,9 +104,12 @@ def _acoes(bloco: Any) -> str:
     quedas = list(bloco["quedas"])[:LADO_DO_RANKING]
     if not altas and not quedas:
         return f"📈 <b>Ações</b>\n{INDISPONIVEL}"
+    # Lado vazio diz que ninguem subiu (ou caiu), em vez de um titulo solto.
     partes = [
-        "📈 <b>Maiores altas</b>\n" + "\n".join(_linha_acao(a) for a in altas),
-        "📉 <b>Maiores quedas</b>\n" + "\n".join(_linha_acao(a) for a in quedas),
+        "📈 <b>Maiores altas</b>\n"
+        + ("\n".join(_linha_acao(a) for a in altas) or "<i>nenhuma ação subiu</i>"),
+        "📉 <b>Maiores quedas</b>\n"
+        + ("\n".join(_linha_acao(a) for a in quedas) or "<i>nenhuma ação caiu</i>"),
     ]
     texto = "\n\n".join(partes)
     if any(a.get("ajustado") for a in (*altas, *quedas)):

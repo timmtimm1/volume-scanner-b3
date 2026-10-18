@@ -53,7 +53,9 @@ def test_altas_e_quedas_sem_btc_e_eth() -> None:
     bloco = montar_cripto(MERCADO, EXCLUIDOS, top=20, destaques=5)
 
     altas, quedas = bloco["altas"], bloco["quedas"]
-    assert len(altas) == len(quedas) == 5
+    # Em 17/10 so tres moedas do top 20 subiram: as altas sao tres, nao cinco.
+    assert len(altas) == 3
+    assert len(quedas) == 5
     ids = {m["id"] for m in altas + quedas}
     assert not ids & {"bitcoin", "ethereum"}
     assert [m["variacao_7d"] for m in altas] == sorted(
@@ -64,6 +66,34 @@ def test_altas_e_quedas_sem_btc_e_eth() -> None:
     assert altas[0]["id"] == "monero"
     assert altas[0]["variacao_7d"] == pytest.approx(0.065885)
     assert quedas[0]["id"] == "rain"
+
+
+def test_altas_so_com_quem_subiu_e_quedas_so_com_quem_caiu() -> None:
+    """18/10/2026: o site mostrava WBT (-3,1%) e BCH (-3,2%) em "Maiores altas".
+
+    Na semana so tres moedas subiram, e as altas eram completadas com as menores
+    quedas ate dar cinco. Se a lista voltar a ser so "as cinco maiores
+    variacoes", este teste quebra: com o ranking real de 17/10 ha tres altas, e
+    nenhuma moeda aparece nas duas listas.
+    """
+    bloco = montar_cripto(MERCADO, EXCLUIDOS, top=20, destaques=5)
+
+    assert [m["id"] for m in bloco["altas"]] == ["monero", "leo-token", "tron"]
+    assert all(m["variacao_7d"] > 0 for m in bloco["altas"])
+    assert all(m["variacao_7d"] < 0 for m in bloco["quedas"])
+    assert not {m["id"] for m in bloco["altas"]} & {m["id"] for m in bloco["quedas"]}
+
+
+def test_variacao_zero_nao_e_alta_nem_queda() -> None:
+    mercado: list[dict[str, Any]] = [
+        {"id": "parada", "symbol": "p", "name": "P", "price_change_percentage_7d_in_currency": 0.0},
+        {"id": "caiu", "symbol": "c", "name": "C", "price_change_percentage_7d_in_currency": -1.0},
+    ]
+
+    bloco = montar_cripto(mercado, set(), top=2, destaques=5)
+
+    assert bloco["altas"] == []
+    assert [m["id"] for m in bloco["quedas"]] == ["caiu"]
 
 
 def test_variacao_ausente_nao_entra_nos_destaques() -> None:

@@ -6,6 +6,7 @@ import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AnelDoDesvio } from "@/components/AnelDoDesvio";
 import { COR_DO_BALANCO, Grafico } from "@/components/Grafico";
+import { ArranjoDaPagina, GradeDeCaixas } from "@/components/OrganizarCaixas";
 import type { Direcao } from "@/lib/alertas";
 import { PainelDeAlerta } from "@/components/PainelDeAlerta";
 import { PainelDeNoticias } from "@/components/PainelDeNoticias";
@@ -281,6 +282,297 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
     .sort((a, b) => a - b);
   const mercadoCalmo = (evento?.mktVolZ ?? 0) < 2;
 
+  const caixaIdentidade = (
+    <section className="cartao flex flex-col gap-3.5 p-5">
+      <div className="flex items-center gap-3">
+        <Link
+          href="/"
+          aria-label="Voltar ao scanner"
+          className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-linha text-tinta-2 transition-colors hover:text-acento lg:hidden"
+        >
+          <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
+            <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+          </svg>
+        </Link>
+        <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-selecao text-[15px] font-extrabold text-acento lg:flex">
+          {ticker.slice(0, 2)}
+        </span>
+        <div className="min-w-0 flex-1">
+          <h1 className="text-[26px] font-extrabold leading-none tracking-tight">{ticker}</h1>
+          {nome && (
+            <p className="mt-1 truncate text-[14px] font-bold text-tinta-2">
+              {nome}
+            </p>
+          )}
+          <p className="num mt-1 text-[13px] font-semibold text-tinta-3">
+            {evento ? `Pregão de ${fmtData(evento.tradeDate)}` : "sem evento no período"}
+          </p>
+        </div>
+        {evento && (
+          <span className="lg:hidden">
+            <AnelDoDesvio z={evento.zLog} tamanho={56} espessura={5} fonte={14} />
+          </span>
+        )}
+      </div>
+
+      {barra && (
+        <div className="flex flex-wrap items-center gap-2.5">
+          <span className="num text-[30px] font-extrabold tracking-tight">{reais(barra.close)}</span>
+          <ChipDeVariacao valor={evento?.retDay ?? null} grande />
+          {evento?.notificado && (
+            <span className="rounded-full bg-evento-fundo px-2.5 py-1 text-[11px] font-bold text-evento-tinta">
+              notificado no Telegram
+            </span>
+          )}
+        </div>
+      )}
+
+      {parcial && (
+        <div className="flex items-center gap-2.5 rounded-xl bg-painel-2 px-3 py-2.5">
+          <span className="relative h-2.5 w-2.5 shrink-0">
+            <span className="pulso absolute -inset-1.5 rounded-full bg-acento" />
+            <span className="absolute inset-0 rounded-full bg-acento" />
+          </span>
+          <span className="num whitespace-nowrap text-[12px] font-bold text-tinta-3">
+            Hoje · {horaNaB3(parcial.hora)}
+          </span>
+          <span className="num flex-1 whitespace-nowrap text-right text-[15px] font-extrabold">
+            {reais(parcial.close)}
+          </span>
+          {ultimoOficial !== null && (
+            <span className={`num text-[13px] font-extrabold ${corDaDirecao(parcial.close / ultimoOficial - 1)}`}>
+              {percentual(parcial.close / ultimoOficial - 1)}
+            </span>
+          )}
+        </div>
+      )}
+    </section>
+  );
+
+  const caixaGrafico = (
+    <section className="cartao flex min-w-0 flex-col gap-4 p-4 md:p-5">
+      <div className="flex flex-col gap-1">
+        <h2 className="text-[18px] font-extrabold">Gráfico diário</h2>
+        <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-tinta-3">
+          <span>
+            {barras.length} pregões{parcial ? " e a cotação de hoje" : ""}
+          </span>
+          <span className="flex items-center gap-1.5">
+            <span className="h-2.5 w-1.5 rounded-[1px] bg-evento" />
+            candle do evento
+          </span>
+          {/* As marcas de balanco apareciam no candle sem nada dizendo o
+              que eram. A cor vem do proprio grafico, para nao divergir. */}
+          {publicacoes.length > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span
+                className="h-2 w-2 rounded-full"
+                style={{ background: COR_DO_BALANCO }}
+              />
+              balanço publicado
+            </span>
+          )}
+        </p>
+      </div>
+
+      <Grafico
+        barras={barras}
+        eventos={eventos}
+        destaque={evento?.tradeDate}
+        alertas={alertasNoGrafico}
+        escolhendoPreco={estadoDosAlertas.escolhendo}
+        aoEscolherPreco={estadoDosAlertas.escolherNoGrafico}
+        hoje={hoje}
+        operacoes={operacoesDeTrade}
+        posicao={posicaoDoGrafico}
+        publicacoes={publicacoes}
+        regua={regua}
+        edicaoDeAlertas={edicaoDeAlertas}
+        classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
+      />
+
+      {eventos.length > 0 && (
+        <div className="flex flex-col gap-2.5 rounded-2xl bg-painel-2 p-3 md:flex-row md:items-center">
+          <span className="flex shrink-0 flex-col">
+            <span className="text-[13px] font-extrabold">Eventos deste papel</span>
+            <span className="text-[11px] font-semibold text-tinta-3">
+              {eventos.length === 1 ? "cruzou 3σ uma vez" : `cruzou 3σ ${eventos.length} vezes`}
+            </span>
+          </span>
+          <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
+            {eventos.map((e) => {
+              const selecionado = e.tradeDate === evento?.tradeDate;
+              return (
+                <Link
+                  key={e.tradeDate}
+                  href={`/papel/${ticker}/?data=${e.tradeDate}`}
+                  replace
+                  scroll={false}
+                  aria-current={selecionado ? "true" : undefined}
+                  className={`num flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-bold transition-colors ${
+                    selecionado
+                      ? "bg-primario text-primario-tinta"
+                      : "border border-linha bg-painel text-tinta hover:border-acento"
+                  }`}
+                >
+                  {e.zLog >= LIMIAR_DO_ALERTA && <span className="h-2 w-2 rounded-full bg-evento" />}
+                  {fmtData(e.tradeDate).slice(0, 5)}
+                  <span className={selecionado ? "opacity-75" : "text-acento"}>{numero(e.zLog)}</span>
+                </Link>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </section>
+  );
+
+  const caixaDesvio = evento && (
+    <div className="cartao flex flex-col gap-4 p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[16px] font-extrabold">Desvio do volume</h2>
+        <span className="text-[12px] font-bold text-evento-tinta">
+          alerta em {numero(LIMIAR_DO_ALERTA, 0)}σ
+        </span>
+      </div>
+      <div className="hidden items-center gap-4 lg:flex">
+        <AnelDoDesvio z={evento.zLog} tamanho={104} espessura={11} />
+        <div className="flex flex-col gap-1">
+          <span className="text-[13px] font-bold text-tinta-2">maior entre as janelas</span>
+          <span className="num text-[12px] font-semibold text-tinta-3">
+            janela de {evento.zJanela} pregões
+          </span>
+          {evento.zRobust !== null && (
+            <span className="num text-[12px] font-semibold text-tinta-3">
+              z robusto {numero(evento.zRobust)}
+            </span>
+          )}
+        </div>
+      </div>
+      <div className="flex flex-col gap-2.5">
+        {janelas.map((j) => {
+          const z = evento.zByWindow[j] ?? 0;
+          const largura = Math.min(Math.max(z, 0), TETO_DAS_JANELAS) / TETO_DAS_JANELAS;
+          return (
+            <div key={j} className="flex items-center gap-2.5">
+              <span className="num w-8 text-[12px] font-bold text-tinta-3">{j}d</span>
+              <span className="relative h-2 flex-1 rounded-full bg-selecao">
+                <span
+                  className={`absolute inset-y-0 left-0 rounded-full ${z >= LIMIAR_DO_ALERTA ? "bg-evento" : "bg-acento"}`}
+                  style={{ width: `${largura * 100}%` }}
+                />
+                <span
+                  className="absolute -top-1 h-4 w-0.5 rounded-sm bg-evento"
+                  style={{ left: `${(LIMIAR_DO_ALERTA / TETO_DAS_JANELAS) * 100}%` }}
+                />
+              </span>
+              <span className="num w-10 text-right text-[13px] font-extrabold">{numero(z)}</span>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+
+  // O ticket vai junto dos numeros: e a leitura deles.
+  const caixaNumeros = evento && (
+    <div className="flex flex-col gap-4">
+      <div className="cartao grid grid-cols-2 gap-2.5 p-3.5">
+        <Quadro
+          rotulo="Volume relativo"
+          valor={multiplo(evento.rvol)}
+          nota={`mediana de ${janelas[0] ?? 30}d`}
+        />
+        <Quadro
+          rotulo="Financeiro"
+          valor={dinheiro(evento.volumeFinancial)}
+          nota={evento.tradesCount ? `${numero(evento.tradesCount, 0)} negócios` : null}
+        />
+        <Quadro
+          rotulo="Ticket médio"
+          valor={reais(evento.avgTicket, 0)}
+          nota={`z ${numero(evento.ticketZ, 1)}`}
+        />
+        <Quadro
+          rotulo="z do mercado"
+          valor={numero(evento.mktVolZ)}
+          nota={mercadoCalmo ? "dia normal" : "mercado agitado"}
+        />
+      </div>
+
+      {ticket && (
+        <p className="rounded-2xl bg-selecao px-4 py-3.5 text-[13px] leading-relaxed text-tinta-2">
+          Ticket de <strong className="num text-tinta">{reais(evento.avgTicket, 0)}</strong>
+          {evento.tradesCount ? (
+            <>
+              {" "}com <strong className="num text-tinta">{numero(evento.tradesCount, 0)}</strong> negócios
+            </>
+          ) : null}
+          : <strong className="text-acento">{ticket}</strong>.
+        </p>
+      )}
+    </div>
+  );
+
+  const caixaAbas = (
+    <div className="cartao px-5 pb-2 pt-5">
+      <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
+        {abas.length > 1 ? (
+          <div className="flex items-center gap-1" role="tablist" aria-label="O que ver">
+            {abas.map((chave) => (
+              <button
+                key={chave}
+                type="button"
+                role="tab"
+                aria-selected={abaAberta === chave}
+                onClick={() => setAba(chave)}
+                className={`num rounded-full px-3 py-1.5 text-[14px] font-extrabold transition-colors ${
+                  abaAberta === chave ? "bg-selecao text-acento" : "text-tinta-3 hover:text-tinta"
+                }`}
+              >
+                {rotuloDaAba[chave]}
+              </button>
+            ))}
+          </div>
+        ) : (
+          <h2 className="text-[16px] font-extrabold">Notícias</h2>
+        )}
+        <span className="shrink-0 text-[12px] font-semibold text-tinta-3">a leitura é sua</span>
+      </div>
+      {abaAberta === "fundamentos" ? (
+        painelDeFundamentos
+      ) : abaAberta === "noticias" ? (
+        <PainelDeNoticias estado={noticias} />
+      ) : (
+        evento && (
+          <>
+            <LinhaDeContexto rotulo="Variação do dia" valor={percentual(evento.retDay)} cor={corDaDirecao(evento.retDay)} />
+            <LinhaDeContexto rotulo="Gap de abertura" valor={percentual(evento.gap)} cor={corDaDirecao(evento.gap)} />
+            <LinhaDeContexto rotulo="Fechou no range" valor={proporcao(evento.clv)} fracao={evento.clv} />
+            <LinhaDeContexto rotulo="Amplitude do dia" valor={proporcao(evento.rangeNorm, 1)} />
+            <LinhaDeContexto
+              rotulo={faixa ? `Faixa de 252 pregões · ${faixa}` : "Faixa de 252 pregões"}
+              valor={proporcao(evento.pos252)}
+              fracao={evento.pos252}
+            />
+            <LinhaDeContexto
+              rotulo="20 pregões anteriores"
+              valor={percentual(evento.retPrior20)}
+              cor={corDaDirecao(evento.retPrior20)}
+            />
+            <LinhaDeContexto rotulo="z do ticket" valor={numero(evento.ticketZ, 1)} />
+            <div className="flex min-h-[50px] items-center gap-3">
+              <span className="flex-1 text-[13px] font-extrabold">z líquido do mercado</span>
+              <span className="num inline-flex h-8 items-center rounded-full bg-selecao px-3 text-[15px] font-extrabold text-acento">
+                {numero(evento.zExcess)}
+              </span>
+            </div>
+          </>
+        )
+      )}
+    </div>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       {pedidoAusente && pedido && (
@@ -292,297 +584,20 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
         </p>
       )}
 
-      <div className="grid gap-4 lg:grid-cols-[300px_minmax(0,1fr)_360px] lg:grid-rows-[auto_1fr]">
-        {/* Identidade: papel, pregao e preco */}
-        <section className="cartao flex flex-col gap-3.5 p-5 lg:col-start-1 lg:row-start-1">
-          <div className="flex items-center gap-3">
-            <Link
-              href="/"
-              aria-label="Voltar ao scanner"
-              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full border border-linha text-tinta-2 transition-colors hover:text-acento lg:hidden"
-            >
-              <svg width="18" height="18" viewBox="0 0 20 20" fill="none" aria-hidden>
-                <path d="M12 4l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-              </svg>
-            </Link>
-            <span className="hidden h-12 w-12 shrink-0 items-center justify-center rounded-2xl bg-selecao text-[15px] font-extrabold text-acento lg:flex">
-              {ticker.slice(0, 2)}
-            </span>
-            <div className="min-w-0 flex-1">
-              <h1 className="text-[26px] font-extrabold leading-none tracking-tight">{ticker}</h1>
-              {nome && (
-                <p className="mt-1 truncate text-[14px] font-bold text-tinta-2">
-                  {nome}
-                </p>
-              )}
-              <p className="num mt-1 text-[13px] font-semibold text-tinta-3">
-                {evento ? `Pregão de ${fmtData(evento.tradeDate)}` : "sem evento no período"}
-              </p>
-            </div>
-            {evento && (
-              <span className="lg:hidden">
-                <AnelDoDesvio z={evento.zLog} tamanho={56} espessura={5} fonte={14} />
-              </span>
-            )}
-          </div>
-
-          {barra && (
-            <div className="flex flex-wrap items-center gap-2.5">
-              <span className="num text-[30px] font-extrabold tracking-tight">{reais(barra.close)}</span>
-              <ChipDeVariacao valor={evento?.retDay ?? null} grande />
-              {evento?.notificado && (
-                <span className="rounded-full bg-evento-fundo px-2.5 py-1 text-[11px] font-bold text-evento-tinta">
-                  notificado no Telegram
-                </span>
-              )}
-            </div>
-          )}
-
-          {parcial && (
-            <div className="flex items-center gap-2.5 rounded-xl bg-painel-2 px-3 py-2.5">
-              <span className="relative h-2.5 w-2.5 shrink-0">
-                <span className="pulso absolute -inset-1.5 rounded-full bg-acento" />
-                <span className="absolute inset-0 rounded-full bg-acento" />
-              </span>
-              <span className="num whitespace-nowrap text-[12px] font-bold text-tinta-3">
-                Hoje · {horaNaB3(parcial.hora)}
-              </span>
-              <span className="num flex-1 whitespace-nowrap text-right text-[15px] font-extrabold">
-                {reais(parcial.close)}
-              </span>
-              {ultimoOficial !== null && (
-                <span className={`num text-[13px] font-extrabold ${corDaDirecao(parcial.close / ultimoOficial - 1)}`}>
-                  {percentual(parcial.close / ultimoOficial - 1)}
-                </span>
-              )}
-            </div>
-          )}
-        </section>
-
-        {/* Grafico */}
-        <section className="cartao flex min-w-0 flex-col gap-4 p-4 md:p-5 lg:col-start-2 lg:row-span-2 lg:row-start-1">
-          <div className="flex flex-col gap-1">
-            <h2 className="text-[18px] font-extrabold">Gráfico diário</h2>
-            <p className="flex flex-wrap items-center gap-x-2 gap-y-1 text-[13px] font-semibold text-tinta-3">
-              <span>
-                {barras.length} pregões{parcial ? " e a cotação de hoje" : ""}
-              </span>
-              <span className="flex items-center gap-1.5">
-                <span className="h-2.5 w-1.5 rounded-[1px] bg-evento" />
-                candle do evento
-              </span>
-              {/* As marcas de balanco apareciam no candle sem nada dizendo o
-                  que eram. A cor vem do proprio grafico, para nao divergir. */}
-              {publicacoes.length > 0 && (
-                <span className="flex items-center gap-1.5">
-                  <span
-                    className="h-2 w-2 rounded-full"
-                    style={{ background: COR_DO_BALANCO }}
-                  />
-                  balanço publicado
-                </span>
-              )}
-            </p>
-          </div>
-
-          <Grafico
-            barras={barras}
-            eventos={eventos}
-            destaque={evento?.tradeDate}
-            alertas={alertasNoGrafico}
-            escolhendoPreco={estadoDosAlertas.escolhendo}
-            aoEscolherPreco={estadoDosAlertas.escolherNoGrafico}
-            hoje={hoje}
-            operacoes={operacoesDeTrade}
-            posicao={posicaoDoGrafico}
-            publicacoes={publicacoes}
-            regua={regua}
-            edicaoDeAlertas={edicaoDeAlertas}
-            classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
-          />
-
-          {eventos.length > 0 && (
-            <div className="flex flex-col gap-2.5 rounded-2xl bg-painel-2 p-3 md:flex-row md:items-center">
-              <span className="flex shrink-0 flex-col">
-                <span className="text-[13px] font-extrabold">Eventos deste papel</span>
-                <span className="text-[11px] font-semibold text-tinta-3">
-                  {eventos.length === 1 ? "cruzou 3σ uma vez" : `cruzou 3σ ${eventos.length} vezes`}
-                </span>
-              </span>
-              <div className="-mx-1 flex gap-2 overflow-x-auto px-1 pb-1">
-                {eventos.map((e) => {
-                  const selecionado = e.tradeDate === evento?.tradeDate;
-                  return (
-                    <Link
-                      key={e.tradeDate}
-                      href={`/papel/${ticker}/?data=${e.tradeDate}`}
-                      replace
-                      scroll={false}
-                      aria-current={selecionado ? "true" : undefined}
-                      className={`num flex h-10 shrink-0 items-center gap-2 rounded-full px-3.5 text-[13px] font-bold transition-colors ${
-                        selecionado
-                          ? "bg-primario text-primario-tinta"
-                          : "border border-linha bg-painel text-tinta hover:border-acento"
-                      }`}
-                    >
-                      {e.zLog >= LIMIAR_DO_ALERTA && <span className="h-2 w-2 rounded-full bg-evento" />}
-                      {fmtData(e.tradeDate).slice(0, 5)}
-                      <span className={selecionado ? "opacity-75" : "text-acento"}>{numero(e.zLog)}</span>
-                    </Link>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-        </section>
-
-        {/* Desvio, numeros e leitura */}
-        {evento && (
-          <section className="flex flex-col gap-4 lg:col-start-1 lg:row-start-2">
-            <div className="cartao flex flex-col gap-4 p-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-[16px] font-extrabold">Desvio do volume</h2>
-                <span className="text-[12px] font-bold text-evento-tinta">
-                  alerta em {numero(LIMIAR_DO_ALERTA, 0)}σ
-                </span>
-              </div>
-              <div className="hidden items-center gap-4 lg:flex">
-                <AnelDoDesvio z={evento.zLog} tamanho={104} espessura={11} />
-                <div className="flex flex-col gap-1">
-                  <span className="text-[13px] font-bold text-tinta-2">maior entre as janelas</span>
-                  <span className="num text-[12px] font-semibold text-tinta-3">
-                    janela de {evento.zJanela} pregões
-                  </span>
-                  {evento.zRobust !== null && (
-                    <span className="num text-[12px] font-semibold text-tinta-3">
-                      z robusto {numero(evento.zRobust)}
-                    </span>
-                  )}
-                </div>
-              </div>
-              <div className="flex flex-col gap-2.5">
-                {janelas.map((j) => {
-                  const z = evento.zByWindow[j] ?? 0;
-                  const largura = Math.min(Math.max(z, 0), TETO_DAS_JANELAS) / TETO_DAS_JANELAS;
-                  return (
-                    <div key={j} className="flex items-center gap-2.5">
-                      <span className="num w-8 text-[12px] font-bold text-tinta-3">{j}d</span>
-                      <span className="relative h-2 flex-1 rounded-full bg-selecao">
-                        <span
-                          className={`absolute inset-y-0 left-0 rounded-full ${z >= LIMIAR_DO_ALERTA ? "bg-evento" : "bg-acento"}`}
-                          style={{ width: `${largura * 100}%` }}
-                        />
-                        <span
-                          className="absolute -top-1 h-4 w-0.5 rounded-sm bg-evento"
-                          style={{ left: `${(LIMIAR_DO_ALERTA / TETO_DAS_JANELAS) * 100}%` }}
-                        />
-                      </span>
-                      <span className="num w-10 text-right text-[13px] font-extrabold">{numero(z)}</span>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            <div className="cartao grid grid-cols-2 gap-2.5 p-3.5">
-              <Quadro
-                rotulo="Volume relativo"
-                valor={multiplo(evento.rvol)}
-                nota={`mediana de ${janelas[0] ?? 30}d`}
-              />
-              <Quadro
-                rotulo="Financeiro"
-                valor={dinheiro(evento.volumeFinancial)}
-                nota={evento.tradesCount ? `${numero(evento.tradesCount, 0)} negócios` : null}
-              />
-              <Quadro
-                rotulo="Ticket médio"
-                valor={reais(evento.avgTicket, 0)}
-                nota={`z ${numero(evento.ticketZ, 1)}`}
-              />
-              <Quadro
-                rotulo="z do mercado"
-                valor={numero(evento.mktVolZ)}
-                nota={mercadoCalmo ? "dia normal" : "mercado agitado"}
-              />
-            </div>
-
-            {ticket && (
-              <p className="rounded-2xl bg-selecao px-4 py-3.5 text-[13px] leading-relaxed text-tinta-2">
-                Ticket de <strong className="num text-tinta">{reais(evento.avgTicket, 0)}</strong>
-                {evento.tradesCount ? (
-                  <>
-                    {" "}com <strong className="num text-tinta">{numero(evento.tradesCount, 0)}</strong> negócios
-                  </>
-                ) : null}
-                : <strong className="text-acento">{ticket}</strong>.
-              </p>
-            )}
-          </section>
-        )}
-
-        {/* Contexto e alerta */}
-        <section className="flex flex-col gap-4 lg:col-start-3 lg:row-span-2 lg:row-start-1">
-          <div className="cartao px-5 pb-2 pt-5">
-            <div className="mb-1.5 flex flex-wrap items-center justify-between gap-x-3 gap-y-1">
-              {abas.length > 1 ? (
-                <div className="flex items-center gap-1" role="tablist" aria-label="O que ver">
-                  {abas.map((chave) => (
-                    <button
-                      key={chave}
-                      type="button"
-                      role="tab"
-                      aria-selected={abaAberta === chave}
-                      onClick={() => setAba(chave)}
-                      className={`num rounded-full px-3 py-1.5 text-[14px] font-extrabold transition-colors ${
-                        abaAberta === chave ? "bg-selecao text-acento" : "text-tinta-3 hover:text-tinta"
-                      }`}
-                    >
-                      {rotuloDaAba[chave]}
-                    </button>
-                  ))}
-                </div>
-              ) : (
-                <h2 className="text-[16px] font-extrabold">Notícias</h2>
-              )}
-              <span className="shrink-0 text-[12px] font-semibold text-tinta-3">a leitura é sua</span>
-            </div>
-            {abaAberta === "fundamentos" ? (
-              painelDeFundamentos
-            ) : abaAberta === "noticias" ? (
-              <PainelDeNoticias estado={noticias} />
-            ) : (
-              evento && (
-                <>
-                  <LinhaDeContexto rotulo="Variação do dia" valor={percentual(evento.retDay)} cor={corDaDirecao(evento.retDay)} />
-                  <LinhaDeContexto rotulo="Gap de abertura" valor={percentual(evento.gap)} cor={corDaDirecao(evento.gap)} />
-                  <LinhaDeContexto rotulo="Fechou no range" valor={proporcao(evento.clv)} fracao={evento.clv} />
-                  <LinhaDeContexto rotulo="Amplitude do dia" valor={proporcao(evento.rangeNorm, 1)} />
-                  <LinhaDeContexto
-                    rotulo={faixa ? `Faixa de 252 pregões · ${faixa}` : "Faixa de 252 pregões"}
-                    valor={proporcao(evento.pos252)}
-                    fracao={evento.pos252}
-                  />
-                  <LinhaDeContexto
-                    rotulo="20 pregões anteriores"
-                    valor={percentual(evento.retPrior20)}
-                    cor={corDaDirecao(evento.retPrior20)}
-                  />
-                  <LinhaDeContexto rotulo="z do ticket" valor={numero(evento.ticketZ, 1)} />
-                  <div className="flex min-h-[50px] items-center gap-3">
-                    <span className="flex-1 text-[13px] font-extrabold">z líquido do mercado</span>
-                    <span className="num inline-flex h-8 items-center rounded-full bg-selecao px-3 text-[15px] font-extrabold text-acento">
-                      {numero(evento.zExcess)}
-                    </span>
-                  </div>
-                </>
-              )
-            )}
-          </div>
-          <PainelDeTrade estado={estadoDosTrades} hoje={hoje} />
-          <PainelDeAlerta estado={estadoDosAlertas} computador={computador} />
-        </section>
-      </div>
+      <ArranjoDaPagina pagina="ficha">
+        {/* As caixas e a ordem do celular estao em lib/paginas-arrumaveis.ts. */}
+        <GradeDeCaixas
+          caixas={{
+            identidade: caixaIdentidade,
+            grafico: caixaGrafico,
+            desvio: caixaDesvio,
+            numeros: caixaNumeros,
+            abas: caixaAbas,
+            trade: <PainelDeTrade estado={estadoDosTrades} hoje={hoje} />,
+            alerta: <PainelDeAlerta estado={estadoDosAlertas} computador={computador} />,
+          }}
+        />
+      </ArranjoDaPagina>
     </div>
   );
 }

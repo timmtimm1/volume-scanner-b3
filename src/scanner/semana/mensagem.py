@@ -274,7 +274,9 @@ def formatar_mensagem(payload: Mapping[str, Any], base_url: str) -> str:
     tem tamanho fixo.
     """
     semana = payload["semana"]
-    link = f"{base_url.rstrip('/')}/semana/{semana['sexta']}"
+    # Com barra final: o site usa `trailingSlash`, e sem ela cada toque no link
+    # passava por um 308 antes de abrir a pagina.
+    link = f"{base_url.rstrip('/')}/semana/{semana['sexta']}/"
     historias = _historias(payload.get("noticias"))
 
     def montar(noticias: list[str] | None) -> str:

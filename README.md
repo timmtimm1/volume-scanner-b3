@@ -307,7 +307,7 @@ que faz abrir instantâneo no 4G.
 
 Só roda no servidor o que depende de quem está olhando, do preço de agora ou de
 algo que muda mais rápido que o rebuild diário: `/api/auth` (login),
-`/api/alertas` e `/api/trades` (exigem login), as páginas `/alertas` e
+`/api/alertas`, `/api/trades` e `/api/arranjos` (exigem login), as páginas `/alertas` e
 `/trades` (mostram só o convite para entrar sem login), `/api/cotacao` (o
 candle de hoje, com cache de 5 minutos por papel) e `/api/noticias/[ticker]`
 (as manchetes da aba Notícias, com cache de 30 minutos — pública, completa a
@@ -331,6 +331,45 @@ dentro de `web/` seria uma segunda fonte de verdade para a mesma credencial.
 A ficha também funciona em 390px de largura — é o link que chega pelo alerta do Telegram:
 
 <img src="docs/screenshots/ficha-celular-escuro.png" alt="Ficha do papel no celular, tema escuro" width="320">
+
+### Organizar as caixas (no computador)
+
+Logado, com a janela a partir de 1024 px, o cabeçalho da página ganha o botão
+**Organizar**. No modo, cada caixa ganha contorno e alça: arrastar troca a caixa
+de lugar, e o **↔** alterna a largura (meia ou toda, nas páginas de 2 colunas;
+1, 2 ou 3 colunas nas de 3). **Concluir** grava, **Cancelar** desfaz e
+**Restaurar padrão** volta ao arranjo do código. Pelo teclado: a alça recebe
+foco, e as setas fazem o mesmo que o arrasto. Fora do modo nada se mexe — o
+gráfico de juros continua navegando com o arrasto.
+
+Ligado por enquanto na Semana. As caixas e o arranjo padrão de cada página
+estão em `web/src/lib/paginas-arrumaveis.ts`.
+
+- **A regra de posição.** O arranjo é a lista ordenada das caixas, cada uma com
+  a coluna onde começa e quantas ocupa. Cada caixa fica logo abaixo da última
+  anterior que divide coluna com ela: caixas em colunas diferentes empilham cada
+  uma na sua, sem buraco, e caixa na largura toda fica abaixo de tudo o que veio
+  antes. As colunas de cada página continuam as de sempre — as laterais fixas
+  da ficha e do scanner continuam fixas.
+- **CSS puro, sem medir altura.** `planejar` (em `web/src/lib/arranjo.ts`)
+  transforma o arranjo numa árvore de grades e pilhas. Por isso a página sai do
+  servidor já arrumada, e uma caixa que cresce (as notícias chegando) empurra as
+  de baixo sem JavaScript.
+- **Na conta, não no navegador.** O arranjo fica na tabela `arranjos`, pela rota
+  `/api/arranjos` (só o dono). O navegador guarda uma cópia para desenhar o
+  arranjo já na primeira pintura: o script do `<head>` esconde as caixas até o
+  React aplicá-la, em vez de mostrar o padrão e pular (e o CSS as mostra sozinho
+  em 1,5 s se o JavaScript não chegar). Visitante, ou o dono deslogado, vê o
+  padrão.
+- **O celular não muda.** Abaixo de 1024 px a grade vira uma coluna na ordem do
+  padrão, qualquer que seja o arranjo, e o botão não aparece.
+- **Caixa nova não se perde.** Caixa que entra no código depois de um arranjo
+  salvo aparece logo depois da caixa que a precede no padrão; caixa que sai do
+  código some do arranjo sozinha.
+- **Na Semana, as colunas empilham.** Antes, Notícias e Cripto, Juros e EUA
+  ficavam em linhas alinhadas, com vão embaixo da caixa mais curta de cada par.
+  No arranjo, cada coluna empilha sem vão, e a agenda e os balanços viraram
+  caixas separadas.
 
 ### Deploy na Vercel
 
@@ -548,6 +587,11 @@ erDiagram
         date data_base
         text fonte
     }
+    arranjos {
+        text pagina PK
+        jsonb itens
+        timestamptz atualizado_em
+    }
 
     daily_bars ||--o{ volume_metrics : "ticker + trade_date"
     daily_bars ||--o{ daily_features : "ticker + trade_date"
@@ -584,6 +628,7 @@ erDiagram
 | `arquivos_externos` | Controle de download condicional dos arquivos da CVM: o que já foi baixado, e quando a CVM publicou |
 | `resumos_semanais` | O [resumo da semana](#resumo-da-semana) inteiro, em JSON, um por semana. Depois de enviado, não muda mais |
 | `juros_historico` | A série de juros do gráfico da aba Semana: uma taxa por semana (a sexta) e por série — Pré 1, 2, 5 e 10 anos, IPCA+ 5 e 10 anos (Tesouro Direto) e Selic meta (Banco Central) —, com o dia de onde o número saiu. Só cresce: cada montagem regrava tudo (upsert) e nada é apagado |
+| `arranjos` | O arranjo das caixas de cada página no computador, escolhido no [Organizar](#organizar-as-caixas-no-computador): uma linha por tipo de página (a ficha vale para todo papel, a Semana para toda edição). Só o site escreve, pela rota com login; sem linha, vale o padrão do código |
 
 Migrations via Alembic, em `src/scanner/storage/migrations/versions/` — nunca schema por SQL solto.
 `scanner db status` mostra pregões, linhas e tamanho de cada tabela no banco atual.

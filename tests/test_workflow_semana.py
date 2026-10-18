@@ -32,9 +32,10 @@ def _passo(workflow: dict[Any, Any], id_: str) -> dict[str, Any]:
 def test_so_dispara_de_fora(workflow: dict[Any, Any]) -> None:
     gatilhos: Any = workflow.get("on") or workflow.get(True)
     assert set(gatilhos) == {"workflow_dispatch"}
-    assert set(gatilhos["workflow_dispatch"]["inputs"]) == {"semana", "reenviar"}
+    assert set(gatilhos["workflow_dispatch"]["inputs"]) == {"semana", "reenviar", "so_juros"}
     assert gatilhos["workflow_dispatch"]["inputs"]["semana"]["default"] == "ultima"
     assert gatilhos["workflow_dispatch"]["inputs"]["reenviar"]["default"] is False
+    assert gatilhos["workflow_dispatch"]["inputs"]["so_juros"]["default"] is False
 
 
 def test_permissao_minima_um_por_vez_e_teto_de_tempo(workflow: dict[Any, Any]) -> None:
@@ -116,8 +117,20 @@ def test_enviado_so_quando_a_linha_de_sucesso_aparece(workflow: dict[Any, Any]) 
 def test_rebuild_so_depois_de_enviar(workflow: dict[Any, Any]) -> None:
     condicao = str(_passo(workflow, "vercel")["if"])
     assert "steps.resumo.outputs.enviado == 'true'" in condicao
+    assert "steps.juros.outputs.gravado == 'true'" in condicao
     assert "VERCEL_DEPLOY_HOOK != ''" in condicao
     assert "adiado" not in condicao
+
+
+def test_so_juros_grava_o_historico_e_nao_monta_nem_envia(workflow: dict[Any, Any]) -> None:
+    assert _passo(workflow, "resumo")["if"] == "${{ !inputs.so_juros }}"
+    juros = _passo(workflow, "juros")
+    assert juros["if"] == "${{ inputs.so_juros }}"
+    run = str(juros["run"])
+    assert 'scanner semana juros --semana "$SEMANA"' in run
+    assert "enviar" not in run
+    assert "set -o pipefail" in run, "falha do comando tem de derrubar o passo"
+    assert "gravado=true" in run
 
 
 def test_aviso_de_falha_e_o_ultimo_e_nao_dispara_com_a_guarda(
@@ -129,5 +142,6 @@ def test_aviso_de_falha_e_o_ultimo_e_nao_dispara_com_a_guarda(
     assert "steps.guarda.outcome != 'failure'" in condicao
     assert "api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}" in str(ultimo["run"])
     run = str(ultimo["run"])
-    for onde in ("dependencias", "segredos", "migrations", "resumo", "rebuild"):
+    passos = ("dependencias", "segredos", "migrations", "resumo", "historico de juros", "rebuild")
+    for onde in passos:
         assert onde in run, f"o aviso nao diz quando falha {onde}"

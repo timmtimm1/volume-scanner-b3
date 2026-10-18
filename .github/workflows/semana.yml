@@ -13,7 +13,9 @@ name: semana (resumo semanal)
 #   ainda faltar, avisa no Telegram em vez de ficar calado.
 #
 # Para reenviar uma edicao ja enviada, ou outra semana, use Run workflow com os
-# campos `semana` e `reenviar`.
+# campos `semana` e `reenviar`. Com `so_juros`, nada e montado nem enviado: so
+# o historico de juros do grafico (Tesouro Direto e Selic) e gravado ate aquela
+# semana, e o site e reconstruido.
 on:
   workflow_dispatch:
     inputs:
@@ -24,6 +26,11 @@ on:
         default: "ultima"
       reenviar:
         description: "Envia de novo um resumo que ja foi enviado"
+        type: boolean
+        required: false
+        default: false
+      so_juros:
+        description: "So grava o historico de juros do grafico e atualiza o site, sem mandar mensagem"
         type: boolean
         required: false
         default: false
@@ -99,6 +106,7 @@ jobs:
 
       - name: Resumo da semana
         id: resumo
+        if: ${{ !inputs.so_juros }}
         shell: bash
         run: |
           # 10h ou mais em Brasilia = a passada de reserva (10:30): se o pregao de
@@ -125,11 +133,23 @@ jobs:
           fi
           exit "$codigo"
 
+      - name: So o historico de juros
+        id: juros
+        if: ${{ inputs.so_juros }}
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run --no-sync scanner semana juros --semana "$SEMANA" 2>&1 | tee /tmp/semana.log
+          if grep -q '^\[gravado\]' /tmp/semana.log; then
+            echo "gravado=true" >> "$GITHUB_OUTPUT"
+          fi
+
       - name: Disparar rebuild na Vercel
         id: vercel
-        # So quando o resumo saiu agora: a aba do site mostra a edicao nova.
-        # Adiado, pulado (ja enviado) e falha nao mudam o site.
-        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.resumo.outputs.enviado == 'true' }}
+        # So quando o resumo saiu agora, ou quando o historico de juros foi
+        # gravado: a aba do site mostra o que mudou. Adiado, pulado (ja enviado)
+        # e falha nao mudam o site.
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' && (steps.resumo.outputs.enviado == 'true' || steps.juros.outputs.gravado == 'true') }}
         run: |
           curl -sS -f --retry 3 --retry-delay 2 --retry-connrefused \
             -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null
@@ -144,6 +164,7 @@ jobs:
           RES_SEGREDOS: ${{ steps.segredos.outcome }}
           RES_MIGRATIONS: ${{ steps.migrations.outcome }}
           RES_RESUMO: ${{ steps.resumo.outcome }}
+          RES_JUROS: ${{ steps.juros.outcome }}
           RES_VERCEL: ${{ steps.vercel.outcome }}
         run: |
           onde="passo desconhecido"
@@ -160,6 +181,8 @@ jobs:
             else
               onde="resumo, antes da primeira etapa"
             fi
+          elif [ "$RES_JUROS" = failure ]; then
+            onde="historico de juros"
           elif [ "$RES_VERCEL" = failure ]; then
             onde="rebuild na Vercel"
           fi

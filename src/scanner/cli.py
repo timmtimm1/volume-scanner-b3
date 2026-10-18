@@ -962,6 +962,47 @@ def semana_montar(
         )
 
 
+@semana_app.command("juros")
+def semana_juros(
+    semana: Annotated[
+        str,
+        typer.Option(
+            "--semana",
+            help="Grava ate esta semana: 'ultima' (a encerrada mais recente) ou AAAA-MM-DD.",
+        ),
+    ] = "ultima",
+) -> None:
+    """Grava so o historico de juros (Tesouro Direto e Selic), sem montar nem enviar o resumo.
+
+    Enche o grafico da aba Semana sem mandar mensagem. Uma fonte fora do ar vira
+    aviso e a outra e gravada; sai 1 se nada foi gravado.
+    """
+    from scanner.semana.montagem import gravar_historico_de_juros
+    from scanner.storage.engine import build_engine
+    from scanner.storage.migracao import migrar_se_preciso
+
+    periodo = _periodo_da_semana(semana)
+    engine = build_engine()
+    revisao = migrar_se_preciso(engine)
+    if revisao is not None:
+        typer.echo(f"[migrado] schema atualizado para {revisao}")
+
+    gravado = gravar_historico_de_juros(engine, load_config(), periodo)
+    for fonte, erro in (("Tesouro Direto", gravado.erro_td), ("Selic", gravado.erro_selic)):
+        if erro is not None:
+            typer.secho(f"[aviso] {fonte} indisponivel: {erro}", fg=typer.colors.YELLOW)
+    if not gravado.por_serie:
+        typer.secho("[erro] nenhuma taxa gravada", fg=typer.colors.RED)
+        raise typer.Exit(code=1)
+    for serie, semanas in gravado.por_serie.items():
+        typer.echo(f"  {serie}: {semanas} semanas")
+    total = sum(gravado.por_serie.values())
+    typer.secho(
+        f"[gravado] {total} taxas de juros ate a semana de {periodo.sexta.isoformat()}",
+        fg=typer.colors.GREEN,
+    )
+
+
 @semana_app.command("enviar")
 def semana_enviar(
     semana: Annotated[

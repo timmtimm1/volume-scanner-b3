@@ -336,12 +336,18 @@ A ficha também funciona em 390px de largura — é o link que chega pelo alerta
 
 Logado, com a janela a partir de 1024 px, a barra do topo ganha o botão
 **Organizar**, ao lado do tema (no Início e na ficha o título fica dentro de uma
-caixa que se move, então o botão não mora em nenhuma). No modo, cada caixa ganha contorno e alça: arrastar troca a caixa
-de lugar, e o **↔** alterna a largura (meia ou toda, nas páginas de 2 colunas;
-1, 2 ou 3 colunas nas de 3). **Concluir** grava, **Cancelar** desfaz e
-**Restaurar padrão** volta ao arranjo do código. Pelo teclado: a alça recebe
-foco, e as setas fazem o mesmo que o arrasto. Fora do modo nada se mexe — o
-gráfico de juros continua navegando com o arrasto.
+caixa que se move, então o botão não mora em nenhuma). No modo, cada caixa ganha contorno e alça.
+O arrasto é como o de um app na tela do iPhone: a caixa levanta (sombra, um
+pouco maior) e segue o mouse, gráficos inclusive; as outras deslizam para abrir
+espaço, e um lugar vazio mostra onde e com que largura ela vai cair. Parado uns
+0,1 s sobre um lugar, a grade se rearruma — sem isso ela pularia a cada pixel.
+Ao soltar, a caixa voa para o lugar e assenta; **Esc** devolve tudo. O **↔**
+alterna a largura (meia ou toda, nas páginas de 2 colunas; 1, 2 ou 3 colunas
+nas de 3), e as outras deslizam junto. **Concluir** grava, **Cancelar** desfaz
+e **Restaurar padrão** volta ao arranjo do código. Pelo teclado: a alça recebe
+foco, e as setas fazem o mesmo que o arrasto. Com "reduzir movimento" ligado no
+sistema, tudo acontece sem animação. Fora do modo nada se mexe — o gráfico de
+juros continua navegando com o arrasto.
 
 Ligado na Semana, no Início, na ficha, no Histórico, em Trades e no detalhe do
 trade. Os dois últimos continuam numa coluna só: lá o Organizar muda a ordem.
@@ -356,6 +362,13 @@ caixas e o arranjo padrão de cada página estão em
   uma na sua, sem buraco, e caixa na largura toda fica abaixo de tudo o que veio
   antes. As colunas de cada página continuam as de sempre — as laterais fixas
   da ficha e do scanner continuam fixas.
+- **O arrasto não mexe na página.** Enquanto o mouse anda, as caixas se movem
+  só com `transform`, para as posições que `posicoes` (em `arranjo.ts`) calcula
+  para o arranjo de prévia com as alturas medidas — a mesma regra do CSS. Nada
+  passa pelo React e nenhum gráfico é redesenhado. Ao soltar, o arranjo novo
+  vai para o React e cada caixa desliza de onde estava na tela até o lugar
+  novo (FLIP, em `web/src/lib/arrasto.ts`). A caixa que mudou de coluna é
+  montada de novo, e o gráfico dela pode piscar enquanto ela aparece.
 - **CSS puro, sem medir altura.** `planejar` (em `web/src/lib/arranjo.ts`)
   transforma o arranjo numa árvore de grades e pilhas. Por isso a página sai do
   servidor já arrumada, e uma caixa que cresce (as notícias chegando) empurra as

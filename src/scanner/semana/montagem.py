@@ -17,7 +17,7 @@ from __future__ import annotations
 import logging
 import math
 from datetime import UTC, date, datetime, timedelta
-from typing import Any
+from typing import Any, NamedTuple
 
 import pandas as pd
 from sqlalchemy import Engine
@@ -219,6 +219,29 @@ def _historico_de_juros(
         else pd.DataFrame(columns=tesouro_direto.COLUNAS_SEMANAL)
     )
     return frame, erro_td, erro_selic
+
+
+class HistoricoGravado(NamedTuple):
+    """O que `gravar_historico_de_juros` gravou: semanas por serie e o erro de cada fonte."""
+
+    por_serie: dict[str, int]
+    erro_td: str | None
+    erro_selic: str | None
+
+
+def gravar_historico_de_juros(
+    engine: Engine, config: ScannerConfig, semana: Semana
+) -> HistoricoGravado:
+    """So o historico de juros ate a `semana`, sem montar nem enviar o resumo.
+
+    Enche o grafico da aba Semana sem mandar mensagem: logo depois do deploy, ou
+    quando o BCB volta do ar. Falha de gravacao no banco sobe (quem chama decide).
+    """
+    historico, erro_td, erro_selic = _historico_de_juros(config, semana)
+    if not historico.empty:
+        repository.gravar_juros_historico(engine, historico)
+    por_serie = {str(k): int(v) for k, v in historico["serie"].value_counts().sort_index().items()}
+    return HistoricoGravado(por_serie, erro_td, erro_selic)
 
 
 def _bloco_curva(

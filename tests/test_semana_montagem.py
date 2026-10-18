@@ -506,6 +506,41 @@ def test_falha_ao_gravar_o_historico_nao_derruba_o_resumo(monkeypatch: pytest.Mo
     assert "erro" not in payload["juros_br"]["curva"]
 
 
+def test_gravar_so_o_historico_conta_as_semanas_por_serie(monkeypatch: pytest.MonkeyPatch) -> None:
+    _patch_fontes(monkeypatch)
+    gravados: list[pd.DataFrame] = []
+    monkeypatch.setattr(
+        repository, "gravar_juros_historico", lambda _e, frame: gravados.append(frame) or 0
+    )
+
+    gravado = montagem.gravar_historico_de_juros(ENGINE, ScannerConfig(), SEMANA)
+
+    (frame,) = gravados
+    assert gravado.por_serie == frame["serie"].value_counts().sort_index().to_dict()
+    assert {"pre_1a", "pre_10a", "ipca_10a", "selic"} <= set(gravado.por_serie)
+    assert (gravado.erro_td, gravado.erro_selic) == (None, None)
+
+
+def test_gravar_so_o_historico_com_as_duas_fontes_fora_nao_grava(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_fontes(
+        monkeypatch,
+        tesouro_direto=FonteIndisponivelError("tesouro_direto", "HTTP 503"),
+        selic_historica=FonteIndisponivelError("bcb", "HTTP 502"),
+    )
+    gravados: list[pd.DataFrame] = []
+    monkeypatch.setattr(
+        repository, "gravar_juros_historico", lambda _e, frame: gravados.append(frame) or 0
+    )
+
+    gravado = montagem.gravar_historico_de_juros(ENGINE, ScannerConfig(), SEMANA)
+
+    assert gravados == []
+    assert gravado.por_serie == {}
+    assert (gravado.erro_td, gravado.erro_selic) == ("HTTP 503", "HTTP 502")
+
+
 def test_previa_mostra_as_duas_curvas_do_tesouro(monkeypatch: pytest.MonkeyPatch) -> None:
     _patch_fontes(monkeypatch, cripto=FonteIndisponivelError("coingecko", "HTTP 429"))
     payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)

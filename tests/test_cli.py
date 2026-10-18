@@ -570,6 +570,66 @@ def test_semana_montar_rejeita_data_invalida() -> None:
     assert result.exit_code != 0
 
 
+# --- semana juros ----------------------------------------------------------
+
+
+def _juros_falso(
+    monkeypatch: pytest.MonkeyPatch,
+    por_serie: dict[str, int],
+    erro_td: str | None = None,
+    erro_selic: str | None = None,
+) -> list[object]:
+    """Troca engine, migracao e a gravacao do historico; devolve as chamadas."""
+    from scanner.semana import montagem
+    from scanner.storage import engine as engine_mod
+    from scanner.storage import migracao
+
+    chamadas: list[object] = []
+
+    def gravar(engine: object, config: object, semana: object) -> montagem.HistoricoGravado:
+        chamadas.append(semana)
+        return montagem.HistoricoGravado(por_serie, erro_td, erro_selic)
+
+    monkeypatch.setattr(engine_mod, "build_engine", lambda: object())
+    monkeypatch.setattr(migracao, "migrar_se_preciso", lambda engine: chamadas.append("migrou"))
+    monkeypatch.setattr(montagem, "gravar_historico_de_juros", gravar)
+    # O comando nao monta o resumo: se tentar, o teste quebra.
+    monkeypatch.setattr(montagem, "montar_dados_de_mercado", None)
+    return chamadas
+
+
+def test_semana_juros_grava_so_o_historico_ate_a_sexta(monkeypatch: pytest.MonkeyPatch) -> None:
+    chamadas = _juros_falso(monkeypatch, {"pre_10a": 523, "selic": 523})
+
+    result = runner.invoke(app, ["semana", "juros", "--semana", "2026-10-14"])
+
+    assert result.exit_code == 0, result.output
+    assert chamadas[0] == "migrou"
+    assert chamadas[1].sexta == date(2026, 10, 16)  # type: ignore[attr-defined]
+    assert "pre_10a: 523 semanas" in result.output
+    assert "[gravado] 1046 taxas de juros ate a semana de 2026-10-16" in result.output
+
+
+def test_semana_juros_avisa_a_fonte_fora_e_grava_a_outra(monkeypatch: pytest.MonkeyPatch) -> None:
+    _juros_falso(monkeypatch, {"pre_1a": 496}, erro_selic="HTTP 502")
+
+    result = runner.invoke(app, ["semana", "juros", "--semana", "2026-10-16"])
+
+    assert result.exit_code == 0, result.output
+    assert "[aviso] Selic indisponivel: HTTP 502" in result.output
+    assert "[gravado]" in result.output
+
+
+def test_semana_juros_sem_nada_gravado_sai_1(monkeypatch: pytest.MonkeyPatch) -> None:
+    _juros_falso(monkeypatch, {}, erro_td="HTTP 503", erro_selic="HTTP 502")
+
+    result = runner.invoke(app, ["semana", "juros", "--semana", "2026-10-16"])
+
+    assert result.exit_code == 1
+    assert "[erro] nenhuma taxa gravada" in result.output
+    assert "[gravado]" not in result.output
+
+
 # --- semana enviar ---------------------------------------------------------
 
 

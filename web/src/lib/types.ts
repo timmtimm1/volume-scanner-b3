@@ -150,3 +150,212 @@ export type Fundamentos = {
    */
   picoDeVolumeEmAcoes: number | null;
 };
+
+/* ------------------------------------------------------------------ */
+/* Resumo da semana: o payload v1 gravado em `resumos_semanais`.       */
+/* ------------------------------------------------------------------ */
+
+/** Bloco (ou sub-bloco) cuja fonte falhou na montagem. O texto e tecnico. */
+export type BlocoComErro = { erro: string };
+
+/** Uma edicao da lista: a sexta-feira nominal e o intervalo da semana. */
+export type EdicaoDaSemana = { sexta: string; inicio: string; fim: string };
+
+export type AtivoDaAbertura = {
+  data: string;
+  valor: number;
+  /** Variacoes em fracao (0,0157 = +1,57%). */
+  semana: number | null;
+  mes: number | null;
+  ano: number | null;
+};
+
+export type Abertura = {
+  ibovespa: AtivoDaAbertura | BlocoComErro;
+  dolar: AtivoDaAbertura | BlocoComErro;
+  brent: AtivoDaAbertura | BlocoComErro;
+  ouro: AtivoDaAbertura | BlocoComErro;
+};
+
+export type AcaoDaSemana = {
+  ticker: string;
+  /** Variacao ajustada por proventos e desdobramentos, em fracao. */
+  variacao: number;
+  variacao_bruta: number;
+  preco_inicio: number;
+  preco_fim: number;
+  data_inicio: string;
+  data_fim: string;
+  ajustado: boolean;
+  /** Fator de desdobramento/grupamento/bonificacao; 1 = nenhum. */
+  multiplicador: number;
+  proventos_por_acao: number;
+  /** Falso quando a B3 nao respondeu: "sem evento" e "nao deu para saber" diferem. */
+  conferido: boolean;
+  /** Preenchido so no `fora_do_ranking`: por que o papel nao tem variacao ajustada. */
+  eventos_sem_ajuste: string | null;
+};
+
+export type AcoesDaSemana = {
+  altas: AcaoDaSemana[];
+  quedas: AcaoDaSemana[];
+  fora_do_ranking: AcaoDaSemana[];
+  avaliados: number;
+  conferidos: number;
+  falhas_b3: string[];
+};
+
+export type NoticiaOutraFonte = { fonte: string; link: string };
+
+export type HistoriaDaSemana = {
+  titulo: string;
+  fonte: string;
+  link: string;
+  veiculos: number;
+  publicada_em: string;
+  outras_fontes: NoticiaOutraFonte[];
+};
+
+export type NoticiasDaSemana = {
+  historias: HistoriaDaSemana[];
+  contagem: {
+    recebidas: number;
+    distintas: number;
+    na_semana: number;
+    na_imprensa: number;
+    descartes: Record<string, number>;
+  };
+  avisos: string[];
+  buscas: string[];
+  janela: { de: string; ate: string };
+};
+
+export type MoedaCripto = {
+  id: string;
+  simbolo: string;
+  nome: string;
+  rank: number;
+  preco: number;
+  market_cap: number;
+  variacao_7d: number | null;
+};
+
+export type CriptoDaSemana = {
+  btc: MoedaCripto | null;
+  eth: MoedaCripto | null;
+  altas: MoedaCripto[];
+  quedas: MoedaCripto[];
+  moedas: MoedaCripto[];
+  coletado_em: string;
+};
+
+export type VerticeDaCurva = {
+  du: number;
+  anos: number;
+  /** % a.a. */
+  taxa: number;
+  taxa_anterior: number | null;
+  variacao_bp: number | null;
+};
+
+export type CurvaPrefixada = {
+  data: string;
+  data_anterior: string;
+  vertices: VerticeDaCurva[];
+};
+
+export type IndicadoresBr = {
+  /** % a.a. */
+  selic_meta: number | null;
+  /** FRACAO, acumulada no mes / no ano ate `cdi_data`. */
+  cdi_mes: number | null;
+  cdi_ano: number | null;
+  cdi_data: string | null;
+  /** % (4,58 = 4,58%), acumulado em 12 meses. */
+  ipca_12m: number | null;
+  /** Mes de referencia do IPCA, AAAA-MM. */
+  ipca_referencia: string | null;
+};
+
+export type VencimentoTreasury = {
+  /** "3 Mo", "2 Yr": como o Tesouro dos EUA escreve. */
+  prazo: string;
+  taxa: number;
+  taxa_anterior: number | null;
+  variacao_bp: number | null;
+};
+
+export type Treasuries = {
+  data: string;
+  data_anterior: string;
+  vencimentos: VencimentoTreasury[];
+};
+
+export type DotPlot = {
+  data_projecao: string;
+  medianas: { periodo: string; taxa: number }[];
+};
+
+export type EventoDaAgenda = {
+  data: string;
+  /** HH:MM de Brasilia; null = sem horario. */
+  hora: string | null;
+  pais: string;
+  fonte: string;
+  evento: string;
+  detalhe: string | null;
+  consenso: { mediana: number; unidade: string; fonte: string; data: string } | null;
+};
+
+export type BalancoConfirmado = {
+  data: string;
+  empresa: string;
+  cd_cvm: number;
+  tickers: string[];
+  horario: string | null;
+  trimestre: string | null;
+  fonte: string;
+};
+
+export type BalancoProvavel = {
+  empresa: string;
+  cd_cvm: number;
+  tickers: string[];
+  documento: string;
+  entregue_em: string;
+};
+
+export type BalancosDaSemana = {
+  confirmados: BalancoConfirmado[];
+  provaveis: BalancoProvavel[];
+  avisos: string[];
+};
+
+export type ProximaSemana = {
+  inicio: string;
+  fim: string;
+  feriados_b3: string[];
+  agenda: EventoDaAgenda[];
+  agenda_avisos: string[];
+  balancos: BalancosDaSemana | BlocoComErro;
+};
+
+/** O payload v1 inteiro. Os blocos opcionais podem vir como `{ erro }`. */
+export type ResumoDaSemana = {
+  versao: number;
+  semana: { sexta: string; inicio: string; fim: string; pregoes: string[] };
+  gerado_em: string;
+  acoes: AcoesDaSemana;
+  abertura: Abertura | BlocoComErro;
+  cripto: CriptoDaSemana | BlocoComErro;
+  juros_br: {
+    curva: CurvaPrefixada | BlocoComErro;
+    indicadores: IndicadoresBr | BlocoComErro;
+  };
+  eua: {
+    treasuries: Treasuries | BlocoComErro;
+    fed: DotPlot | BlocoComErro;
+  };
+  noticias: NoticiasDaSemana | BlocoComErro;
+  proxima_semana: ProximaSemana;
+};

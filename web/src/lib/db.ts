@@ -20,9 +20,20 @@
  * gravada antes da tabela existir, ainda tem o contexto la.
  */
 
+import { cache } from "react";
 import { Pool } from "pg";
 import { PISO_DE_VOLUME, UNIVERSO, Z_MINIMO_DO_SITE } from "./config";
-import type { Barra, Evento, FaixaDeDesvio, Fundamentos, Papel, Pregao, Universo } from "./types";
+import type {
+  Barra,
+  EdicaoDaSemana,
+  Evento,
+  FaixaDeDesvio,
+  Fundamentos,
+  Papel,
+  Pregao,
+  ResumoDaSemana,
+  Universo,
+} from "./types";
 
 /**
  * Como o papel se chama, em SQL -- uma so definicao para toda consulta.
@@ -577,4 +588,44 @@ function precosPorClasse(
       pn[dia(linha.trade_date)] = fechamento;
   }
   return { on, pn };
+}
+
+/** Todas as edicoes do resumo da semana, da mais recente para a mais antiga. */
+export async function edicoesDaSemana(): Promise<EdicaoDaSemana[]> {
+  const { rows } = await conexao().query<{ semana: unknown; inicio: unknown; fim: unknown }>(
+    `SELECT semana::text, inicio::text, fim::text FROM volume_scanner.resumos_semanais
+      ORDER BY semana DESC`,
+  );
+  return rows.map((r) => ({ sexta: dia(r.semana), inicio: dia(r.inicio), fim: dia(r.fim) }));
+}
+
+/**
+ * O resumo gravado de uma semana (a sexta-feira nominal), ou `null`.
+ *
+ * `cache` porque a pagina e o `generateMetadata` pedem a mesma edicao no build.
+ */
+export const resumoDaSemana = cache(async (sexta: string): Promise<ResumoDaSemana | null> => {
+  const { rows } = await conexao().query<{ payload: ResumoDaSemana }>(
+    `SELECT payload FROM volume_scanner.resumos_semanais WHERE semana = $1`,
+    [sexta],
+  );
+  return rows[0]?.payload ?? null;
+});
+
+/**
+ * Nome da empresa de cada ticker, para as listas de altas e quedas. O payload
+ * nao carrega nome. Ticker sem empresa ligada fica de fora do mapa.
+ */
+export async function nomesDosPapeis(tickers: string[]): Promise<Record<string, string>> {
+  if (tickers.length === 0) return {};
+  const { rows } = await conexao().query<{ ticker: string; empresa: string | null }>(
+    `SELECT et.ticker, ${NOME_DA_EMPRESA} AS empresa
+       FROM volume_scanner.empresa_tickers et
+       JOIN volume_scanner.empresas emp ON emp.cd_cvm = et.cd_cvm
+      WHERE et.ticker = ANY($1)`,
+    [tickers],
+  );
+  const nomes: Record<string, string> = {};
+  for (const r of rows) if (r.empresa) nomes[r.ticker] = r.empresa;
+  return nomes;
 }

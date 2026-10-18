@@ -198,7 +198,7 @@ def test_semana_que_vem_vazia(payload: dict[str, Any]) -> None:
 
 def test_link_do_app_usa_a_sexta_e_ignora_barra_final(payload: dict[str, Any]) -> None:
     texto = formatar_mensagem(payload, BASE + "/")
-    assert texto.endswith(f'<a href="{BASE}/semana/2026-10-16">Resumo completo no app</a>')
+    assert texto.endswith(f'<a href="{BASE}/semana/2026-10-16/">Resumo completo no app</a>')
 
 
 def test_sem_bloco_de_codigo(payload: dict[str, Any]) -> None:

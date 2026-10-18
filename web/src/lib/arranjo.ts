@@ -226,6 +226,81 @@ export function planejar(arranjo: Arranjo, colunas: number): No | null {
   return planejarRegiao(arranjo, 0, colunas);
 }
 
+export type Retangulo = { x: number; y: number; w: number; h: number };
+
+/** As colunas da pagina medidas na tela (x relativo a grade) e o vao entre tudo. */
+export type Geometria = { colunas: { x: number; w: number }[]; vao: number };
+
+/**
+ * Onde cada caixa fica, em pixels relativos a grade, sem desenhar nada.
+ *
+ * Reproduz o CSS de `GradeDeCaixas` a partir do mesmo plano: e com isto que o
+ * arrasto mostra as caixas abrindo espaco ao vivo, so com `transform`, sem
+ * trocar a pagina de verdade enquanto o mouse anda.
+ *
+ * `alturas` traz so as caixas visiveis; caixa sem altura esta escondida
+ * (`display: none`) e, como no CSS, nao ocupa lugar nem abre vao numa pilha.
+ * Numa sequencia de faixas ela ainda conta como uma linha vazia da grade, com
+ * vao dos dois lados -- e o CSS faz o mesmo.
+ */
+export function posicoes(
+  arranjo: Arranjo,
+  alturas: Record<string, number>,
+  geometria: Geometria,
+): Record<string, Retangulo> {
+  const { colunas, vao } = geometria;
+  const saida: Record<string, Retangulo> = {};
+  const largura = (de: number, n: number) => colunas[de + n - 1].x + colunas[de + n - 1].w - colunas[de].x;
+
+  /** Coloca o no a partir de `y`; devolve a altura, ou null se nada foi exibido. */
+  function colocar(no: No, de: number, n: number, y: number): number | null {
+    switch (no.tipo) {
+      case "caixa": {
+        const h = alturas[no.id];
+        if (h === undefined) return null;
+        saida[no.id] = { x: colunas[de].x, y, w: largura(de, n), h };
+        return h;
+      }
+      case "pilha": {
+        let topo = y;
+        let primeira = true;
+        for (const id of no.ids) {
+          const h = alturas[id];
+          if (h === undefined) continue;
+          if (!primeira) topo += vao;
+          saida[id] = { x: colunas[de].x, y: topo, w: largura(de, n), h };
+          topo += h;
+          primeira = false;
+        }
+        return topo - y;
+      }
+      case "lado": {
+        let maior = 0;
+        for (const p of no.partes) maior = Math.max(maior, colocar(p.no, p.inicio, p.largura, y) ?? 0);
+        return maior;
+      }
+      case "faixas": {
+        let acumulado = 0;
+        let total = 0;
+        let exibiu = false;
+        no.faixas.forEach((f, i) => {
+          const h = colocar(f, de, n, y + acumulado + vao * i);
+          acumulado += h ?? 0;
+          if (h !== null) {
+            total = acumulado + vao * i;
+            exibiu = true;
+          }
+        });
+        return exibiu ? total : null;
+      }
+    }
+  }
+
+  const plano = planejar(arranjo, colunas.length);
+  if (plano) colocar(plano, 0, colunas.length, 0);
+  return saida;
+}
+
 function limitar(v: number, minimo: number, maximo: number): number {
   return Math.min(Math.max(v, minimo), maximo);
 }

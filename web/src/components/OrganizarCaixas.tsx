@@ -23,14 +23,13 @@ import {
   normalizar,
   planejar,
   rotuloDaLargura,
-  soltar,
   validarItens,
   type Arranjo,
-  type Destino,
   type No,
   type PaginaArrumavel,
   type Seta,
 } from "@/lib/arranjo";
+import { arrastar, assentar, retangulos } from "@/lib/arrasto";
 import { arranjoPadrao, PAGINAS_DE_CAIXAS, type CaixaDaPagina } from "@/lib/paginas-arrumaveis";
 import { useComputador } from "@/lib/useComputador";
 
@@ -111,6 +110,8 @@ type Organizar = {
   editando: boolean;
   organizar: () => void;
   mudar: (novo: Arranjo) => void;
+  /** A grade guarda aqui como tirar a foto de antes de uma troca, para deslizar ate a nova. */
+  antesDeTrocarRef: { current: (() => void) | null };
 };
 
 const Contexto = createContext<Organizar | null>(null);
@@ -142,6 +143,7 @@ export function ArranjoDaPagina({
   const [rascunho, setRascunho] = useState<Arranjo | null>(null);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
+  const antesDeTrocarRef = useRef<(() => void) | null>(null);
 
   const salvo = useMemo(
     () => (copia === undefined ? null : validarItens(arranjosDaCopia(copia)[pagina], colunas)),
@@ -232,6 +234,7 @@ export function ArranjoDaPagina({
       setRascunho(arranjo);
     },
     mudar: setRascunho,
+    antesDeTrocarRef,
   };
 
   return (
@@ -256,7 +259,10 @@ export function ArranjoDaPagina({
           <div className="flex items-center gap-1.5">
             <button
               type="button"
-              onClick={() => setRascunho(padrao)}
+              onClick={() => {
+                antesDeTrocarRef.current?.();
+                setRascunho(padrao);
+              }}
               disabled={salvando || iguais(rascunho, padrao)}
               className={`${BOTAO} text-tinta-2 hover:text-acento`}
             >
@@ -266,6 +272,7 @@ export function ArranjoDaPagina({
               type="button"
               onClick={() => {
                 setErro(null);
+                antesDeTrocarRef.current?.();
                 setRascunho(null);
               }}
               disabled={salvando}
@@ -321,24 +328,6 @@ function BotaoOrganizar() {
 
 // --------------------------------------------------------------------- grade
 
-type Faixa = { left: number; right: number };
-type Arrasto = { id: string; x: number; y: number; marca: { left: number; top: number; width: number } | null };
-
-/** As colunas da grade na tela, em pixels da janela. */
-function colunasNaTela(raiz: HTMLElement): Faixa[] {
-  const estilo = getComputedStyle(raiz);
-  const larguras = estilo.gridTemplateColumns.split(" ").map(parseFloat);
-  const vao = parseFloat(estilo.columnGap) || 0;
-  let x = raiz.getBoundingClientRect().left;
-  return larguras.map((largura) => {
-    const faixa = { left: x, right: x + largura };
-    x += largura + vao;
-    return faixa;
-  });
-}
-
-const distancia = (v: number, de: number, ate: number) => (v < de ? de - v : v > ate ? v - ate : 0);
-
 const SETAS: Record<string, Seta> = {
   ArrowUp: "cima",
   ArrowDown: "baixo",
@@ -349,9 +338,12 @@ const SETAS: Record<string, Seta> = {
 export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> }) {
   const o = useOrganizar();
   const raiz = useRef<HTMLDivElement>(null);
-  const [arrasto, setArrasto] = useState<Arrasto | null>(null);
+  const vaga = useRef<HTMLDivElement>(null);
+  const camada = useRef<HTMLDivElement>(null);
   const [focar, setFocar] = useState<string | null>(null);
   const plano = useMemo(() => planejar(o.arranjo, o.colunas), [o.arranjo, o.colunas]);
+  /** A foto de antes de uma troca: depois de o React desenhar, cada caixa desliza dela ate o lugar novo. */
+  const pouso = useRef<{ antes: Map<string, DOMRect>; entrando: string | null; removerFantasma?: () => void } | null>(null);
 
   // A caixa movida pelo teclado pode ter mudado de lugar na arvore: o foco volta a ela.
   useEffect(() => {
@@ -359,98 +351,52 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
     raiz.current?.querySelector<HTMLElement>(`[data-caixa="${focar}"] [data-mover]`)?.focus();
   }, [focar, o.arranjo]);
 
-  /** Onde a caixa `id` cai com o ponteiro em (x, y), e onde desenhar a marca. */
-  function destinoEm(id: string, x: number, y: number): { destino: Destino; marca: Arrasto["marca"] } | null {
-    const grade = raiz.current;
-    const item = o.arranjo.find((i) => i.id === id);
-    if (!grade || !item) return null;
-    const faixas = colunasNaTela(grade);
-    let sob = faixas.findIndex((f) => x <= f.right);
-    if (sob < 0) sob = faixas.length - 1;
-    const coluna = Math.min(Math.max(sob, 0), o.colunas - item.largura);
-    const outras = [...grade.querySelectorAll<HTMLElement>("[data-caixa]")]
-      .filter((el) => el.dataset.caixa !== id && el.getClientRects().length > 0)
-      .map((el) => ({ id: el.dataset.caixa ?? "", r: el.getBoundingClientRect() }));
-    if (outras.length === 0) return { destino: { referencia: null, lado: "depois", coluna }, marca: null };
+  useLayoutEffect(() => {
+    const p = pouso.current;
+    if (!p || !raiz.current) return;
+    pouso.current = null;
+    assentar(raiz.current, vaga.current, p.antes, p.entrando, p.removerFantasma);
+  }, [o.arranjo]);
 
-    // A caixa sob o ponteiro; fora de todas, a mais perto na mesma coluna.
-    const naColuna = outras.filter((c) => x >= c.r.left && x <= c.r.right);
-    const candidatas = naColuna.length > 0 ? naColuna : outras;
-    let alvo = candidatas[0];
-    let menor = Infinity;
-    for (const c of candidatas) {
-      const d = distancia(y, c.r.top, c.r.bottom) + distancia(x, c.r.left, c.r.right);
-      if (d < menor) {
-        menor = d;
-        alvo = c;
-      }
-    }
-    const lado = y < (alvo.r.top + alvo.r.bottom) / 2 ? "antes" : "depois";
-    const left = faixas[coluna].left;
-    const right = faixas[coluna + item.largura - 1].right;
-    return {
-      destino: { referencia: alvo.id, lado, coluna },
-      marca: { left, width: right - left, top: lado === "antes" ? alvo.r.top - 10 : alvo.r.bottom + 6 },
+  // Cancelar e Restaurar padrao (na barra) tambem deslizam.
+  const { antesDeTrocarRef } = o;
+  useEffect(() => {
+    antesDeTrocarRef.current = () => {
+      pouso.current = { antes: retangulos(raiz.current), entrando: null };
     };
+    return () => {
+      antesDeTrocarRef.current = null;
+    };
+  }, [antesDeTrocarRef]);
+
+  /** Troca o arranjo deslizando as caixas (largura, setas). */
+  function mudarDeslizando(novo: Arranjo) {
+    pouso.current = { antes: retangulos(raiz.current), entrando: null };
+    o.mudar(novo);
   }
 
   function comecarArrasto(e: EventoDePonteiro, id: string) {
-    if (e.button !== 0) return;
+    if (e.button !== 0 || !raiz.current || !vaga.current || !camada.current) return;
     e.preventDefault();
-    const inicio = { x: e.clientX, y: e.clientY };
-    let ponteiro = inicio;
-    let ativo = false;
-    let quadro = 0;
-    const selecao = document.body.style.userSelect;
-
-    const atualizar = () => {
-      const achado = destinoEm(id, ponteiro.x, ponteiro.y);
-      setArrasto({ id, x: ponteiro.x, y: ponteiro.y, marca: achado?.marca ?? null });
-    };
-    const mover = (ev: PointerEvent) => {
-      ponteiro = { x: ev.clientX, y: ev.clientY };
-      if (!ativo && Math.hypot(ponteiro.x - inicio.x, ponteiro.y - inicio.y) < 5) return;
-      if (!ativo) document.body.style.userSelect = "none";
-      ativo = true;
-      atualizar();
-    };
-    // Perto da borda da janela, a pagina rola sozinha: a Semana e mais alta que a tela.
-    const rolar = () => {
-      if (ativo) {
-        const margem = 80;
-        const { y } = ponteiro;
-        const passo =
-          y < margem ? -(margem - y) / 3 : y > innerHeight - margem ? (y - innerHeight + margem) / 3 : 0;
-        if (passo !== 0) {
-          window.scrollBy(0, passo);
-          atualizar();
+    const [grade, lugarVazio] = [raiz.current, vaga.current];
+    arrastar({
+      x: e.clientX,
+      y: e.clientY,
+      id,
+      arranjo: o.arranjo,
+      colunas: o.colunas,
+      raiz: grade,
+      vaga: lugarVazio,
+      camada: camada.current,
+      aoPousar: ({ novo, antes, removerFantasma }) => {
+        if (novo) {
+          pouso.current = { antes, entrando: id, removerFantasma };
+          o.mudar(novo);
+        } else {
+          assentar(grade, lugarVazio, antes, id, removerFantasma);
         }
-      }
-      quadro = requestAnimationFrame(rolar);
-    };
-    const terminar = (soltou: boolean) => {
-      cancelAnimationFrame(quadro);
-      window.removeEventListener("pointermove", mover);
-      window.removeEventListener("pointerup", aoSoltar);
-      window.removeEventListener("pointercancel", aoCancelar);
-      window.removeEventListener("keydown", aoTeclar);
-      document.body.style.userSelect = selecao;
-      if (ativo && soltou) {
-        const achado = destinoEm(id, ponteiro.x, ponteiro.y);
-        if (achado) o.mudar(soltar(o.arranjo, id, achado.destino, o.colunas));
-      }
-      setArrasto(null);
-    };
-    const aoSoltar = () => terminar(true);
-    const aoCancelar = () => terminar(false);
-    const aoTeclar = (ev: KeyboardEvent) => {
-      if (ev.key === "Escape") terminar(false);
-    };
-    window.addEventListener("pointermove", mover);
-    window.addEventListener("pointerup", aoSoltar);
-    window.addEventListener("pointercancel", aoCancelar);
-    window.addEventListener("keydown", aoTeclar);
-    quadro = requestAnimationFrame(rolar);
+      },
+    });
   }
 
   /**
@@ -467,7 +413,6 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
       onde === "grade" ? "lg:self-start" : "",
       onde === "fim-da-pilha" && definicao?.fixa ? "lg:sticky lg:top-4 lg:z-10" : "",
       definicao?.soComputador ? "max-lg:hidden" : "",
-      arrasto?.id === id ? "opacity-35" : "",
     ];
     return (
       <div
@@ -493,7 +438,7 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
                 if (!seta) return;
                 e.preventDefault();
                 setFocar(id);
-                o.mudar(moverComSeta(o.arranjo, id, seta, o.colunas));
+                mudarDeslizando(moverComSeta(o.arranjo, id, seta, o.colunas));
               }}
               className="flex min-w-0 cursor-grab items-center gap-1.5 whitespace-nowrap rounded-full bg-painel px-3 py-1.5 text-[13px] font-extrabold text-acento shadow-[var(--sombra)]"
             >
@@ -504,7 +449,7 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
               <button
                 type="button"
                 onPointerDown={(e) => e.stopPropagation()}
-                onClick={() => o.mudar(alternarLargura(o.arranjo, id, o.colunas))}
+                onClick={() => mudarDeslizando(alternarLargura(o.arranjo, id, o.colunas))}
                 title="Mudar a largura"
                 className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-painel px-3 py-1.5 text-[12px] font-bold text-tinta-2 shadow-[var(--sombra)] transition-colors hover:text-acento"
               >
@@ -563,29 +508,21 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
       <div
         ref={raiz}
         data-grade
-        className="flex flex-col gap-4 lg:grid"
+        // `content-start`: a altura minima que o arrasto poe na grade nao estica as linhas.
+        className="flex flex-col gap-4 lg:relative lg:grid lg:content-start"
         style={{ gridTemplateColumns: o.trilhas.join(" ") }}
       >
+        {/* O lugar vazio onde a caixa arrastada vai cair (lib/arrasto.ts). */}
+        <div
+          ref={vaga}
+          data-vaga
+          aria-hidden
+          className="pointer-events-none absolute left-0 top-0 hidden rounded-[18px] border-2 border-dashed border-acento/60 bg-acento/5"
+        />
         {plano && desenhar(plano, 0, o.trilhas)}
       </div>
-      {arrasto && (
-        <>
-          {arrasto.marca && (
-            <div
-              aria-hidden
-              className="pointer-events-none fixed z-50 h-1 rounded-full bg-acento"
-              style={{ left: arrasto.marca.left, top: arrasto.marca.top, width: arrasto.marca.width }}
-            />
-          )}
-          <div
-            aria-hidden
-            className="pointer-events-none fixed z-50 rounded-full bg-acento px-3 py-1.5 text-[13px] font-extrabold text-painel shadow-[var(--sombra)]"
-            style={{ left: arrasto.x + 14, top: arrasto.y + 14 }}
-          >
-            ⠿ {o.caixas[arrasto.id]?.nome ?? arrasto.id}
-          </div>
-        </>
-      )}
+      {/* A copia da caixa que segue o mouse. */}
+      <div ref={camada} aria-hidden className="pointer-events-none fixed left-0 top-0 z-[60] hidden" />
     </>
   );
 }

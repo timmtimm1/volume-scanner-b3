@@ -14,6 +14,7 @@ import {
   paginaDoCaminho,
   PAGINAS,
   planejar,
+  posicoes,
   rotuloDaLargura,
   SCRIPT_DO_ARRANJO,
   soltar,
@@ -140,6 +141,90 @@ describe("planejar", () => {
 
   it("arranjo vazio nao desenha nada", () => {
     assert.equal(planejar([], 2), null);
+  });
+});
+
+describe("posicoes", () => {
+  // Duas colunas de 600px com vao de 16, como a Semana numa tela de 1232px.
+  const DUAS = { colunas: [{ x: 0, w: 600 }, { x: 616, w: 600 }], vao: 16 };
+  const TRES = { colunas: [{ x: 0, w: 300 }, { x: 316, w: 500 }, { x: 832, w: 360 }], vao: 16 };
+  const ALTURAS = { abertura: 200, acoes: 400, noticias: 300, cripto: 100, juros: 500, eua: 150, "semana-que-vem": 200, balancos: 50 };
+
+  it("Semana padrao: inteiras uma embaixo da outra, colunas empilhando cada uma a sua", () => {
+    const p = posicoes(SEMANA, ALTURAS, DUAS);
+    assert.deepEqual(p.abertura, { x: 0, y: 0, w: 1216, h: 200 });
+    assert.deepEqual(p.acoes, { x: 0, y: 216, w: 1216, h: 400 });
+    assert.deepEqual(p.noticias, { x: 0, y: 632, w: 600, h: 300 });
+    assert.deepEqual(p.cripto, { x: 616, y: 632, w: 600, h: 100 });
+    assert.deepEqual(p.juros, { x: 0, y: 948, w: 600, h: 500 });
+    assert.deepEqual(p.eua, { x: 616, y: 748, w: 600, h: 150 });
+    assert.equal(p["semana-que-vem"].y, 1464);
+    assert.equal(p.balancos.y, 914);
+  });
+
+  it("caixa inteira no meio fica abaixo da coluna mais alta", () => {
+    const arranjo = [c("a", 0), c("b", 1), c("inteira", 0, 2), c("d", 1)];
+    const p = posicoes(arranjo, { a: 100, b: 300, inteira: 50, d: 10 }, DUAS);
+    assert.deepEqual(p.inteira, { x: 0, y: 316, w: 1216, h: 50 });
+    assert.deepEqual(p.d, { x: 616, y: 382, w: 600, h: 10 });
+  });
+
+  it("caixa escondida numa pilha nao ocupa lugar nem abre vao", () => {
+    const p = posicoes([c("a", 0), c("sumida", 0), c("b", 0)], { a: 100, b: 50 }, DUAS);
+    assert.equal(p.sumida, undefined);
+    assert.equal(p.b.y, 116);
+  });
+
+  it("caixa inteira escondida entre faixas vira linha vazia, com vao dos dois lados (como o CSS)", () => {
+    const arranjo = [c("a", 0), c("sumida", 0, 2), c("b", 1)];
+    const p = posicoes(arranjo, { a: 100, b: 40 }, DUAS);
+    assert.equal(p.b.y, 100 + 16 + 0 + 16);
+  });
+
+  it("tres colunas: caixa de duas e a coluna livre ao lado", () => {
+    const arranjo = [c("id", 0), c("grafico", 1, 2), c("desvio", 0), c("abas", 2)];
+    const p = posicoes(arranjo, { id: 100, grafico: 600, desvio: 200, abas: 300 }, TRES);
+    assert.deepEqual(p.grafico, { x: 316, y: 0, w: 876, h: 600 });
+    assert.deepEqual(p.abas, { x: 832, y: 616, w: 360, h: 300 });
+    assert.deepEqual(p.desvio, { x: 0, y: 116, w: 300, h: 200 });
+  });
+
+  it("em qualquer arranjo, nenhuma caixa encosta em outra e todas ficam nas suas colunas", () => {
+    let semente = 11;
+    const sorteio = (n) => {
+      semente = (semente * 1103515245 + 12345) % 2147483648;
+      return semente % n;
+    };
+    for (const geo of [DUAS, TRES]) {
+      const n = geo.colunas.length;
+      for (let rodada = 0; rodada < 600; rodada++) {
+        const arranjo = Array.from({ length: 1 + sorteio(9) }, (_, i) => {
+          const largura = 1 + sorteio(n);
+          return c(`c${i}`, sorteio(n - largura + 1), largura);
+        });
+        const alturas = Object.fromEntries(
+          arranjo.filter(() => sorteio(6) > 0).map((i) => [i.id, 1 + sorteio(500)]),
+        );
+        const p = posicoes(arranjo, alturas, geo);
+        assert.deepEqual(Object.keys(p).sort(), Object.keys(alturas).sort());
+        const lista = Object.entries(p);
+        for (const [id, r] of lista) {
+          const item = arranjo.find((i) => i.id === id);
+          assert.equal(r.x, geo.colunas[item.coluna].x, id);
+          const ultima = geo.colunas[item.coluna + item.largura - 1];
+          assert.equal(r.x + r.w, ultima.x + ultima.w, id);
+        }
+        for (let i = 0; i < lista.length; i++) {
+          for (let j = i + 1; j < lista.length; j++) {
+            const [, a] = lista[i];
+            const [, b] = lista[j];
+            const separadas =
+              a.x + a.w <= b.x || b.x + b.w <= a.x || a.y + a.h + geo.vao <= b.y + 0.001 || b.y + b.h + geo.vao <= a.y + 0.001;
+            assert.ok(separadas, JSON.stringify({ arranjo, alturas, a: lista[i], b: lista[j] }));
+          }
+        }
+      }
+    }
   });
 });
 

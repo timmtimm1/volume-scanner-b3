@@ -35,6 +35,9 @@ export const CHAVE_DOS_ARRANJOS = "vs:arranjos";
 /** A largura do `lg:` do Tailwind: daqui para cima a pagina tem colunas. */
 export const CONSULTA_DO_COMPUTADOR = "(min-width: 1024px)";
 
+/** O `id` do lugar na barra do topo onde o botao Organizar aparece. */
+export const LUGAR_DO_ORGANIZAR = "lugar-do-organizar";
+
 /** No maximo isto de caixas numa pagina; acima disso o pedido e lixo. */
 export const MAXIMO_DE_CAIXAS = 40;
 

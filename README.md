@@ -1084,7 +1084,12 @@ Todo sábado de manhã, um panorama da semana que fechou na sexta: as ações do
 
 Nada disto alimenta a regra do alerta. É um retrato do mercado, não um julgamento sobre os eventos de volume.
 
-> **Em construção, por fases.** Já montam, gravam e enviam: os dados de mercado (fase 1), a agenda da semana seguinte e os balanços (fase 2), as notícias (fase 3) e o envio no Telegram (fase 4). Falta só a aba no site.
+### A aba Semana
+
+Cada edição fica numa página pública, sem login: `/semana` mostra a mais recente e `/semana/AAAA-MM-DD` (a sexta-feira da semana) mostra qualquer uma, e é o link que a mensagem do Telegram traz. As páginas são geradas no build; uma edição que o build ainda não conhece é gerada no primeiro acesso, para o link do Telegram não dar 404 enquanto a Vercel reconstrói. No topo, setas para a edição anterior e a seguinte e uma lista para pular para qualquer semana.
+
+A tela lê o resumo já gravado em `resumos_semanais`, na ordem: abertura (Ibovespa, dólar, Brent e ouro), ações (maiores altas e quedas, com o selo "ajustada" e o detalhe do ajuste), notícias, cripto, juros no Brasil (curva prefixada contra a semana anterior), EUA (Treasuries e dot plot do Fed) e a semana que vem (feriados, agenda e balanços). Bloco cuja fonte falhou na montagem aparece como "Indisponível nesta edição". Cabe em 390 px; no celular o menu de baixo mostra só os ícones.
+
 
 ```bash
 scanner semana montar                          # a última semana encerrada, só a prévia

@@ -637,3 +637,29 @@ class JurosHistorico(Base):
     taxa: Mapped[Decimal] = mapped_column(Numeric(8, 4), nullable=False)
     data_base: Mapped[date] = mapped_column(Date, nullable=False)
     fonte: Mapped[str] = mapped_column(Text, nullable=False)
+
+
+class Arranjo(Base):
+    """Arranjo das caixas de uma pagina do site, escolhido pelo dono.
+
+    Uma linha por tipo de pagina (a ficha vale para todo papel, a Semana para
+    toda edicao). Quem escreve e o site, pela rota /api/arranjos; o pipeline
+    nunca le nem escreve aqui. Sem linha vale o arranjo padrao do codigo.
+    `itens` e a lista ordenada [{"id", "coluna", "largura"}], validada pela
+    rota (o CHECK so garante que e uma lista).
+    """
+
+    __tablename__ = "arranjos"
+    __table_args__ = (
+        CheckConstraint(
+            "pagina IN ('semana', 'inicio', 'ficha', 'historico', 'trades', 'trade')",
+            name="ck_arranjos_pagina",
+        ),
+        CheckConstraint("jsonb_typeof(itens) = 'array'", name="ck_arranjos_itens"),
+    )
+
+    pagina: Mapped[str] = mapped_column(Text, primary_key=True)
+    itens: Mapped[list[dict[str, Any]]] = mapped_column(JSONB, nullable=False)
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

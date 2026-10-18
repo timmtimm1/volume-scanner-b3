@@ -6,10 +6,18 @@ acumulado sai em FRACAO (0,1136 = 11,36%), pelo produto das taxas diarias.
 O CDI de um dia so aparece no SGS no dia util seguinte: medido em 17/10/2026, a
 serie pedida ate 16/10 acabava em 15/10. Por isso o bloco devolve `cdi_data`,
 a ultima data que entrou na conta, em vez de fingir que vai ate a sexta.
+
+A Selic do grafico de 10 anos vem primeiro do historico de decisoes do Copom
+(a API do site do BC, a da pagina "Historico das taxas de juros"): um pedido so,
+com a meta e o inicio da vigencia de cada reuniao desde 1996. O SGS fica de
+reserva. Em 18/10/2026 o SGS passou o dia respondendo erro 500 para qualquer
+serie, e o historico do Copom respondia normal; conferido contra o SGS de
+17/10/2026, as datas de mudanca e os valores batem.
 """
 
 from __future__ import annotations
 
+import logging
 import math
 import time
 from bisect import bisect_right
@@ -22,11 +30,14 @@ import pandas as pd
 from scanner.semana.fontes import FonteIndisponivelError, baixar
 from scanner.semana.periodo import Semana, sextas
 
+logger = logging.getLogger(__name__)
+
 FONTE = "bcb"
 URL = (
     "https://api.bcb.gov.br/dados/serie/bcdata.sgs.{serie}/dados"
     "?formato=json&dataInicial={de}&dataFinal={ate}"
 )
+URL_COPOM = "https://www.bcb.gov.br/api/servico/sitebcb/historicotaxasjuros"
 SELIC_META = 432
 CDI_DIARIO = 12
 IPCA_12M = 13522
@@ -53,6 +64,25 @@ def ler_sgs(dados: Any) -> list[tuple[date, float]]:
         except (KeyError, TypeError, ValueError) as exc:
             raise FonteIndisponivelError(FONTE, f"ponto ilegivel: {item!r}") from exc
     return sorted(pontos)
+
+
+def ler_copom(dados: Any) -> list[tuple[date, float]]:
+    """[(inicio da vigencia, meta Selic)] de cada decisao do Copom, em ordem de data.
+
+    A data vem em UTC com a hora da meia-noite de Brasilia ("2016-10-20T02:00:00Z"
+    no horario de verao, "...T03:00:00Z" fora dele): os 10 primeiros caracteres
+    ja sao o dia em Brasilia.
+    """
+    try:
+        pontos = sorted(
+            (date.fromisoformat(str(item["DataInicioVigencia"])[:10]), float(item["MetaSelic"]))
+            for item in dados["conteudo"]
+        )
+    except (KeyError, TypeError, ValueError) as exc:
+        raise FonteIndisponivelError(FONTE, f"historico do Copom ilegivel: {exc}") from exc
+    if not pontos:
+        raise FonteIndisponivelError(FONTE, "historico do Copom vazio")
+    return pontos
 
 
 def acumulado(pontos: list[tuple[date, float]]) -> float | None:
@@ -159,11 +189,29 @@ def selic_por_semana(pontos: list[tuple[date, float]], sextas: list[date]) -> pd
     return pd.DataFrame(linhas, columns=["semana", "serie", "taxa", "data_base", "fonte"])
 
 
-def selic_semanal(desde: date, ate: date, *, cliente: httpx.Client | None = None) -> pd.DataFrame:
-    """A Selic meta de cada sexta entre `desde` e `ate` (SGS 432), em pedacos de 5 anos."""
+def _selic_do_copom(cliente: httpx.Client | None) -> list[tuple[date, float]]:
+    resposta = baixar(FONTE, URL_COPOM, cliente=cliente)
+    try:
+        return ler_copom(resposta.json())
+    except ValueError as exc:
+        raise FonteIndisponivelError(FONTE, "historico do Copom nao e JSON") from exc
+
+
+def _selic_do_sgs(desde: date, ate: date, cliente: httpx.Client | None) -> list[tuple[date, float]]:
+    """A Selic meta dia a dia (SGS 432), em pedacos de 5 anos."""
     pontos: dict[date, float] = {}
     for de, fim in _pedacos(desde - timedelta(days=FOLGA_INICIAL_DIAS), ate):
         pontos.update(_serie(SELIC_META, de, fim, cliente))
+    return sorted(pontos.items())
+
+
+def selic_semanal(desde: date, ate: date, *, cliente: httpx.Client | None = None) -> pd.DataFrame:
+    """A Selic meta de cada sexta entre `desde` e `ate`: Copom primeiro, SGS de reserva."""
+    try:
+        pontos = _selic_do_copom(cliente)
+    except FonteIndisponivelError as exc:
+        logger.warning("[semana] historico do Copom indisponivel (%s); tentando o SGS", exc)
+        pontos = _selic_do_sgs(desde, ate, cliente)
     if not pontos:
         raise FonteIndisponivelError(FONTE, "Selic meta sem nenhum ponto no periodo")
-    return selic_por_semana(sorted(pontos.items()), sextas(desde, ate))
+    return selic_por_semana(pontos, sextas(desde, ate))

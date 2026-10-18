@@ -300,6 +300,30 @@ describe("paginas", () => {
     assert.equal(paginaDoCaminho("/semanal/"), null);
   });
 
+  it("Inicio e ficha padrao: as tres colunas de hoje, cada uma empilhando a sua", () => {
+    const pilhas = (pagina) =>
+      planejar(arranjoPadrao(PAGINAS_DE_CAIXAS[pagina]), 3).partes.map((p) => [p.inicio, p.no.ids]);
+    assert.deepEqual(pilhas("inicio"), [
+      [0, ["resumo", "distribuicao", "leitura"]],
+      [1, ["eventos"]],
+      [2, ["previa"]],
+    ]);
+    assert.deepEqual(pilhas("ficha"), [
+      [0, ["identidade", "desvio", "numeros"]],
+      [1, ["grafico"]],
+      [2, ["abas", "trade", "alerta"]],
+    ]);
+  });
+
+  it("caixa que acompanha a rolagem comeca como a ultima da sua coluna", () => {
+    for (const definicao of Object.values(PAGINAS_DE_CAIXAS)) {
+      for (const caixa of definicao.caixas.filter((c) => c.fixa)) {
+        const depois = definicao.caixas.slice(definicao.caixas.indexOf(caixa) + 1);
+        assert.ok(!depois.some((c) => c.coluna === caixa.coluna), caixa.id);
+      }
+    }
+  });
+
   it("as colunas de cada pagina ligada batem com as trilhas", () => {
     for (const [pagina, definicao] of Object.entries(PAGINAS_DE_CAIXAS)) {
       assert.ok(PAGINAS.includes(pagina));

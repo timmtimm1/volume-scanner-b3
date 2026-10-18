@@ -13,9 +13,11 @@ import {
   type PointerEvent as EventoDePonteiro,
   type ReactNode,
 } from "react";
+import { createPortal } from "react-dom";
 import {
   alternarLargura,
   CHAVE_DOS_ARRANJOS,
+  LUGAR_DO_ORGANIZAR,
   iguais,
   moverComSeta,
   normalizar,
@@ -29,15 +31,16 @@ import {
   type PaginaArrumavel,
   type Seta,
 } from "@/lib/arranjo";
-import { arranjoPadrao, PAGINAS_DE_CAIXAS } from "@/lib/paginas-arrumaveis";
+import { arranjoPadrao, PAGINAS_DE_CAIXAS, type CaixaDaPagina } from "@/lib/paginas-arrumaveis";
 import { useComputador } from "@/lib/useComputador";
 
 /**
  * Organizar: o dono arrasta as caixas de uma pagina no computador e muda a
  * largura delas; o arranjo fica salvo na conta (`/api/arranjos`).
  *
- * A pagina envolve o cabecalho e a grade com `ArranjoDaPagina`; o botao
- * `BotaoOrganizar` vai no cabecalho e a `GradeDeCaixas` recebe as caixas.
+ * A pagina envolve a grade com `ArranjoDaPagina` e passa as caixas para a
+ * `GradeDeCaixas`. O botao Organizar vai sozinho para a barra do topo, ao lado
+ * do tema: no Inicio e na ficha o titulo mora dentro de uma caixa que se move.
  *
  * No celular nada muda: a grade vira uma coluna so, na ordem do padrao, seja
  * qual for o arranjo (as regioes viram `display: contents` e cada caixa leva a
@@ -101,7 +104,7 @@ function assinarCopia(avisar: () => void): () => void {
 type Organizar = {
   colunas: number;
   trilhas: string[];
-  nomes: Record<string, string>;
+  caixas: Record<string, CaixaDaPagina>;
   ordemNoCelular: Record<string, number>;
   arranjo: Arranjo;
   podeOrganizar: boolean;
@@ -220,7 +223,7 @@ export function ArranjoDaPagina({
   const valor: Organizar = {
     colunas,
     trilhas: definicao.trilhas,
-    nomes: Object.fromEntries(definicao.caixas.map((c) => [c.id, c.nome])),
+    caixas: Object.fromEntries(definicao.caixas.map((c) => [c.id, c])),
     ordemNoCelular: Object.fromEntries(padrao.map((c, i) => [c.id, i])),
     arranjo,
     podeOrganizar,
@@ -235,6 +238,7 @@ export function ArranjoDaPagina({
   return (
     <Contexto.Provider value={valor}>
       {children}
+      <BotaoOrganizar />
       {editando && rascunho && (
         <div
           role="toolbar"
@@ -285,16 +289,24 @@ export function ArranjoDaPagina({
   );
 }
 
-/** O botao do cabecalho. So para o dono, no computador, fora do modo. */
-export function BotaoOrganizar() {
+const semAviso = () => () => {};
+
+/** O botao da barra do topo. So para o dono, no computador, fora do modo. */
+function BotaoOrganizar() {
   const o = useOrganizar();
-  if (!o.podeOrganizar || o.editando) return null;
-  return (
+  // O lugar esta no layout raiz, que ja existe quando a pagina monta.
+  const lugar = useSyncExternalStore(
+    semAviso,
+    () => document.getElementById(LUGAR_DO_ORGANIZAR),
+    () => null,
+  );
+  if (!lugar || !o.podeOrganizar || o.editando) return null;
+  return createPortal(
     <button
       type="button"
       onClick={o.organizar}
       title="Arrastar as caixas desta página e mudar a largura delas"
-      className="hidden h-9 shrink-0 items-center gap-2 rounded-full border border-linha-2 px-3.5 text-[13px] font-bold text-tinta-2 transition-colors hover:border-acento hover:text-acento lg:inline-flex"
+      className="flex h-11 shrink-0 items-center gap-2 rounded-full border border-linha bg-painel px-4 text-[13px] font-bold text-tinta-2 transition-colors hover:text-acento"
     >
       <svg width="15" height="15" viewBox="0 0 20 20" aria-hidden fill="none" stroke="currentColor" strokeWidth={1.7} strokeLinejoin="round">
         <rect x="3" y="3" width="6" height="8" rx="1.5" />
@@ -303,7 +315,8 @@ export function BotaoOrganizar() {
         <rect x="3" y="13" width="6" height="4" rx="1.5" />
       </svg>
       Organizar
-    </button>
+    </button>,
+    lugar,
   );
 }
 
@@ -441,16 +454,27 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
     quadro = requestAnimationFrame(rolar);
   }
 
-  function caixa(id: string, naGrade: boolean, posicao?: CSSProperties) {
+  /**
+   * `onde`: direto na grade (alinha no topo da celula), numa pilha, ou como a
+   * ultima da pilha -- a unica posicao em que uma caixa `fixa` pode acompanhar
+   * a rolagem sem passar por cima das caixas de baixo.
+   */
+  function caixa(id: string, onde: "grade" | "pilha" | "fim-da-pilha", posicao?: CSSProperties) {
     const item = o.arranjo.find((i) => i.id === id);
-    const nome = o.nomes[id] ?? id;
+    const definicao = o.caixas[id];
+    const nome = definicao?.nome ?? id;
+    const classes = [
+      "relative min-w-0 max-lg:order-(--ordem)",
+      onde === "grade" ? "lg:self-start" : "",
+      onde === "fim-da-pilha" && definicao?.fixa ? "lg:sticky lg:top-4 lg:z-10" : "",
+      definicao?.soComputador ? "max-lg:hidden" : "",
+      arrasto?.id === id ? "opacity-35" : "",
+    ];
     return (
       <div
         key={id}
         data-caixa={id}
-        className={`relative min-w-0 max-lg:order-(--ordem) ${naGrade ? "lg:self-start" : ""} ${
-          arrasto?.id === id ? "opacity-35" : ""
-        }`}
+        className={classes.filter(Boolean).join(" ")}
         style={{ "--ordem": o.ordemNoCelular[id] ?? 0, ...posicao } as CSSProperties}
       >
         <div data-conteudo inert={o.editando}>
@@ -472,10 +496,10 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
                 setFocar(id);
                 o.mudar(moverComSeta(o.arranjo, id, seta, o.colunas));
               }}
-              className="flex cursor-grab items-center gap-1.5 rounded-full bg-painel px-3 py-1.5 text-[13px] font-extrabold text-acento shadow-[var(--sombra)]"
+              className="flex min-w-0 cursor-grab items-center gap-1.5 whitespace-nowrap rounded-full bg-painel px-3 py-1.5 text-[13px] font-extrabold text-acento shadow-[var(--sombra)]"
             >
               <span aria-hidden>⠿</span>
-              {nome}
+              <span className="truncate">{nome}</span>
             </button>
             {o.colunas > 1 && (
               <button
@@ -483,7 +507,7 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={() => o.mudar(alternarLargura(o.arranjo, id, o.colunas))}
                 title="Mudar a largura"
-                className="flex items-center gap-1.5 rounded-full bg-painel px-3 py-1.5 text-[12px] font-bold text-tinta-2 shadow-[var(--sombra)] transition-colors hover:text-acento"
+                className="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-full bg-painel px-3 py-1.5 text-[12px] font-bold text-tinta-2 shadow-[var(--sombra)] transition-colors hover:text-acento"
               >
                 <span aria-hidden>↔</span>
                 {rotuloDaLargura(item.largura, o.colunas)}
@@ -497,7 +521,7 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
 
   const pilha = (ids: string[], chave: string, posicao: CSSProperties) => (
     <div key={chave} className="contents lg:flex lg:min-w-0 lg:flex-col lg:gap-4" style={posicao}>
-      {ids.map((id) => caixa(id, false))}
+      {ids.map((id, i) => caixa(id, i === ids.length - 1 ? "fim-da-pilha" : "pilha"))}
     </div>
   );
 
@@ -516,7 +540,7 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
     const toda: CSSProperties = { gridColumn: "1 / -1" };
     switch (no.tipo) {
       case "caixa":
-        return caixa(no.id, true, toda);
+        return caixa(no.id, "grade", toda);
       case "pilha":
         return pilha(no.ids, `pilha-${de}`, toda);
       case "lado":
@@ -529,7 +553,7 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
       case "faixas":
         return no.faixas.map((f, i) => {
           const posicao: CSSProperties = { gridColumn: "1 / -1", gridRow: i + 1 };
-          if (f.tipo === "caixa") return caixa(f.id, true, posicao);
+          if (f.tipo === "caixa") return caixa(f.id, "grade", posicao);
           return regiao(trilhas, `faixa-${i}`, posicao, desenhar(f, de, trilhas));
         });
     }
@@ -559,7 +583,7 @@ export function GradeDeCaixas({ caixas }: { caixas: Record<string, ReactNode> })
             className="pointer-events-none fixed z-50 rounded-full bg-acento px-3 py-1.5 text-[13px] font-extrabold text-painel shadow-[var(--sombra)]"
             style={{ left: arrasto.x + 14, top: arrasto.y + 14 }}
           >
-            ⠿ {o.nomes[arrasto.id] ?? arrasto.id}
+            ⠿ {o.caixas[arrasto.id]?.nome ?? arrasto.id}
           </div>
         </>
       )}

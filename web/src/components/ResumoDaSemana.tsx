@@ -7,7 +7,7 @@ import {
   vizinhas,
 } from "@/lib/semana";
 import type { EdicaoDaSemana, LinhaDeJuros, ResumoDaSemana as Resumo } from "@/lib/types";
-import { ArranjoDaPagina, BotaoOrganizar, GradeDeCaixas } from "./OrganizarCaixas";
+import { ArranjoDaPagina, GradeDeCaixas } from "./OrganizarCaixas";
 import { SemanaAcoes } from "./SemanaAcoes";
 import { SemanaBalancos, SemanaQueVem } from "./SemanaAgenda";
 import { SemanaEua, SemanaJuros } from "./SemanaJuros";
@@ -104,15 +104,12 @@ export function ResumoDaSemana({
     <ArranjoDaPagina pagina="semana">
       <div className="flex flex-col gap-4">
         <header className="cartao relative z-10 flex flex-col gap-3 p-4 md:p-5">
-          <div className="flex items-start justify-between gap-3">
-            <div className="flex flex-col gap-0.5">
-              <h1 className="text-[22px] font-extrabold tracking-tight">Resumo da semana</h1>
-              <p className="num text-[13px] font-semibold text-tinta-3">
-                <span className="text-tinta-2">{periodoDaSemana(semana.pregoes, semana.fim)}</span>
-                {" · "}gerado em {instanteEmBrasilia(resumo.gerado_em)}
-              </p>
-            </div>
-            <BotaoOrganizar />
+          <div className="flex flex-col gap-0.5">
+            <h1 className="text-[22px] font-extrabold tracking-tight">Resumo da semana</h1>
+            <p className="num text-[13px] font-semibold text-tinta-3">
+              <span className="text-tinta-2">{periodoDaSemana(semana.pregoes, semana.fim)}</span>
+              {" · "}gerado em {instanteEmBrasilia(resumo.gerado_em)}
+            </p>
           </div>
           <div className="md:max-w-md">
             <Edicoes edicoes={edicoes} sexta={semana.sexta} />

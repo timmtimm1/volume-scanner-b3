@@ -334,16 +334,17 @@ A ficha também funciona em 390px de largura — é o link que chega pelo alerta
 
 ### Organizar as caixas (no computador)
 
-Logado, com a janela a partir de 1024 px, o cabeçalho da página ganha o botão
-**Organizar**. No modo, cada caixa ganha contorno e alça: arrastar troca a caixa
+Logado, com a janela a partir de 1024 px, a barra do topo ganha o botão
+**Organizar**, ao lado do tema (no Início e na ficha o título fica dentro de uma
+caixa que se move, então o botão não mora em nenhuma). No modo, cada caixa ganha contorno e alça: arrastar troca a caixa
 de lugar, e o **↔** alterna a largura (meia ou toda, nas páginas de 2 colunas;
 1, 2 ou 3 colunas nas de 3). **Concluir** grava, **Cancelar** desfaz e
 **Restaurar padrão** volta ao arranjo do código. Pelo teclado: a alça recebe
 foco, e as setas fazem o mesmo que o arrasto. Fora do modo nada se mexe — o
 gráfico de juros continua navegando com o arrasto.
 
-Ligado por enquanto na Semana. As caixas e o arranjo padrão de cada página
-estão em `web/src/lib/paginas-arrumaveis.ts`.
+Ligado na Semana, no Início e na ficha. As caixas e o arranjo padrão de cada
+página estão em `web/src/lib/paginas-arrumaveis.ts`.
 
 - **A regra de posição.** O arranjo é a lista ordenada das caixas, cada uma com
   a coluna onde começa e quantas ocupa. Cada caixa fica logo abaixo da última
@@ -362,7 +363,11 @@ estão em `web/src/lib/paginas-arrumaveis.ts`.
   em 1,5 s se o JavaScript não chegar). Visitante, ou o dono deslogado, vê o
   padrão.
 - **O celular não muda.** Abaixo de 1024 px a grade vira uma coluna na ordem do
-  padrão, qualquer que seja o arranjo, e o botão não aparece.
+  padrão, qualquer que seja o arranjo, e o botão não aparece. Caixa que só existe
+  no computador (a distribuição, a leitura do mercado e a prévia do Início) nem
+  ocupa lugar no celular.
+- **A prévia do Início segue a rolagem** onde quer que esteja, desde que seja a
+  última caixa da sua coluna — com caixas embaixo, ela passaria por cima delas.
 - **Caixa nova não se perde.** Caixa que entra no código depois de um arranjo
   salvo aparece logo depois da caixa que a precede no padrão; caixa que sai do
   código some do arranjo sozinha.

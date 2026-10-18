@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { LUGAR_DO_ORGANIZAR } from "@/lib/arranjo";
 import { useTema } from "@/lib/tema";
 
 /**
@@ -165,7 +166,9 @@ export function Navegacao() {
           </div>
         </nav>
 
-        <div className="flex w-[280px] justify-end">
+        <div className="flex w-[280px] items-center justify-end gap-2">
+          {/* O botao Organizar da pagina aberta entra aqui (OrganizarCaixas.tsx). */}
+          <span id={LUGAR_DO_ORGANIZAR} className="contents" />
           <span className="rounded-full border border-linha bg-painel">
             <BotaoDoTema />
           </span>

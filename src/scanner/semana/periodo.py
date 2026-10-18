@@ -77,3 +77,9 @@ def proxima_semana(semana: Semana) -> tuple[date, date]:
     """
     segunda = semana.sexta + timedelta(days=3)
     return segunda, segunda + timedelta(days=4)
+
+
+def sextas(desde: date, ate: date) -> list[date]:
+    """As sextas-feiras nominais de `desde` (a primeira que nao seja anterior) ate `ate`."""
+    primeira = desde + timedelta(days=(4 - desde.weekday()) % 7)
+    return [primeira + timedelta(days=7 * i) for i in range(((ate - primeira).days // 7) + 1)]

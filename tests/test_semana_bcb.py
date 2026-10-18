@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import math
 from datetime import date
+from itertools import pairwise
 from pathlib import Path
 from typing import Any
 
@@ -130,3 +131,68 @@ def test_busca_das_quatro_series_com_as_janelas_da_spec() -> None:
     assert "sgs.12/" in urls[2] and "dataInicial=01/01/2026" in urls[2]
     assert "sgs.13522" in urls[3] and "dataInicial=11/09/2025" in urls[3]
     assert r["selic_meta"] == 13.75
+
+
+def test_pedacos_cobrem_o_periodo_sem_buraco_nem_passar_de_10_anos() -> None:
+    pedacos = bcb_mod._pedacos(date(2016, 7, 16), date(2026, 10, 16))
+
+    assert pedacos[0][0] == date(2016, 7, 16)
+    assert pedacos[-1][1] == date(2026, 10, 16)
+    for (_, fim), (inicio, _) in pairwise(pedacos):
+        assert (inicio - fim).days == 1
+    assert all((fim - inicio).days < 3650 for inicio, fim in pedacos)
+    assert len(pedacos) == 3
+
+
+def test_pedaco_unico_quando_o_periodo_e_curto() -> None:
+    assert bcb_mod._pedacos(date(2026, 9, 1), FIM) == [(date(2026, 9, 1), FIM)]
+
+
+def test_selic_na_sexta_e_o_ultimo_valor_ate_ela() -> None:
+    pontos = [(date(2016, 7, 20), 14.25), (date(2016, 10, 19), 14.0), (date(2016, 12, 1), 13.75)]
+
+    frame = bcb_mod.selic_por_semana(
+        pontos, [date(2016, 10, 14), date(2016, 10, 21), date(2016, 12, 2)]
+    )
+
+    assert frame["taxa"].tolist() == [14.25, 14.0, 13.75]
+    assert frame["data_base"].tolist() == [date(2016, 7, 20), date(2016, 10, 19), date(2016, 12, 1)]
+    assert set(frame["serie"]) == {"selic"}
+    assert set(frame["fonte"]) == {"bcb"}
+
+
+def test_selic_antes_do_primeiro_ponto_nao_gera_semana() -> None:
+    frame = bcb_mod.selic_por_semana([(date(2016, 10, 20), 14.0)], [date(2016, 10, 14)])
+
+    assert frame.empty
+
+
+def test_selic_semanal_pede_em_pedacos_e_junta() -> None:
+    cliente = _Cliente(
+        [
+            httpx.Response(200, json=[{"data": "20/07/2016", "valor": "14.25"}]),
+            httpx.Response(200, json=[{"data": "19/10/2016", "valor": "14.00"}]),
+            httpx.Response(200, json=[{"data": "01/12/2021", "valor": "9.25"}]),
+        ]
+    )
+
+    frame = bcb_mod.selic_semanal(
+        date(2016, 10, 14),
+        date(2026, 10, 16),
+        cliente=cliente,  # type: ignore[arg-type]
+    )
+
+    assert len(cliente.urls) == 3
+    assert frame["semana"].iloc[0] == date(2016, 10, 14)
+    assert frame["taxa"].iloc[0] == 14.25
+    assert frame["semana"].iloc[-1] == date(2026, 10, 16)
+    assert frame["taxa"].iloc[-1] == 9.25
+    assert len(frame) == 523  # de 14/10/2016 a 16/10/2026, inclusive
+
+
+def test_selic_semanal_sem_nenhum_ponto_levanta() -> None:
+    erro = {"erro": {"statusCode": 404}}
+    cliente = _Cliente([httpx.Response(404, json=erro)] * 3)
+
+    with pytest.raises(FonteIndisponivelError, match="nenhum ponto"):
+        bcb_mod.selic_semanal(date(2016, 10, 14), FIM, cliente=cliente)  # type: ignore[arg-type]

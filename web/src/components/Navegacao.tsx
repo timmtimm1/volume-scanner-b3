@@ -7,6 +7,11 @@ import { useTema } from "@/lib/tema";
 /**
  * Barra do topo com as secoes em pilula no computador; pilula flutuante embaixo
  * no celular, onde o polegar alcanca.
+ *
+ * No celular so os icones, o ativo destacado pelo fundo. Com seis secoes mais o
+ * botao do tema, o ativo com nome comprimia os outros para 38px a 390px e 32px a
+ * 360px, abaixo dos 44px de alvo de toque. So icones: 48px cada (44px no minimo
+ * quando a tela aperta), e o nome fica no `aria-label` e no `title`.
  */
 
 type Item = { href: string; nome: string; icone: React.ReactNode };
@@ -36,6 +41,17 @@ const ITENS: Item[] = [
       <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
         <path d="M10 5v5l3 2" />
         <circle cx="10" cy="10" r="7" />
+      </svg>
+    ),
+  },
+  {
+    href: "/semana",
+    nome: "Semana",
+    icone: (
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+        <rect x="3" y="4" width="14" height="13" rx="2" />
+        <path d="M3 8h14M7 2.5v3M13 2.5v3" />
+        <path d="M6 14.5l2.5-2.5 2 1.5 3.5-3.5" />
       </svg>
     ),
   },
@@ -165,14 +181,12 @@ export function Navegacao() {
               href={item.href}
               aria-current={on ? "page" : undefined}
               aria-label={item.nome}
-              className={`flex h-12 items-center justify-center gap-2 rounded-full transition-colors ${
-                on
-                  ? "bg-primario px-4 text-[13px] font-bold text-primario-tinta"
-                  : "w-12 text-tinta-3"
+              title={item.nome}
+              className={`flex h-12 min-w-11 max-w-12 flex-1 items-center justify-center rounded-full transition-colors ${
+                on ? "bg-primario text-primario-tinta" : "text-tinta-3"
               }`}
             >
               {item.icone}
-              {on && item.nome}
             </Link>
           );
         })}

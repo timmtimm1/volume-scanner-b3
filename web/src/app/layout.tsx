@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import { Manrope } from "next/font/google";
 import { Navegacao } from "@/components/Navegacao";
+import { SCRIPT_DO_ARRANJO } from "@/lib/arranjo";
 import { SCRIPT_DO_TEMA } from "@/lib/tema";
 import "./globals.css";
 
@@ -46,11 +47,13 @@ export default function RootLayout({
   children,
 }: Readonly<{ children: React.ReactNode }>) {
   return (
-    // O script do tema grava `data-tema` antes de o React hidratar: a diferenca
-    // de atributo entre servidor e cliente e esperada.
+    // Os scripts do tema e do arranjo gravam `data-tema` e `data-arranjo` antes
+    // de o React hidratar: a diferenca de atributo entre servidor e cliente e
+    // esperada.
     <html lang="pt-BR" className={sans.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: SCRIPT_DO_TEMA }} />
+        <script dangerouslySetInnerHTML={{ __html: SCRIPT_DO_ARRANJO }} />
       </head>
       <body className="min-h-dvh">
         <Navegacao />

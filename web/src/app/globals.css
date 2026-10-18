@@ -210,3 +210,29 @@ input[type="range"] {
     animation: none;
   }
 }
+
+/*
+ * Organizar (OrganizarCaixas.tsx). Caixa cujo conteudo nao existe nesta pagina
+ * nao ocupa lugar nem abre vao na grade.
+ */
+[data-caixa]:has(> [data-conteudo]:empty) {
+  display: none;
+}
+
+/*
+ * Com arranjo do dono guardado, o script do <head> marca a pagina como
+ * "pendente" e as caixas esperam o React aplica-lo, em vez de aparecer no
+ * padrao e pular. Se o JavaScript nao chegar, elas aparecem sozinhas em 1,5 s.
+ */
+@media (min-width: 1024px) {
+  html[data-arranjo="pendente"] [data-grade] {
+    visibility: hidden;
+    animation: arranjo-de-reserva 0s linear 1.5s forwards;
+  }
+}
+
+@keyframes arranjo-de-reserva {
+  to {
+    visibility: visible;
+  }
+}

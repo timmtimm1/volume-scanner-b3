@@ -29,8 +29,7 @@ export type PaginaDeCaixas = {
 /** Coluna que divide o que sobra; `minmax(0, ...)` deixa encolher abaixo do conteudo. */
 const FLEXIVEL = "minmax(0,1fr)";
 
-/** So as paginas ja ligadas ao Organizar; as outras entram nas fases seguintes. */
-export const PAGINAS_DE_CAIXAS: Partial<Record<PaginaArrumavel, PaginaDeCaixas>> = {
+export const PAGINAS_DE_CAIXAS: Record<PaginaArrumavel, PaginaDeCaixas> = {
   semana: {
     trilhas: [FLEXIVEL, FLEXIVEL],
     caixas: [
@@ -64,6 +63,29 @@ export const PAGINAS_DE_CAIXAS: Partial<Record<PaginaArrumavel, PaginaDeCaixas>>
       { id: "abas", nome: "Abas do papel", coluna: 2, largura: 1 },
       { id: "trade", nome: "Trade", coluna: 2, largura: 1 },
       { id: "alerta", nome: "Alertas", coluna: 2, largura: 1 },
+    ],
+  },
+  historico: {
+    trilhas: ["minmax(0,9fr)", "minmax(0,11fr)"],
+    caixas: [
+      { id: "tabela", nome: "Eventos", coluna: 0, largura: 1 },
+      { id: "previa", nome: "Prévia do papel", coluna: 1, largura: 1, soComputador: true, fixa: true },
+    ],
+  },
+  // Trades e detalhe do trade: uma coluna, como hoje; o Organizar so muda a ordem.
+  trades: {
+    trilhas: [FLEXIVEL],
+    caixas: [
+      { id: "abertos", nome: "Em aberto", coluna: 0, largura: 1 },
+      { id: "encerrados", nome: "Encerrados", coluna: 0, largura: 1 },
+    ],
+  },
+  trade: {
+    trilhas: [FLEXIVEL],
+    caixas: [
+      { id: "resultado", nome: "Resultado por pregão", coluna: 0, largura: 1 },
+      { id: "pregoes", nome: "Pregões marcados", coluna: 0, largura: 1 },
+      { id: "operacoes", nome: "Operações", coluna: 0, largura: 1 },
     ],
   },
 };

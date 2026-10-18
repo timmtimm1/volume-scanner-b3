@@ -44,6 +44,8 @@ def test_nomes_das_tabelas() -> None:
     # montado, um por semana, para o envio e o site lerem sem refazer as consultas.
     # `juros_historico` (migration 0011) e a serie de juros do grafico de 10 anos:
     # uma taxa por semana e por serie (Tesouro Direto e Selic meta).
+    # `arranjos` (migration 0012) guarda o arranjo das caixas de cada pagina do
+    # site, escolhido pelo dono; so o site escreve, o pipeline nao toca.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -64,6 +66,7 @@ def test_nomes_das_tabelas() -> None:
         "fundamentos_trimestre",
         "resumos_semanais",
         "juros_historico",
+        "arranjos",
     }
 
 
@@ -93,6 +96,7 @@ def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
         ("cvm_balancos", ["cd_cvm", "tipo", "dt_refer"]),
         ("arquivos_externos", ["url"]),
         ("juros_historico", ["semana", "serie"]),
+        ("arranjos", ["pagina"]),
     ],
 )
 def test_chaves_primarias(name: str, expected: list[str]) -> None:

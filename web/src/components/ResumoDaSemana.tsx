@@ -7,8 +7,9 @@ import {
   vizinhas,
 } from "@/lib/semana";
 import type { EdicaoDaSemana, LinhaDeJuros, ResumoDaSemana as Resumo } from "@/lib/types";
+import { ArranjoDaPagina, BotaoOrganizar, GradeDeCaixas } from "./OrganizarCaixas";
 import { SemanaAcoes } from "./SemanaAcoes";
-import { SemanaQueVem } from "./SemanaAgenda";
+import { SemanaBalancos, SemanaQueVem } from "./SemanaAgenda";
 import { SemanaEua, SemanaJuros } from "./SemanaJuros";
 import { SemanaAbertura, SemanaCripto, SemanaNoticias } from "./SemanaMercado";
 
@@ -100,42 +101,46 @@ export function ResumoDaSemana({
 }) {
   const { semana } = resumo;
   return (
-    <div className="flex flex-col gap-4">
-      <header className="cartao relative z-10 flex flex-col gap-3 p-4 md:p-5">
-        <div className="flex flex-col gap-0.5">
-          <h1 className="text-[22px] font-extrabold tracking-tight">Resumo da semana</h1>
-          <p className="num text-[13px] font-semibold text-tinta-3">
-            <span className="text-tinta-2">{periodoDaSemana(semana.pregoes, semana.fim)}</span>
-            {" · "}gerado em {instanteEmBrasilia(resumo.gerado_em)}
-          </p>
-        </div>
-        <div className="md:max-w-md">
-          <Edicoes edicoes={edicoes} sexta={semana.sexta} />
-        </div>
-      </header>
+    <ArranjoDaPagina pagina="semana">
+      <div className="flex flex-col gap-4">
+        <header className="cartao relative z-10 flex flex-col gap-3 p-4 md:p-5">
+          <div className="flex items-start justify-between gap-3">
+            <div className="flex flex-col gap-0.5">
+              <h1 className="text-[22px] font-extrabold tracking-tight">Resumo da semana</h1>
+              <p className="num text-[13px] font-semibold text-tinta-3">
+                <span className="text-tinta-2">{periodoDaSemana(semana.pregoes, semana.fim)}</span>
+                {" · "}gerado em {instanteEmBrasilia(resumo.gerado_em)}
+              </p>
+            </div>
+            <BotaoOrganizar />
+          </div>
+          <div className="md:max-w-md">
+            <Edicoes edicoes={edicoes} sexta={semana.sexta} />
+          </div>
+        </header>
 
-      <SemanaAbertura abertura={resumo.abertura} />
-      <SemanaAcoes acoes={resumo.acoes} nomes={nomes} />
-
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <SemanaNoticias noticias={resumo.noticias} />
-        <SemanaCripto cripto={resumo.cripto} />
-      </div>
-
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <SemanaJuros
-          curva={resumo.juros_br.curva}
-          curvaReal={resumo.juros_br.curva_real}
-          indicadores={resumo.juros_br.indicadores}
-          historico={juros}
+        {/* As caixas e a ordem do celular estao em lib/paginas-arrumaveis.ts. */}
+        <GradeDeCaixas
+          caixas={{
+            abertura: <SemanaAbertura abertura={resumo.abertura} />,
+            acoes: <SemanaAcoes acoes={resumo.acoes} nomes={nomes} />,
+            noticias: <SemanaNoticias noticias={resumo.noticias} />,
+            cripto: <SemanaCripto cripto={resumo.cripto} />,
+            juros: (
+              <SemanaJuros
+                curva={resumo.juros_br.curva}
+                curvaReal={resumo.juros_br.curva_real}
+                indicadores={resumo.juros_br.indicadores}
+                historico={juros}
+              />
+            ),
+            eua: <SemanaEua treasuries={resumo.eua.treasuries} fed={resumo.eua.fed} />,
+            "semana-que-vem": <SemanaQueVem proxima={resumo.proxima_semana} />,
+            balancos: <SemanaBalancos proxima={resumo.proxima_semana} />,
+          }}
         />
-        <SemanaEua treasuries={resumo.eua.treasuries} fed={resumo.eua.fed} />
       </div>
-
-      <div className="grid items-start gap-4 lg:grid-cols-2">
-        <SemanaQueVem proxima={resumo.proxima_semana} />
-      </div>
-    </div>
+    </ArranjoDaPagina>
   );
 }
 

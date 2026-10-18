@@ -121,46 +121,50 @@ function Balancos({ balancos }: { balancos: BalancosDaSemana | BlocoComErro }) {
 export function SemanaQueVem({ proxima }: { proxima: ProximaSemana }) {
   const grupos = agruparAgenda(proxima.agenda);
   return (
-    <>
-      <Bloco
-        titulo="Semana que vem"
-        subtitulo={`${diaCurto(proxima.inicio)} a ${fmtData(proxima.fim)} · agenda em horário de Brasília`}
-      >
-        {proxima.feriados_b3.length > 0 && (
-          <div className="rounded-2xl bg-evento-fundo px-4 py-3 text-[13px] font-bold leading-snug text-evento-tinta">
-            {proxima.feriados_b3.length === 1 ? "Feriado da B3" : "Feriados da B3"}:{" "}
-            {proxima.feriados_b3.map((d) => diaComSemana(d)).join(", ")}. Sem pregão.
-          </div>
-        )}
-        {grupos.length === 0 ? (
-          <p className="text-[13px] text-tinta-3">Nenhum evento na agenda.</p>
-        ) : (
-          <div className="flex flex-col gap-3">
-            {grupos.map((g) => (
-              <div key={g.data} className="flex flex-col border-b border-linha pb-2 last:border-b-0">
-                <h3 className="rotulo">{diaComSemana(g.data)}</h3>
-                <ul>
-                  {g.eventos.map((e) => (
-                    <LinhaDaAgenda key={`${e.data}-${e.hora}-${e.pais}-${e.evento}`} e={e} />
-                  ))}
-                </ul>
-              </div>
-            ))}
-          </div>
-        )}
-        {proxima.agenda_avisos.length > 0 && (
-          <ul className="flex flex-col gap-1">
-            {proxima.agenda_avisos.map((a) => (
-              <li key={a} className="text-[11px] leading-relaxed text-tinta-3">
-                {a}
-              </li>
-            ))}
-          </ul>
-        )}
-      </Bloco>
-      <Bloco titulo="Balanços" subtitulo="Resultados do trimestre">
-        <Balancos balancos={proxima.balancos} />
-      </Bloco>
-    </>
+    <Bloco
+      titulo="Semana que vem"
+      subtitulo={`${diaCurto(proxima.inicio)} a ${fmtData(proxima.fim)} · agenda em horário de Brasília`}
+    >
+      {proxima.feriados_b3.length > 0 && (
+        <div className="rounded-2xl bg-evento-fundo px-4 py-3 text-[13px] font-bold leading-snug text-evento-tinta">
+          {proxima.feriados_b3.length === 1 ? "Feriado da B3" : "Feriados da B3"}:{" "}
+          {proxima.feriados_b3.map((d) => diaComSemana(d)).join(", ")}. Sem pregão.
+        </div>
+      )}
+      {grupos.length === 0 ? (
+        <p className="text-[13px] text-tinta-3">Nenhum evento na agenda.</p>
+      ) : (
+        <div className="flex flex-col gap-3">
+          {grupos.map((g) => (
+            <div key={g.data} className="flex flex-col border-b border-linha pb-2 last:border-b-0">
+              <h3 className="rotulo">{diaComSemana(g.data)}</h3>
+              <ul>
+                {g.eventos.map((e) => (
+                  <LinhaDaAgenda key={`${e.data}-${e.hora}-${e.pais}-${e.evento}`} e={e} />
+                ))}
+              </ul>
+            </div>
+          ))}
+        </div>
+      )}
+      {proxima.agenda_avisos.length > 0 && (
+        <ul className="flex flex-col gap-1">
+          {proxima.agenda_avisos.map((a) => (
+            <li key={a} className="text-[11px] leading-relaxed text-tinta-3">
+              {a}
+            </li>
+          ))}
+        </ul>
+      )}
+    </Bloco>
+  );
+}
+
+/** Caixa propria, separada da agenda: no computador cada uma vai para onde o dono quiser. */
+export function SemanaBalancos({ proxima }: { proxima: ProximaSemana }) {
+  return (
+    <Bloco titulo="Balanços" subtitulo="Resultados do trimestre">
+      <Balancos balancos={proxima.balancos} />
+    </Bloco>
   );
 }

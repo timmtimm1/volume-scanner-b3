@@ -33,6 +33,7 @@ O sistema **detecta e apresenta**.
 - [Deploy](#deploy)
 - [Recriar do zero](#recriar-do-zero)
 - [Dificuldades conhecidas](#dificuldades-conhecidas)
+- [Testes de regressão](#testes-de-regressão)
 - [Notícias na ficha](#notícias-na-ficha)
 - [Resumo da semana](#resumo-da-semana)
 - [Desempenho](#desempenho)
@@ -1025,6 +1026,38 @@ pareceriam complexas demais para o problema.
 - **O rompimento só vê o preço do instante da checagem**, a cada 5 minutos
   durante o pregão — não a máxima nem a mínima do intervalo. Um preço que
   ultrapassa o nível e volta antes da próxima checagem não dispara alerta.
+
+## Testes de regressão
+
+A regra da casa: todo bug corrigido ganha um teste que falharia se ele voltasse,
+e uma linha na tabela abaixo. Os testes novos sem outro lugar para morar ficam em
+`tests/test_regressoes.py`; os demais já estavam nos arquivos de cada módulo.
+
+| Incidente (data, PR) | O que acontecia | Teste que trava |
+| --- | --- | --- |
+| Duas migrations `0010` (17/10/2026) | Dois branches criaram o mesmo número; colidiu no banco | `test_regressoes.py::test_migrations_tem_numero_unico_e_cadeia_linear` |
+| Yahoo responde 429 (17/10/2026) | User-Agent de navegador (Chrome) era recusado em toda requisição | `test_regressoes.py::test_yahoo_usa_o_user_agent_do_projeto_e_nao_o_de_navegador` |
+| Dev apontando para o Neon (08/09/2026, #12) | A suíte criava banco dentro da produção | `test_regressoes.py::test_env_example_aponta_o_desenvolvimento_para_o_postgres_local` e `test_retention.py::test_guarda_impede_teste_de_abrir_o_banco_de_trabalho` |
+| Agendador nativo do GitHub (14/09/2026, #29) | O `schedule` falhava em silêncio e duplicava o cron externo | `test_regressoes.py::test_nenhum_workflow_tem_agendador_nativo_do_github` e `test_retention.py::test_agenda_externa_cobre_todo_workflow_sem_agendador_proprio` |
+| Re-run reprocessou o pregão (16/09/2026, #46) | Re-run do GitHub repetiu código e data antigos e reenviou o resumo | `test_retention.py::test_guarda_so_barra_rerun_fora_do_main_atual`; para a semana, `test_workflow_semana.py::test_guarda_de_rerun_e_o_primeiro_passo` |
+| Resumo diário sem dedupe (commits `temp:` de 16/09/2026) | Dedupe desligado de propósito foi parar no main | `test_digest.py::test_resumo_nao_e_reenviado_no_mesmo_pregao` |
+| Telegram 429 (16/09/2026) | Excesso de mensagens perdia o resumo | `test_telegram.py::test_429_espera_o_que_o_telegram_pede_e_tenta_de_novo` e `test_429_persistente_vira_erro` |
+| Rompimentos em feriado (14/09/2026, #34) | O cron de segunda a sexta rodava em feriado da B3 | `test_retention.py::test_rompimentos_em_feriado_nao_instala_nem_conecta` |
+| Pregão adiado contado como falha (14/09/2026, #33) | A B3 atrasava o arquivo e o job avisava erro | `test_retention.py::test_pregao_adiado_nao_e_falha_nem_reconstroi_o_site` |
+| Repescagens da noite (10/10/2026, #65) | O resumo só chegava no dia seguinte quando a B3 atrasava | `test_retention.py::test_repescagens_rodam_depois_das_21h30_e_terminam_antes_da_meia_noite` e `test_cli.py::test_repescagem_processa_o_pregao_que_as_21h30_adiaram` |
+| Rompimentos precisando de passo de migração (10/10/2026, #66) | Passo à parte falhava antes da checagem | `test_retention.py::test_rompimentos_migra_dentro_da_checagem_e_nao_num_passo_a_parte` |
+| Ticker com dígito, B3SA3 (24/09/2026, #60) | O formato aceito recusava o emissor com número | `test_rompimentos.py` (ticker válido) e `web/src/lib/ticker.test.mjs` |
+| Hora da brapi (23/09/2026, #57) | Valia a hora da resposta, não a do negócio | `test_cotacoes.py::test_hora_nao_confiavel_nao_ganha_de_quem_respondeu` |
+| Yahoo respondia sobre ontem (23/09/2026, #58) | Fechamento anterior entrava como preço de agora | `test_cotacoes.py::test_yahoo_nao_usa_o_fechamento_de_ontem_como_preco_de_agora` |
+| Zip da CVM cortado (27/09/2026, #63) | Arquivo incompleto ficava em cache e quebrava a carga | `test_fundamentos_cvm.py::test_baixar_zip_cortado_baixa_de_novo` |
+| Ticker ligado à empresa pelo prefixo | "EMBR" na B3 é a EMBRAST, não a Embraer | `test_models.py::test_ticker_aponta_para_empresa_e_nunca_para_prefixo` |
+| Z incluindo o próprio dia | Sem `shift(1)` o limiar de 6σ nunca dispara | `test_metrics.py::test_z_ultrapassa_o_teto_que_existiria_sem_shift` |
+| `TOTNEG` saturado e dia sem negócio | 99999 tratado como valor real; ausência virando zero | `test_features.py::test_ticket_censurado_nao_gera_avg_ticket` e `test_metrics.py::test_dia_sem_negocio_vira_nan_nunca_zero` |
+| Parser desalinhado (VOLTOT ≈ PREMED × QUATOT) | Carga com layout errado seguia adiante | `test_cotahist.py::test_parser_desalinhado_aborta_a_carga` |
+| Mensagem da semana em bloco de código (17/10/2026) | No iPhone o `<pre>` virou bloco com botão de copiar sobre os números | `test_semana_mensagem.py::test_sem_bloco_de_codigo`. O resumo diário usa `<pre>` de propósito |
+| Link do resumo sem barra final (17/10/2026) | O site (`trailingSlash: true`) respondia 308 | `test_semana_mensagem.py::test_link_do_app_usa_a_sexta_e_ignora_barra_final` |
+| `semana enviar` sem Telegram (17/10/2026) | O que só foi ao terminal ficaria marcado como enviado | `test_cli.py::test_semana_enviar_sem_telegram_configurado_nao_marca` |
+| Banco `*_pytest` em numeração velha (18/10/2026) | "Can't locate revision" no pytest | Sem teste: não é bug de código. Apague o banco `<db>_pytest` (`DROP DATABASE`) e rode de novo; a fixture `engine` o recria |
 
 ## Notícias na ficha
 

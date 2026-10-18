@@ -6,7 +6,7 @@ import {
   periodoDaSemana,
   vizinhas,
 } from "@/lib/semana";
-import type { EdicaoDaSemana, ResumoDaSemana as Resumo } from "@/lib/types";
+import type { EdicaoDaSemana, LinhaDeJuros, ResumoDaSemana as Resumo } from "@/lib/types";
 import { SemanaAcoes } from "./SemanaAcoes";
 import { SemanaQueVem } from "./SemanaAgenda";
 import { SemanaEua, SemanaJuros } from "./SemanaJuros";
@@ -90,10 +90,13 @@ export function ResumoDaSemana({
   resumo,
   edicoes,
   nomes,
+  juros,
 }: {
   resumo: Resumo;
   edicoes: EdicaoDaSemana[];
   nomes: Record<string, string>;
+  /** O historico de juros ate a sexta desta edicao. */
+  juros: LinhaDeJuros[];
 }) {
   const { semana } = resumo;
   return (
@@ -120,7 +123,12 @@ export function ResumoDaSemana({
       </div>
 
       <div className="grid items-start gap-4 lg:grid-cols-2">
-        <SemanaJuros curva={resumo.juros_br.curva} indicadores={resumo.juros_br.indicadores} />
+        <SemanaJuros
+          curva={resumo.juros_br.curva}
+          curvaReal={resumo.juros_br.curva_real}
+          indicadores={resumo.juros_br.indicadores}
+          historico={juros}
+        />
         <SemanaEua treasuries={resumo.eua.treasuries} fed={resumo.eua.fed} />
       </div>
 

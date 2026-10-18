@@ -258,10 +258,36 @@ export type VerticeDaCurva = {
   variacao_bp: number | null;
 };
 
+/**
+ * A curva da semana (prefixada ou, em `curva_real`, IPCA+). Edicao antiga nao
+ * tem `fonte` -- era a ANBIMA --, e a anterior ao Tesouro Direto nao tem
+ * `curva_real`. `data_anterior` e null quando a semana anterior nao teve dado.
+ */
 export type CurvaPrefixada = {
   data: string;
-  data_anterior: string;
+  data_anterior: string | null;
   vertices: VerticeDaCurva[];
+  fonte?: "tesouro_direto";
+};
+
+/** Uma linha de `juros_historico`: a taxa de uma serie numa semana (sexta nominal). */
+export type LinhaDeJuros = {
+  semana: string;
+  serie: string;
+  /** % a.a. */
+  taxa: number;
+};
+
+/** Os ids das series do grafico de juros. */
+export type IdDaSerie = "selic" | "pre_1a" | "pre_2a" | "pre_5a" | "pre_10a" | "ipca_5a" | "ipca_10a";
+
+/**
+ * O historico em forma compacta, para ir ao cliente: os vetores tem o tamanho de
+ * `semanas` e estao alinhados com ela; `null` = a serie nao tem ponto na semana.
+ */
+export type HistoricoDeJuros = {
+  semanas: string[];
+  taxas: Record<IdDaSerie, (number | null)[]>;
 };
 
 export type IndicadoresBr = {
@@ -350,6 +376,7 @@ export type ResumoDaSemana = {
   cripto: CriptoDaSemana | BlocoComErro;
   juros_br: {
     curva: CurvaPrefixada | BlocoComErro;
+    curva_real?: CurvaPrefixada | BlocoComErro;
     indicadores: IndicadoresBr | BlocoComErro;
   };
   eua: {

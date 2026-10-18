@@ -29,6 +29,7 @@ import type {
   Evento,
   FaixaDeDesvio,
   Fundamentos,
+  LinhaDeJuros,
   Papel,
   Pregao,
   ResumoDaSemana,
@@ -610,6 +611,32 @@ export const resumoDaSemana = cache(async (sexta: string): Promise<ResumoDaSeman
     [sexta],
   );
   return rows[0]?.payload ?? null;
+});
+
+/**
+ * O historico semanal de juros (Tesouro Direto e Selic) ate a sexta da edicao.
+ *
+ * Tabela ainda nao criada (build antes da migration 0011): lista vazia, e o
+ * cartao da semana fica sem o grafico em vez de derrubar o build.
+ */
+export const jurosHistorico = cache(async (sexta: string): Promise<LinhaDeJuros[]> => {
+  try {
+    const { rows } = await conexao().query<{
+      semana: string;
+      serie: string;
+      taxa: number;
+    }>(
+      `SELECT semana::text, serie, taxa::float8 AS taxa
+         FROM volume_scanner.juros_historico
+        WHERE semana <= $1
+        ORDER BY semana, serie`,
+      [sexta],
+    );
+    return rows;
+  } catch (erro) {
+    if ((erro as { code?: string }).code === "42P01") return [];
+    throw erro;
+  }
 });
 
 /**

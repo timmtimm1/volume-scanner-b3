@@ -1,18 +1,15 @@
-import { data as fmtData, diaCurto, numero, proporcao } from "@/lib/formato";
-import {
-  ehErro,
-  mesDeReferencia,
-  pontosBase,
-  prazoDoTreasury,
-  prazoEmAnos,
-} from "@/lib/semana";
+import { data as fmtData, numero, proporcao } from "@/lib/formato";
+import { compactar } from "@/lib/juros";
+import { ehErro, mesDeReferencia, pontosBase, prazoDoTreasury, prazoEmAnos } from "@/lib/semana";
 import type {
   BlocoComErro,
   CurvaPrefixada,
   DotPlot,
   IndicadoresBr,
+  LinhaDeJuros,
   Treasuries,
 } from "@/lib/types";
+import { GraficoDeJuros } from "./GraficoDeJuros";
 import { Bloco, Indisponivel, Nota, Rotulo } from "./SemanaPecas";
 
 /** Taxa em % a.a.: `12,92%`. */
@@ -48,104 +45,6 @@ function CabecalhoDeTaxas({ primeira }: { primeira: string }) {
       <span className="rotulo text-right">Atual</span>
       <span className="rotulo text-right">Anterior</span>
       <span className="rotulo text-right">Variação</span>
-    </div>
-  );
-}
-
-/* ------------------------------------------------------------------ */
-/* Curva de juros: SVG simples, esta semana contra a anterior          */
-/* ------------------------------------------------------------------ */
-
-const L = 360;
-const A = 176;
-const MARGEM = { e: 40, d: 14, t: 12, b: 28 };
-
-function CurvaDeJuros({ curva }: { curva: CurvaPrefixada }) {
-  const vs = curva.vertices;
-  if (vs.length < 2) return null;
-  const todas = vs.flatMap((v) => [v.taxa, v.taxa_anterior]).filter((x): x is number => x !== null);
-  const passo = 0.5;
-  const minimo = Math.floor(Math.min(...todas) / passo) * passo - passo;
-  const maximo = Math.ceil(Math.max(...todas) / passo) * passo + passo;
-  const xMax = Math.max(...vs.map((v) => v.anos));
-  const x = (anos: number) => MARGEM.e + (anos / xMax) * (L - MARGEM.e - MARGEM.d);
-  const y = (t: number) => MARGEM.t + (1 - (t - minimo) / (maximo - minimo)) * (A - MARGEM.t - MARGEM.b);
-  const marcas: number[] = [];
-  const intervalo = maximo - minimo > 3 ? 1 : 0.5;
-  for (let t = Math.ceil(minimo / intervalo) * intervalo; t <= maximo + 1e-9; t += intervalo) marcas.push(t);
-
-  const caminho = (valores: (number | null)[]) =>
-    vs
-      .map((v, i) => ({ v, t: valores[i] }))
-      .filter((p): p is { v: (typeof vs)[number]; t: number } => p.t !== null)
-      .map((p, i) => `${i === 0 ? "M" : "L"}${x(p.v.anos).toFixed(1)} ${y(p.t).toFixed(1)}`)
-      .join(" ");
-
-  const temAnterior = vs.some((v) => v.taxa_anterior !== null);
-
-  return (
-    <div className="flex flex-col gap-1.5">
-      <svg
-        viewBox={`0 0 ${L} ${A}`}
-        role="img"
-        aria-label={`Curva prefixada em ${fmtData(curva.data)} contra ${fmtData(curva.data_anterior)}, vértices de ${vs
-          .map((v) => prazoEmAnos(v.anos))
-          .join(", ")}`}
-        className="h-auto w-full max-w-[440px]"
-      >
-        {marcas.map((t) => (
-          <g key={t}>
-            <line x1={MARGEM.e} x2={L - MARGEM.d} y1={y(t)} y2={y(t)} stroke="var(--linha)" strokeWidth={1} />
-            <text x={MARGEM.e - 6} y={y(t) + 3.5} textAnchor="end" fontSize={10} fill="var(--tinta-3)" className="num">
-              {numero(t, intervalo < 1 ? 1 : 0)}%
-            </text>
-          </g>
-        ))}
-        {vs.map((v) => (
-          <text key={v.anos} x={x(v.anos)} y={A - 10} textAnchor="middle" fontSize={10} fill="var(--tinta-3)" className="num">
-            {numero(v.anos, 0)}a
-          </text>
-        ))}
-        {temAnterior && (
-          <path
-            d={caminho(vs.map((v) => v.taxa_anterior))}
-            fill="none"
-            stroke="var(--tinta-3)"
-            strokeWidth={1.6}
-            strokeDasharray="5 4"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          />
-        )}
-        <path
-          d={caminho(vs.map((v) => v.taxa))}
-          fill="none"
-          stroke="var(--acento)"
-          strokeWidth={2.2}
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        />
-        {vs.map((v) => (
-          <circle key={v.anos} cx={x(v.anos)} cy={y(v.taxa)} r={3.5} fill="var(--acento)" stroke="var(--painel)" strokeWidth={1.5} />
-        ))}
-      </svg>
-      <div className="num flex flex-wrap items-center gap-x-4 gap-y-1 text-[11px] font-semibold text-tinta-3">
-        <span className="flex items-center gap-1.5">
-          <svg width="20" height="6" aria-hidden>
-            <line x1="0" x2="20" y1="3" y2="3" stroke="var(--acento)" strokeWidth={2.2} strokeLinecap="round" />
-          </svg>
-          {diaCurto(curva.data)}
-        </span>
-        {temAnterior && (
-          <span className="flex items-center gap-1.5">
-            <svg width="20" height="6" aria-hidden>
-              <line x1="0" x2="20" y1="3" y2="3" stroke="var(--tinta-3)" strokeWidth={1.6} strokeDasharray="5 4" strokeLinecap="round" />
-            </svg>
-            {diaCurto(curva.data_anterior)}
-          </span>
-        )}
-        <span>prazo em anos · taxa % a.a.</span>
-      </div>
     </div>
   );
 }
@@ -188,47 +87,75 @@ function IndicadoresDoBrasil({ ind }: { ind: IndicadoresBr | BlocoComErro }) {
   );
 }
 
+/** Edicao antiga nao tem `fonte`: a curva vinha da ANBIMA. */
+const nomeDaFonte = (curva: CurvaPrefixada) => (curva.fonte === "tesouro_direto" ? "Tesouro Direto" : "ANBIMA");
+
+function TabelaDaCurva({ primeira, curva, prefixo }: { primeira: string; curva: CurvaPrefixada; prefixo: string }) {
+  return (
+    <div>
+      <CabecalhoDeTaxas primeira={primeira} />
+      <ul>
+        {curva.vertices.map((v) => (
+          <LinhaDeTaxa
+            key={v.anos}
+            rotulo={`${prefixo}${prazoEmAnos(v.anos)}`}
+            atual={v.taxa}
+            anterior={v.taxa_anterior}
+            bp={v.variacao_bp}
+          />
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 export function SemanaJuros({
   curva,
+  curvaReal,
   indicadores,
+  historico,
 }: {
   curva: CurvaPrefixada | BlocoComErro;
+  curvaReal?: CurvaPrefixada | BlocoComErro;
   indicadores: IndicadoresBr | BlocoComErro;
+  /** O historico semanal ate a sexta desta edicao. Vazio: sem grafico. */
+  historico: LinhaDeJuros[];
 }) {
   if (ehErro(curva) && ehErro(indicadores)) {
     return <Bloco titulo="Juros no Brasil" indisponivel={curva.erro} />;
   }
+  const real = curvaReal !== undefined && !ehErro(curvaReal) ? curvaReal : null;
+  // So a forma compacta vai ao cliente: as ~3.600 linhas inteiras pesavam 400 KB na pagina.
+  const compacto = compactar(historico);
+  const primeira = compacto.semanas[0] ?? null;
   return (
     <Bloco
       titulo="Juros no Brasil"
-      subtitulo={ehErro(curva) ? undefined : `Curva prefixada · ${fmtData(curva.data)} contra ${fmtData(curva.data_anterior)}`}
+      subtitulo={
+        ehErro(curva)
+          ? undefined
+          : `${nomeDaFonte(curva)} · ${fmtData(curva.data)}${curva.data_anterior ? ` contra ${fmtData(curva.data_anterior)}` : ""}`
+      }
     >
+      {compacto.semanas.length > 0 && <GraficoDeJuros historico={compacto} />}
       {ehErro(curva) ? (
         <Indisponivel motivo={curva.erro} />
       ) : (
         <>
-          <CurvaDeJuros curva={curva} />
-          <div>
-            <CabecalhoDeTaxas primeira="Prazo" />
-            <ul>
-              {curva.vertices.map((v) => (
-                <LinhaDeTaxa
-                  key={v.anos}
-                  rotulo={prazoEmAnos(v.anos)}
-                  atual={v.taxa}
-                  anterior={v.taxa_anterior}
-                  bp={v.variacao_bp}
-                />
-              ))}
-            </ul>
-          </div>
+          <TabelaDaCurva primeira="Prefixado" curva={curva} prefixo="" />
+          {real && <TabelaDaCurva primeira="IPCA+" curva={real} prefixo="" />}
         </>
       )}
       <Rotulo>Indicadores</Rotulo>
       <IndicadoresDoBrasil ind={indicadores} />
       <Nota>
-        Curva prefixada da ANBIMA; Selic, CDI e IPCA do Banco Central. Variação em pontos-base (1 bp =
-        0,01 ponto percentual).
+        {primeira !== null
+          ? `Tesouro Direto (taxa de compra, interpolada nos prazos de 1, 2, 5 e 10 anos) e Selic meta do Banco Central. Um ponto por semana, desde ${fmtData(primeira)}. No Pré 10 anos, quando o prefixado mais longo vence antes de 10 anos (de janeiro dos anos ímpares a fevereiro do seguinte), a reta dos dois mais longos é prolongada. `
+          : ""}
+        {!ehErro(curva) && curva.fonte !== "tesouro_direto"
+          ? "Tabela da semana: curva prefixada da ANBIMA (edição anterior ao Tesouro Direto). "
+          : ""}
+        Selic, CDI e IPCA do Banco Central. Variação em pontos-base (1 bp = 0,01 ponto percentual).
       </Nota>
     </Bloco>
   );

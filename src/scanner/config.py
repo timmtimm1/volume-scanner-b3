@@ -171,8 +171,10 @@ class SemanaConfig(BaseModel):
             "liquid-staking-tokens",
         ]
     )
-    # Vertices da curva prefixada, em dias uteis (252 por ano).
-    curva_vertices_du: list[int] = Field(default_factory=lambda: [252, 504, 1260, 2520])
+    # Primeira semana da serie historica de juros (`juros_historico`). Fixa, e nao
+    # "10 anos antes de hoje": a serie comeca em 14/10/2016 (10 anos antes da
+    # primeira execucao) e cresce uma semana por sabado, sem nunca encurtar.
+    juros_desde: date = date(2016, 10, 14)
     treasuries: list[str] = Field(
         default_factory=lambda: ["3 Mo", "6 Mo", "2 Yr", "5 Yr", "10 Yr", "30 Yr"]
     )
@@ -199,20 +201,11 @@ class SemanaConfig(BaseModel):
             raise ValueError(f"semana.{info.field_name} precisa ser ao menos 1")
         return value
 
-    @field_validator(
-        "cripto_categorias_excluidas", "curva_vertices_du", "treasuries", "noticias_buscas"
-    )
+    @field_validator("cripto_categorias_excluidas", "treasuries", "noticias_buscas")
     @classmethod
     def _validate_listas(cls, value: list[Any], info: ValidationInfo) -> list[Any]:
         if not value:
             raise ValueError(f"semana.{info.field_name} nao pode ser vazio")
-        return value
-
-    @field_validator("curva_vertices_du")
-    @classmethod
-    def _validate_vertices(cls, value: list[int]) -> list[int]:
-        if any(v < 1 for v in value):
-            raise ValueError("semana.curva_vertices_du: vertice minimo e 1 dia util")
         return value
 
 

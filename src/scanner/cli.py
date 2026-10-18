@@ -92,7 +92,7 @@ def version() -> None:
 @config_app.command("show")
 def config_show() -> None:
     """Imprime a configuracao efetiva. Segredos nunca sao impressos."""
-    typer.echo(json.dumps(load_config().model_dump(), indent=2, ensure_ascii=False))
+    typer.echo(json.dumps(load_config().model_dump(mode="json"), indent=2, ensure_ascii=False))
 
 
 @db_app.command("ping")
@@ -935,7 +935,7 @@ def semana_montar(
 
     engine = build_engine()
     try:
-        payload = montar_dados_de_mercado(engine, load_config(), periodo)
+        payload = montar_dados_de_mercado(engine, load_config(), periodo, gravar_juros=gravar)
     except PregaoAusenteError as exc:
         typer.secho(f"[adiado] {exc}. Tente de novo depois da carga.", fg=typer.colors.YELLOW)
         raise typer.Exit(code=SAIDA_PREGAO_AUSENTE) from exc
@@ -1019,7 +1019,7 @@ def semana_enviar(
         return
 
     try:
-        payload = montar_dados_de_mercado(engine, load_config(), periodo)
+        payload = montar_dados_de_mercado(engine, load_config(), periodo, gravar_juros=not dry_run)
     except PregaoAusenteError:
         fim = periodo.fim.strftime("%d/%m/%Y")
         typer.secho(f"[adiado] o pregao de {fim} ainda nao esta no banco", fg=typer.colors.YELLOW)

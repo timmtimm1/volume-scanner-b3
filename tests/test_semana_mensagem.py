@@ -148,9 +148,10 @@ def test_cripto(payload: dict[str, Any]) -> None:
 
 def test_juros(payload: dict[str, Any]) -> None:
     assert _bloco(formatar_mensagem(payload, BASE), "Juros") == [
-        "Pré 1 ano 12,92% (+34 bp)",
-        "Pré 10 anos 13,07% (+56 bp)",
+        "Pré 1 ano 12,90% (+23 bp)",
+        "Pré 10 anos 12,87% (+30 bp)",
         "Selic 13,75%",
+        "IPCA+ 10 anos 6,83% (+17 bp)",
         "Treasury 2 anos 4,74% (-6 bp)",
         "Treasury 10 anos 5,09% (-15 bp)",
     ]
@@ -161,8 +162,47 @@ def test_juros_com_fonte_fora_diz_indisponivel(payload: dict[str, Any]) -> None:
     payload["juros_br"]["indicadores"] = {"erro": "BCB fora"}
     juros = _bloco(formatar_mensagem(payload, BASE), "Juros")
     assert juros[2] == "Selic <i>indisponível</i>"
-    assert juros[3] == "Treasury 2 anos <i>indisponível</i>"
+    assert juros[3].startswith("IPCA+ 10 anos 6,83%")
+    assert juros[4] == "Treasury 2 anos <i>indisponível</i>"
     assert juros[0].endswith("bp)")
+
+
+def test_juros_edicao_antiga_sem_curva_real_nao_tem_a_linha_do_ipca(
+    payload: dict[str, Any],
+) -> None:
+    del payload["juros_br"]["curva_real"]
+
+    juros = _bloco(formatar_mensagem(payload, BASE), "Juros")
+
+    assert not any("IPCA+" in linha for linha in juros)
+    assert juros[2] == "Selic 13,75%"
+
+
+def test_juros_tesouro_direto_fora_diz_indisponivel_nas_tres_linhas(
+    payload: dict[str, Any],
+) -> None:
+    payload["juros_br"]["curva"] = {"erro": "HTTP 503"}
+    payload["juros_br"]["curva_real"] = {"erro": "HTTP 503"}
+
+    juros = _bloco(formatar_mensagem(payload, BASE), "Juros")
+
+    assert juros[0] == "Pré 1 ano <i>indisponível</i>"
+    assert juros[1] == "Pré 10 anos <i>indisponível</i>"
+    assert juros[3] == "IPCA+ 10 anos <i>indisponível</i>"
+
+
+def test_juros_vertice_de_10_anos_ausente_na_semana_diz_indisponivel(
+    payload: dict[str, Any],
+) -> None:
+    # O Pre de 10 anos nao existe nas semanas em que o titulo mais longo tem menos
+    # de 10 anos: o vertice sai da curva e a linha diz isso.
+    payload["juros_br"]["curva"]["vertices"] = [
+        v for v in payload["juros_br"]["curva"]["vertices"] if v["du"] != 2520
+    ]
+
+    juros = _bloco(formatar_mensagem(payload, BASE), "Juros")
+
+    assert juros[1] == "Pré 10 anos <i>indisponível</i>"
 
 
 def test_semana_que_vem(payload: dict[str, Any]) -> None:

@@ -7,7 +7,7 @@ proprio bloco, e o resumo sai com o que deu. Nunca derrubar o resumo por causa
 de cripto ou do Fed.
 
 Unidades do payload, numa regra so: TAXA (juro, inflacao, yield) vai em % ao
-ano, como a fonte publica -- `selic_meta`, `ipca_12m`, a curva da ANBIMA, os
+ano, como a fonte publica -- `selic_meta`, `ipca_12m`, a curva do Tesouro Direto, os
 Treasuries e o Fed. RETORNO (variacao de preco, CDI acumulado) vai em fracao:
 0,051 e +5,1%. Pontos-base (`variacao_bp`) sao pontos-base.
 """
@@ -35,11 +35,11 @@ from scanner.semana.acoes import (
 )
 from scanner.semana.fontes import (
     FonteIndisponivelError,
-    anbima,
     bcb,
     cripto,
     fed,
     google_noticias,
+    tesouro_direto,
     treasury,
     yahoo,
 )
@@ -185,10 +185,64 @@ def _bloco_noticias(config: ScannerConfig, semana: Semana, momento: datetime) ->
     }
 
 
-def montar_dados_de_mercado(
-    engine: Engine, config: ScannerConfig, semana: Semana, *, agora: datetime | None = None
+def _tentar(bloco: str, funcao: Any, *args: Any) -> tuple[Any, str | None]:
+    """(resultado, None), ou (None, motivo) se a fonte falhar. Mesma regra do `_isolado`."""
+    try:
+        return funcao(*args), None
+    except FonteIndisponivelError as exc:
+        logger.warning("[semana] %s indisponivel: %s", bloco, exc)
+        return None, exc.motivo
+    # Excecao ampla de proposito, pelo mesmo motivo do `_isolado`.
+    except Exception as exc:
+        logger.exception("[semana] %s falhou de forma inesperada", bloco)
+        return None, f"erro inesperado ({exc.__class__.__name__}: {exc})"
+
+
+def _historico_de_juros(
+    config: ScannerConfig, semana: Semana
+) -> tuple[pd.DataFrame, str | None, str | None]:
+    """(serie semanal TD + Selic, erro do Tesouro Direto, erro da Selic).
+
+    O Tesouro Direto e a Selic falham separado: sem Selic o grafico ainda tem os
+    prefixados, e sem Tesouro a Selic ainda e gravada.
+    """
+    desde = config.semana.juros_desde
+    td, erro_td = _tentar(
+        "tesouro_direto",
+        lambda: tesouro_direto.serie_semanal(tesouro_direto.baixar_titulos(), desde, semana.sexta),
+    )
+    selic, erro_selic = _tentar("selic_historica", bcb.selic_semanal, desde, semana.sexta)
+    partes = [p for p in (td, selic) if p is not None and not p.empty]
+    frame = (
+        pd.concat(partes, ignore_index=True)
+        if partes
+        else pd.DataFrame(columns=tesouro_direto.COLUNAS_SEMANAL)
+    )
+    return frame, erro_td, erro_selic
+
+
+def _bloco_curva(
+    historico: pd.DataFrame, erro: str | None, semana: Semana, series: tuple[str, ...]
 ) -> dict[str, Any]:
-    """O payload do resumo da semana (JSON puro)."""
+    if erro is not None:
+        return {"erro": erro}
+    return _isolado("curva", tesouro_direto.montar_curva, historico, semana.sexta, series)
+
+
+def montar_dados_de_mercado(
+    engine: Engine,
+    config: ScannerConfig,
+    semana: Semana,
+    *,
+    agora: datetime | None = None,
+    gravar_juros: bool = False,
+) -> dict[str, Any]:
+    """O payload do resumo da semana (JSON puro).
+
+    A serie historica de juros (10 anos, uma linha por semana) e baixada junto,
+    porque a fonte vem inteira de qualquer jeito. Ela so e GRAVADA em
+    `juros_historico` com `gravar_juros`: montar sem gravar nao escreve no banco.
+    """
     if not repository.existe_barra_em(engine, semana.fim):
         raise PregaoAusenteError(
             f"o pregao de {semana.fim.isoformat()} ainda nao esta em daily_bars"
@@ -197,6 +251,15 @@ def montar_dados_de_mercado(
     cfg = config.semana
 
     acoes = _bloco_acoes(engine, config, semana)
+    historico, erro_td, erro_selic = _historico_de_juros(config, semana)
+    if gravar_juros and not historico.empty:
+        _, erro_gravacao = _tentar(
+            "juros_historico", repository.gravar_juros_historico, engine, historico
+        )
+        if erro_gravacao is not None:
+            logger.error("[semana] historico de juros nao gravado: %s", erro_gravacao)
+    if erro_selic is not None:
+        logger.warning("[semana] Selic historica ausente desta rodada: %s", erro_selic)
     payload: dict[str, Any] = {
         "versao": VERSAO,
         "semana": {
@@ -217,7 +280,8 @@ def montar_dados_de_mercado(
             agora=momento,
         ),
         "juros_br": {
-            "curva": _isolado("curva", anbima.curva_prefixada, semana, cfg.curva_vertices_du),
+            "curva": _bloco_curva(historico, erro_td, semana, tesouro_direto.SERIES_PRE),
+            "curva_real": _bloco_curva(historico, erro_td, semana, tesouro_direto.SERIES_REAL),
             "indicadores": _isolado("indicadores", bcb.indicadores, semana),
         },
         "eua": {
@@ -336,23 +400,27 @@ def _previa_cripto(bloco: dict[str, Any]) -> list[str]:
     return linhas
 
 
+def _previa_curva(titulo: str, curva: dict[str, Any]) -> list[str]:
+    if (msg := _indisponivel(curva)) is not None:
+        return [f"  {titulo}: {msg}"]
+    anterior_data = curva["data_anterior"]
+    contra = f" vs {_data_br(anterior_data)}" if anterior_data else ""
+    linhas = [f"  {titulo} Tesouro Direto ({_data_br(curva['data'])}{contra})"]
+    for v in curva["vertices"]:
+        anterior = "-" if v["taxa_anterior"] is None else f"{br(v['taxa_anterior'], 4)}%"
+        prazo = f"{br(v['anos'], 0)} {'ano' if v['anos'] == 1 else 'anos'}"
+        linhas.append(
+            f"    {prazo:>7} ({v['du']:>4} du)  {br(v['taxa'], 4):>8}% a.a."
+            f"   antes {anterior}   {_bp(v['variacao_bp'], 1)}"
+        )
+    return linhas
+
+
 def _previa_juros(juros: dict[str, Any]) -> list[str]:
     linhas = ["JUROS BRASIL"]
-    curva = juros["curva"]
-    if (msg := _indisponivel(curva)) is not None:
-        linhas.append(f"  Curva prefixada: {msg}")
-    else:
-        linhas.append(
-            "  Curva prefixada ANBIMA "
-            f"({_data_br(curva['data'])} vs {_data_br(curva['data_anterior'])})"
-        )
-        for v in curva["vertices"]:
-            anterior = "-" if v["taxa_anterior"] is None else f"{br(v['taxa_anterior'], 4)}%"
-            prazo = f"{br(v['anos'], 0)} {'ano' if v['anos'] == 1 else 'anos'}"
-            linhas.append(
-                f"    {prazo:>7} ({v['du']:>4} du)  {br(v['taxa'], 4):>8}% a.a."
-                f"   antes {anterior}   {_bp(v['variacao_bp'], 1)}"
-            )
+    linhas += _previa_curva("Curva prefixada", juros["curva"])
+    if "curva_real" in juros:
+        linhas += _previa_curva("Juro real IPCA+", juros["curva_real"])
     ind = juros["indicadores"]
     if (msg := _indisponivel(ind)) is not None:
         linhas.append(f"  Indicadores: {msg}")

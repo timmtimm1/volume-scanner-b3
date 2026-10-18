@@ -491,10 +491,12 @@ def _semana_falsa(monkeypatch: pytest.MonkeyPatch, *, pregao_ausente: bool = Fal
     gravacoes: list[object] = []
     payload = {"versao": 1, "semana": {"sexta": "2026-10-16"}}
 
-    def montar(engine: object, config: object, semana: object) -> dict[str, object]:
+    def montar(
+        engine: object, config: object, semana: object, *, gravar_juros: bool = False
+    ) -> dict[str, object]:
         if pregao_ausente:
             raise montagem.PregaoAusenteError("o pregao de 2026-10-16 ainda nao esta em daily_bars")
-        gravacoes.append(("montou", semana))
+        gravacoes.append(("montou", semana, gravar_juros))
         return payload
 
     def gravar(engine: object, **kw: object) -> bool:
@@ -518,6 +520,7 @@ def test_semana_montar_so_mostra_a_previa(monkeypatch: pytest.MonkeyPatch) -> No
     assert "[gravado]" not in result.output
     (montou,) = gravacoes  # nada gravado
     assert montou[0] == "montou"  # type: ignore[index]
+    assert montou[2] is False  # type: ignore[index]  # o historico de juros tambem nao
     assert montou[1].sexta == date(2026, 10, 16)  # type: ignore[index]
 
 
@@ -528,6 +531,7 @@ def test_semana_montar_grava_com_a_sexta_nominal(monkeypatch: pytest.MonkeyPatch
 
     assert result.exit_code == 0
     assert "[gravado] semana de 2026-10-16" in result.output
+    assert gravacoes[0][2] is True  # type: ignore[index]  # com --gravar, grava os juros
     gravado = gravacoes[-1]
     assert gravado["semana"] == date(2026, 10, 16)  # type: ignore[index]
     assert gravado["inicio"] == date(2026, 10, 9)  # type: ignore[index]
@@ -590,6 +594,8 @@ class _Cenario:
         self.eventos: list[tuple[str, object]] = []
         self.enviador = _Enviador()
         self.ja_enviado = False
+        # `gravar_juros` de cada montagem: o historico de juros so vai ao banco quando se grava.
+        self.juros: list[bool] = []
 
 
 def _enviar_falso(
@@ -610,10 +616,13 @@ def _enviar_falso(
     cenario.enviador = _Enviador(falha=falha_no_envio)
     payload = {"versao": 1, "semana": {"sexta": "2026-10-16"}}
 
-    def montar(engine: object, config: object, semana: object) -> dict[str, object]:
+    def montar(
+        engine: object, config: object, semana: object, *, gravar_juros: bool = False
+    ) -> dict[str, object]:
         if pregao_ausente:
             raise montagem.PregaoAusenteError("o pregao de 2026-10-16 ainda nao esta em daily_bars")
         cenario.eventos.append(("montou", semana))
+        cenario.juros.append(gravar_juros)
         return payload
 
     def gravar(engine: object, **kw: object) -> bool:
@@ -696,6 +705,7 @@ def test_semana_enviar_dry_run_nao_grava_nem_envia(monkeypatch: pytest.MonkeyPat
     assert "MENSAGEM DE TESTE" in result.output
     assert _nomes(cenario) == ["montou"]
     assert cenario.enviador.enviados == []
+    assert cenario.juros == [False]  # dry-run nao escreve nem o historico de juros
 
 
 def test_semana_enviar_grava_envia_e_so_depois_marca(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -715,6 +725,7 @@ def test_semana_enviar_grava_envia_e_so_depois_marca(monkeypatch: pytest.MonkeyP
     assert "[enviado] resumo da semana de 16/10/2026" in result.output
     assert _nomes(cenario) == ["montou", "gravou", "enviou", "marcou"]
     assert enviador.enviados == ["MENSAGEM DE TESTE"]
+    assert cenario.juros == [True]
     gravado = cenario.eventos[1][1]
     assert gravado["semana"] == date(2026, 10, 16)  # type: ignore[index]
     assert gravado["substituir_enviado"] is False  # type: ignore[index]

@@ -14,7 +14,7 @@ import pytest
 
 from scanner.semana.fontes import FonteIndisponivelError
 from scanner.semana.fontes import bcb as bcb_mod
-from scanner.semana.fontes.bcb import acumulado, ler_sgs, montar_indicadores
+from scanner.semana.fontes.bcb import acumulado, ler_copom, ler_sgs, montar_indicadores
 from scanner.semana.periodo import semana_da_data
 
 FIXTURES = Path(__file__).parent / "fixtures" / "semana"
@@ -167,9 +167,63 @@ def test_selic_antes_do_primeiro_ponto_nao_gera_semana() -> None:
     assert frame.empty
 
 
-def test_selic_semanal_pede_em_pedacos_e_junta() -> None:
+def _copom() -> Any:
+    return json.loads((FIXTURES / "bcb_copom_historico.json").read_text(encoding="utf-8"))
+
+
+def test_ler_copom_recorte_real_em_ordem_e_no_dia_de_brasilia() -> None:
+    pontos = ler_copom(_copom())
+
+    assert pontos[0] == (date(2016, 9, 1), 14.25)
+    # "2016-10-20T02:00:00Z": meia-noite de Brasilia no horario de verao.
+    assert pontos[1] == (date(2016, 10, 20), 14.0)
+    assert (date(2021, 3, 18), 2.75) in pontos
+    assert pontos[-1] == (date(2026, 9, 17), 13.75)
+    assert pontos == sorted(pontos)
+
+
+@pytest.mark.parametrize(
+    "dados",
+    [{}, {"conteudo": []}, {"conteudo": [{"x": 1}]}, {"conteudo": [{"DataInicioVigencia": "x"}]}],
+)
+def test_copom_em_formato_inesperado_levanta(dados: Any) -> None:
+    with pytest.raises(FonteIndisponivelError, match="Copom"):
+        ler_copom(dados)
+
+
+def test_selic_semanal_vem_do_historico_do_copom_sem_tocar_no_sgs() -> None:
+    """18/10/2026: o SGS passou o dia em erro 500 e o grafico saiu sem Selic.
+
+    O historico do Copom e outra API do BC e estava no ar. Se a Selic voltar a
+    depender so do SGS, este teste quebra: ele so tem a resposta do Copom.
+    """
+    cliente = _Cliente([httpx.Response(200, json=_copom())])
+
+    frame = bcb_mod.selic_semanal(
+        date(2016, 10, 14),
+        FIM,
+        cliente=cliente,  # type: ignore[arg-type]
+    )
+
+    assert cliente.urls == [bcb_mod.URL_COPOM]
+    assert len(frame) == 523
+    por_semana = dict(zip(frame["semana"], frame["taxa"], strict=True))
+    assert por_semana[date(2016, 10, 14)] == 14.25
+    assert por_semana[date(2016, 10, 21)] == 14.0  # mudou na quinta, 20/10
+    assert por_semana[date(2021, 3, 19)] == 2.75
+    assert por_semana[date(2026, 10, 16)] == 13.75
+    assert frame["data_base"].iloc[-1] == date(2026, 9, 17)  # inicio da vigencia
+
+
+@pytest.mark.parametrize(
+    "copom_fora",
+    [httpx.Response(503), httpx.Response(200, text="<html>Requisicao invalida</html>")],
+)
+def test_selic_semanal_pede_em_pedacos_e_junta(copom_fora: httpx.Response) -> None:
+    # Com o historico do Copom fora (erro ou pagina no lugar do JSON), vale o SGS.
     cliente = _Cliente(
         [
+            copom_fora,
             httpx.Response(200, json=[{"data": "20/07/2016", "valor": "14.25"}]),
             httpx.Response(200, json=[{"data": "19/10/2016", "valor": "14.00"}]),
             httpx.Response(200, json=[{"data": "01/12/2021", "valor": "9.25"}]),
@@ -182,7 +236,9 @@ def test_selic_semanal_pede_em_pedacos_e_junta() -> None:
         cliente=cliente,  # type: ignore[arg-type]
     )
 
-    assert len(cliente.urls) == 3
+    assert cliente.urls[0] == bcb_mod.URL_COPOM
+    assert len(cliente.urls) == 4
+    assert all("sgs.432" in url for url in cliente.urls[1:])
     assert frame["semana"].iloc[0] == date(2016, 10, 14)
     assert frame["taxa"].iloc[0] == 14.25
     assert frame["semana"].iloc[-1] == date(2026, 10, 16)
@@ -192,7 +248,7 @@ def test_selic_semanal_pede_em_pedacos_e_junta() -> None:
 
 def test_selic_semanal_sem_nenhum_ponto_levanta() -> None:
     erro = {"erro": {"statusCode": 404}}
-    cliente = _Cliente([httpx.Response(404, json=erro)] * 3)
+    cliente = _Cliente([httpx.Response(503)] + [httpx.Response(404, json=erro)] * 3)
 
     with pytest.raises(FonteIndisponivelError, match="nenhum ponto"):
         bcb_mod.selic_semanal(date(2016, 10, 14), FIM, cliente=cliente)  # type: ignore[arg-type]

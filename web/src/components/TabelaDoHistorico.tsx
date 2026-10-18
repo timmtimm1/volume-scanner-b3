@@ -32,6 +32,7 @@ import {
 import type { LinhaDoHistorico } from "@/lib/types";
 import { carregarBarras } from "@/lib/useBarrasDoPapel";
 import { useComputador } from "@/lib/useComputador";
+import { ArranjoDaPagina, GradeDeCaixas } from "./OrganizarCaixas";
 
 /**
  * A previa so existe no computador, e e ela que traz o grafico. Carregada a
@@ -341,6 +342,128 @@ function Tabela({
     "md:grid-cols-[104px_176px_92px_72px_84px_120px_110px_1fr] lg:grid-cols-[92px_minmax(0,1fr)_64px_60px_72px]";
   const filtrado = temFiltro({ corte, busca, desde, ate: atePeriodo, ordemZ }, minimo);
 
+  const caixaTabela = (
+    <section className="cartao overflow-hidden p-2 md:p-3">
+      <div className={`hidden gap-2 px-3 py-2 md:grid ${colunas}`}>
+        <span className="rotulo">Pregão</span>
+        <span className="rotulo">Papel</span>
+        <button
+          type="button"
+          onClick={alternarOrdemZ}
+          aria-label={
+            ordemZ === "desc"
+              ? "Ordenado por desvio, do maior para o menor. Clique para inverter."
+              : ordemZ === "asc"
+                ? "Ordenado por desvio, do menor para o maior. Clique para voltar ao padrão."
+                : "Ordenar por desvio"
+          }
+          className="rotulo flex items-center justify-end gap-1 text-right transition-colors hover:text-acento"
+        >
+          Desvio (z)
+          <span className="num text-[10px]">
+            {ordemZ === "desc" ? "↓" : ordemZ === "asc" ? "↑" : "↕"}
+          </span>
+        </button>
+        <span className="rotulo text-right">rvol</span>
+        <span className="rotulo text-right">Var.</span>
+        <span className="rotulo text-right lg:hidden">Desvio líquido (z)</span>
+        <span className="rotulo text-right lg:hidden">Ticket</span>
+        <span className="rotulo text-right lg:hidden">Volume</span>
+      </div>
+
+      <div className="flex flex-col gap-0.5">
+        {visiveis.slice(0, linhasNaTela).map((e) => {
+          const chave = chaveDoEvento(e);
+          const naPrevia = computador && chave === chaveDaPrevia;
+          return (
+            <Link
+              key={chave}
+              href={`/papel/${e.ticker}/?data=${e.tradeDate}`}
+              data-evento={chave}
+              aria-current={naPrevia ? "true" : undefined}
+              onClick={(ev) => {
+                // Ctrl/Cmd/Shift ou botao do meio: nova aba, como todo link.
+                if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button !== 0) {
+                  return;
+                }
+                // Celular, ou Enter na linha (clique sem mouse): abre a
+                // ficha, guardando antes onde a lista estava.
+                if (!computador || ev.detail === 0) {
+                  guardarAntesDeSair();
+                  return;
+                }
+                // Computador, clique do mouse: so troca a previa.
+                ev.preventDefault();
+                setSelecionado(chave);
+              }}
+              // `md:min-h-[52px]`: com nome a linha tem duas alturas, sem nome tem
+              // uma. Sem o piso, a lista fica com um ritmo irregular que
+              // parece defeito -- e so 61 das 321 empresas ficam sem nome.
+              className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl px-3 py-2.5 transition-colors md:min-h-[52px] md:gap-2 ${colunas} ${
+                naPrevia ? "bg-selecao" : "hover:bg-painel-2"
+              }`}
+            >
+              <span className="order-1 flex min-w-0 flex-col md:order-2">
+                <span className="text-[15px] font-extrabold md:text-[14px]">{e.ticker}</span>
+                {nomeDaEmpresa(e.empresa) && (
+                  <span className="truncate text-[11px] font-semibold text-tinta-3">
+                    {nomeDaEmpresa(e.empresa)}
+                  </span>
+                )}
+              </span>
+              <span
+                className={`num order-2 text-right text-[16px] font-extrabold md:order-3 md:text-[14px] ${corDoZ(e.zLog)}`}
+              >
+                {numero(e.zLog)}
+              </span>
+              <span className="num order-3 col-span-2 text-[12px] font-semibold text-tinta-3 md:order-1 md:col-span-1 md:text-[13px] md:text-tinta-2">
+                {fmtData(e.tradeDate)}
+                <span className="md:hidden">
+                  {" · "}
+                  {multiplo(e.rvol)}
+                  {" · "}
+                  <span className={`font-bold ${corDaVariacao(e.retDay)}`}>
+                    {percentual(e.retDay)}
+                  </span>
+                  {" · "}
+                  {dinheiro(e.volumeFinancial)}
+                </span>
+              </span>
+              <span className="num order-4 hidden text-right text-[13px] font-semibold text-tinta-2 md:block">
+                {multiplo(e.rvol)}
+              </span>
+              <span
+                className={`num order-5 hidden text-right text-[13px] font-bold md:block ${corDaVariacao(e.retDay)}`}
+              >
+                {percentual(e.retDay)}
+              </span>
+              <span className="num order-6 hidden text-right text-[13px] font-semibold md:block lg:hidden">
+                {numero(e.zExcess)}
+              </span>
+              <span className="num order-7 hidden text-right text-[13px] font-semibold text-tinta-2 md:block lg:hidden">
+                {reais(e.avgTicket, 0)}
+              </span>
+              <span className="num order-8 hidden text-right text-[13px] font-semibold md:block lg:hidden">
+                {dinheiro(e.volumeFinancial)}
+              </span>
+            </Link>
+          );
+        })}
+      </div>
+
+      {visiveis.length > linhasNaTela && (
+        <button
+          type="button"
+          onClick={() => setLeva({ chave: chaveDosFiltros, linhas: linhasNaTela + LINHAS_POR_VEZ })}
+          className="toque mt-2 w-full rounded-xl bg-painel-2 px-4 py-3 text-[13px] font-bold text-tinta-2 transition-colors hover:text-acento"
+        >
+          mostrar mais {Math.min(LINHAS_POR_VEZ, visiveis.length - linhasNaTela)} · faltam{" "}
+          <span className="num">{numero(visiveis.length - linhasNaTela, 0)}</span>
+        </button>
+      )}
+    </section>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <section className="cartao flex flex-col gap-4 p-5">
@@ -442,135 +565,21 @@ function Tabela({
           Nenhum evento com esses filtros.
         </div>
       ) : (
-        <div className="flex flex-col gap-4 lg:grid lg:grid-cols-[minmax(0,9fr)_minmax(0,11fr)] lg:items-start">
-          <section className="cartao overflow-hidden p-2 md:p-3">
-            <div className={`hidden gap-2 px-3 py-2 md:grid ${colunas}`}>
-              <span className="rotulo">Pregão</span>
-              <span className="rotulo">Papel</span>
-              <button
-                type="button"
-                onClick={alternarOrdemZ}
-                aria-label={
-                  ordemZ === "desc"
-                    ? "Ordenado por desvio, do maior para o menor. Clique para inverter."
-                    : ordemZ === "asc"
-                      ? "Ordenado por desvio, do menor para o maior. Clique para voltar ao padrão."
-                      : "Ordenar por desvio"
-                }
-                className="rotulo flex items-center justify-end gap-1 text-right transition-colors hover:text-acento"
-              >
-                Desvio (z)
-                <span className="num text-[10px]">
-                  {ordemZ === "desc" ? "↓" : ordemZ === "asc" ? "↑" : "↕"}
-                </span>
-              </button>
-              <span className="rotulo text-right">rvol</span>
-              <span className="rotulo text-right">Var.</span>
-              <span className="rotulo text-right lg:hidden">Desvio líquido (z)</span>
-              <span className="rotulo text-right lg:hidden">Ticket</span>
-              <span className="rotulo text-right lg:hidden">Volume</span>
-            </div>
-
-            <div className="flex flex-col gap-0.5">
-              {visiveis.slice(0, linhasNaTela).map((e) => {
-                const chave = chaveDoEvento(e);
-                const naPrevia = computador && chave === chaveDaPrevia;
-                return (
-                  <Link
-                    key={chave}
-                    href={`/papel/${e.ticker}/?data=${e.tradeDate}`}
-                    data-evento={chave}
-                    aria-current={naPrevia ? "true" : undefined}
-                    onClick={(ev) => {
-                      // Ctrl/Cmd/Shift ou botao do meio: nova aba, como todo link.
-                      if (ev.metaKey || ev.ctrlKey || ev.shiftKey || ev.altKey || ev.button !== 0) {
-                        return;
-                      }
-                      // Celular, ou Enter na linha (clique sem mouse): abre a
-                      // ficha, guardando antes onde a lista estava.
-                      if (!computador || ev.detail === 0) {
-                        guardarAntesDeSair();
-                        return;
-                      }
-                      // Computador, clique do mouse: so troca a previa.
-                      ev.preventDefault();
-                      setSelecionado(chave);
-                    }}
-                    // `md:min-h-[52px]`: com nome a linha tem duas alturas, sem nome tem
-                    // uma. Sem o piso, a lista fica com um ritmo irregular que
-                    // parece defeito -- e so 61 das 321 empresas ficam sem nome.
-                    className={`grid grid-cols-[minmax(0,1fr)_auto] items-center gap-x-3 gap-y-1 rounded-xl px-3 py-2.5 transition-colors md:min-h-[52px] md:gap-2 ${colunas} ${
-                      naPrevia ? "bg-selecao" : "hover:bg-painel-2"
-                    }`}
-                  >
-                    <span className="order-1 flex min-w-0 flex-col md:order-2">
-                      <span className="text-[15px] font-extrabold md:text-[14px]">{e.ticker}</span>
-                      {nomeDaEmpresa(e.empresa) && (
-                        <span className="truncate text-[11px] font-semibold text-tinta-3">
-                          {nomeDaEmpresa(e.empresa)}
-                        </span>
-                      )}
-                    </span>
-                    <span
-                      className={`num order-2 text-right text-[16px] font-extrabold md:order-3 md:text-[14px] ${corDoZ(e.zLog)}`}
-                    >
-                      {numero(e.zLog)}
-                    </span>
-                    <span className="num order-3 col-span-2 text-[12px] font-semibold text-tinta-3 md:order-1 md:col-span-1 md:text-[13px] md:text-tinta-2">
-                      {fmtData(e.tradeDate)}
-                      <span className="md:hidden">
-                        {" · "}
-                        {multiplo(e.rvol)}
-                        {" · "}
-                        <span className={`font-bold ${corDaVariacao(e.retDay)}`}>
-                          {percentual(e.retDay)}
-                        </span>
-                        {" · "}
-                        {dinheiro(e.volumeFinancial)}
-                      </span>
-                    </span>
-                    <span className="num order-4 hidden text-right text-[13px] font-semibold text-tinta-2 md:block">
-                      {multiplo(e.rvol)}
-                    </span>
-                    <span
-                      className={`num order-5 hidden text-right text-[13px] font-bold md:block ${corDaVariacao(e.retDay)}`}
-                    >
-                      {percentual(e.retDay)}
-                    </span>
-                    <span className="num order-6 hidden text-right text-[13px] font-semibold md:block lg:hidden">
-                      {numero(e.zExcess)}
-                    </span>
-                    <span className="num order-7 hidden text-right text-[13px] font-semibold text-tinta-2 md:block lg:hidden">
-                      {reais(e.avgTicket, 0)}
-                    </span>
-                    <span className="num order-8 hidden text-right text-[13px] font-semibold md:block lg:hidden">
-                      {dinheiro(e.volumeFinancial)}
-                    </span>
-                  </Link>
-                );
-              })}
-            </div>
-
-            {visiveis.length > linhasNaTela && (
-              <button
-                type="button"
-                onClick={() => setLeva({ chave: chaveDosFiltros, linhas: linhasNaTela + LINHAS_POR_VEZ })}
-                className="toque mt-2 w-full rounded-xl bg-painel-2 px-4 py-3 text-[13px] font-bold text-tinta-2 transition-colors hover:text-acento"
-              >
-                mostrar mais {Math.min(LINHAS_POR_VEZ, visiveis.length - linhasNaTela)} · faltam{" "}
-                <span className="num">{numero(visiveis.length - linhasNaTela, 0)}</span>
-              </button>
-            )}
-          </section>
-
-          {computador && previa && (
-            <PreviaDoHistorico
-              evento={previa}
-              limiarDoAlerta={limiarDoAlerta}
-              aoAbrir={guardarAntesDeSair}
-            />
-          )}
-        </div>
+        <ArranjoDaPagina pagina="historico">
+          {/* As caixas e a ordem do celular estao em lib/paginas-arrumaveis.ts. */}
+          <GradeDeCaixas
+            caixas={{
+              tabela: caixaTabela,
+              previa: computador && previa && (
+                <PreviaDoHistorico
+                  evento={previa}
+                  limiarDoAlerta={limiarDoAlerta}
+                  aoAbrir={guardarAntesDeSair}
+                />
+              ),
+            }}
+          />
+        </ArranjoDaPagina>
       )}
     </div>
   );

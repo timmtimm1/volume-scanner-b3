@@ -343,8 +343,12 @@ de lugar, e o **↔** alterna a largura (meia ou toda, nas páginas de 2 colunas
 foco, e as setas fazem o mesmo que o arrasto. Fora do modo nada se mexe — o
 gráfico de juros continua navegando com o arrasto.
 
-Ligado na Semana, no Início e na ficha. As caixas e o arranjo padrão de cada
-página estão em `web/src/lib/paginas-arrumaveis.ts`.
+Ligado na Semana, no Início, na ficha, no Histórico, em Trades e no detalhe do
+trade. Os dois últimos continuam numa coluna só: lá o Organizar muda a ordem.
+Alertas e Papéis têm uma caixa só e ficam de fora. O cabeçalho de cada página
+(título, filtros, navegação entre edições, o resumo do trade) não se move. As
+caixas e o arranjo padrão de cada página estão em
+`web/src/lib/paginas-arrumaveis.ts`.
 
 - **A regra de posição.** O arranjo é a lista ordenada das caixas, cada uma com
   a coluna onde começa e quantas ocupa. Cada caixa fica logo abaixo da última
@@ -366,8 +370,9 @@ página estão em `web/src/lib/paginas-arrumaveis.ts`.
   padrão, qualquer que seja o arranjo, e o botão não aparece. Caixa que só existe
   no computador (a distribuição, a leitura do mercado e a prévia do Início) nem
   ocupa lugar no celular.
-- **A prévia do Início segue a rolagem** onde quer que esteja, desde que seja a
-  última caixa da sua coluna — com caixas embaixo, ela passaria por cima delas.
+- **As prévias do Início e do Histórico seguem a rolagem** onde quer que
+  estejam, desde que sejam a última caixa da sua coluna — com caixas embaixo,
+  passariam por cima delas.
 - **Caixa nova não se perde.** Caixa que entra no código depois de um arranjo
   salvo aparece logo depois da caixa que a precede no padrão; caixa que sai do
   código some do arranjo sozinha.

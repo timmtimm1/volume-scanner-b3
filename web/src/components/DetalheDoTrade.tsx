@@ -17,6 +17,7 @@ import { precoDeAgora } from "@/lib/preco-de-agora";
 import { useTema } from "@/lib/tema";
 import type { OperacaoDoTrade, SnapshotDoTrade, TradeDetalhe } from "@/lib/trades";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
+import { ArranjoDaPagina, GradeDeCaixas } from "./OrganizarCaixas";
 
 // Mesmas cores fixas de alta/baixa do Grafico.tsx (SERIE.alta/baixa). Nao
 // importadas de la porque o Grafico nao as exporta -- e as duas telas usam
@@ -233,6 +234,275 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
 
   const snapshotsRecentePrimeiro = [...trade.snapshots].reverse();
 
+  const caixaResultado = (
+    <section className="cartao flex flex-col gap-3 p-4 md:p-5">
+      <h2 className="text-[16px] font-extrabold">Resultado por pregão</h2>
+      <GraficoDeResultado snapshots={trade.snapshots} />
+    </section>
+  );
+
+  const caixaPregoes = (
+    <section className="cartao flex flex-col gap-3 p-4 md:p-5">
+      <h2 className="text-[16px] font-extrabold">Pregões marcados</h2>
+      <div className="overflow-x-auto">
+        {/* No celular sai Acoes e Valor: com as cinco colunas, Resultado -- o numero
+            que interessa -- ficava escondido atras da rolagem horizontal. */}
+        <table className="w-full border-collapse text-[13px] sm:min-w-[480px]">
+          <thead>
+            <tr className="text-left">
+              <th className="rotulo pb-2 pr-3 font-bold">Pregão</th>
+              <th className="rotulo hidden pb-2 pr-3 text-right font-bold sm:table-cell">Ações</th>
+              <th className="rotulo pb-2 pr-3 text-right font-bold">Fechou</th>
+              <th className="rotulo hidden pb-2 pr-3 text-right font-bold sm:table-cell">Valor</th>
+              <th className="rotulo pb-2 text-right font-bold">Resultado</th>
+            </tr>
+          </thead>
+          <tbody>
+            {snapshotsRecentePrimeiro.map((s) => (
+              <tr key={s.data} className="border-t border-linha">
+                <td className="num py-2 pr-3 font-semibold">{fmtData(s.data)}</td>
+                <td className="num hidden py-2 pr-3 text-right sm:table-cell">
+                  {numero(s.quantidade, 0)}
+                </td>
+                <td className="num py-2 pr-3 text-right">
+                  {reais(s.fechamento)}
+                  {s.semNegocio && (
+                    <span className="block text-[10px] font-semibold text-tinta-3">sem negócio</span>
+                  )}
+                </td>
+                <td className="num hidden py-2 pr-3 text-right sm:table-cell">
+                  {reais(s.valorPosicao)}
+                </td>
+                <td
+                  className={`num py-2 text-right font-bold ${
+                    s.resultado >= 0 ? "text-alta" : "text-baixa"
+                  }`}
+                >
+                  {reais(s.resultado)}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      </div>
+    </section>
+  );
+
+  const caixaOperacoes = (
+    <section className="cartao flex flex-col gap-3 p-4 md:p-5">
+      <div className="flex items-center justify-between">
+        <h2 className="text-[16px] font-extrabold">Operações</h2>
+        {aberto && !novaAberta && (
+          <button
+            type="button"
+            onClick={abrirNova}
+            className="toque h-9 rounded-full bg-primario px-3.5 text-[12px] font-bold text-primario-tinta"
+          >
+            Nova operação
+          </button>
+        )}
+      </div>
+
+      {!aberto && (
+        <p className="text-[12px] font-semibold text-tinta-3">
+          Trade encerrado: uma nova compra na ficha do papel abre outro trade.
+        </p>
+      )}
+
+      {novaAberta && (
+        <div className="flex flex-col gap-2.5 rounded-2xl bg-painel-2 p-3.5">
+          <div className="flex rounded-xl border border-linha-2 p-0.5">
+            {(["compra", "venda"] as const).map((tipo) => (
+              <button
+                key={tipo}
+                type="button"
+                onClick={() => setNovosCampos((c) => ({ ...c, tipo }))}
+                aria-pressed={novosCampos.tipo === tipo}
+                className={`toque h-9 flex-1 rounded-[10px] text-[12px] font-bold transition-colors ${
+                  novosCampos.tipo === tipo ? "bg-painel text-acento shadow-sm" : "text-tinta-3"
+                }`}
+              >
+                {tipo === "compra" ? "Compra" : "Venda"}
+              </button>
+            ))}
+          </div>
+          <div className="grid grid-cols-2 gap-2.5">
+            <label className="flex flex-col gap-1">
+              <span className="rotulo">Data</span>
+              <input
+                type="date"
+                value={novosCampos.data}
+                max={diaNaB3(new Date())}
+                onChange={(e) => setNovosCampos((c) => ({ ...c, data: e.target.value }))}
+                className={campoInput}
+              />
+            </label>
+            <label className="flex flex-col gap-1">
+              <span className="rotulo">Quantidade</span>
+              <input
+                type="text"
+                inputMode="numeric"
+                value={novosCampos.quantidade}
+                onChange={(e) => setNovosCampos((c) => ({ ...c, quantidade: e.target.value }))}
+                placeholder="100"
+                className={campoInput}
+              />
+            </label>
+            <label className="col-span-2 flex flex-col gap-1">
+              <span className="rotulo">Preço</span>
+              <input
+                type="text"
+                inputMode="decimal"
+                value={novosCampos.preco}
+                onChange={(e) => setNovosCampos((c) => ({ ...c, preco: e.target.value }))}
+                placeholder="0,00"
+                className={campoInput}
+              />
+            </label>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={enviarNova}
+              disabled={
+                ocupado === "nova" ||
+                novosCampos.quantidade.trim() === "" ||
+                novosCampos.preco.trim() === ""
+              }
+              className="toque h-10 flex-1 rounded-full bg-primario text-[13px] font-bold text-primario-tinta disabled:opacity-40"
+            >
+              {ocupado === "nova" ? "Salvando…" : "Confirmar"}
+            </button>
+            <button
+              type="button"
+              onClick={() => setNovaAberta(false)}
+              className="toque h-10 rounded-full px-4 text-[13px] font-bold text-tinta-3 hover:text-tinta"
+            >
+              Cancelar
+            </button>
+          </div>
+        </div>
+      )}
+
+      {erro && <p className="text-[12px] font-semibold text-baixa">{erro}</p>}
+
+      <ul className="flex flex-col gap-2">
+        {trade.operacoes.map((op) => (
+          <li key={op.id} className="rounded-2xl bg-painel-2 px-3.5 py-3">
+            {editandoId === op.id && campos ? (
+              <div className="flex flex-col gap-2.5">
+                <div className="flex rounded-xl border border-linha-2 p-0.5">
+                  {(["compra", "venda"] as const).map((tipo) => (
+                    <button
+                      key={tipo}
+                      type="button"
+                      onClick={() => setCampos((c) => (c ? { ...c, tipo } : c))}
+                      aria-pressed={campos.tipo === tipo}
+                      className={`toque h-9 flex-1 rounded-[10px] text-[12px] font-bold transition-colors ${
+                        campos.tipo === tipo ? "bg-painel text-acento shadow-sm" : "text-tinta-3"
+                      }`}
+                    >
+                      {tipo === "compra" ? "Compra" : "Venda"}
+                    </button>
+                  ))}
+                </div>
+                <div className="grid grid-cols-2 gap-2.5">
+                  <label className="flex flex-col gap-1">
+                    <span className="rotulo">Data</span>
+                    <input
+                      type="date"
+                      value={campos.data}
+                      max={diaNaB3(new Date())}
+                      onChange={(e) => setCampos((c) => (c ? { ...c, data: e.target.value } : c))}
+                      className={campoInput}
+                    />
+                  </label>
+                  <label className="flex flex-col gap-1">
+                    <span className="rotulo">Quantidade</span>
+                    <input
+                      type="text"
+                      inputMode="numeric"
+                      value={campos.quantidade}
+                      onChange={(e) =>
+                        setCampos((c) => (c ? { ...c, quantidade: e.target.value } : c))
+                      }
+                      className={campoInput}
+                    />
+                  </label>
+                  <label className="col-span-2 flex flex-col gap-1">
+                    <span className="rotulo">Preço</span>
+                    <input
+                      type="text"
+                      inputMode="decimal"
+                      value={campos.preco}
+                      onChange={(e) => setCampos((c) => (c ? { ...c, preco: e.target.value } : c))}
+                      className={campoInput}
+                    />
+                  </label>
+                </div>
+                <div className="flex gap-2">
+                  <button
+                    type="button"
+                    onClick={() => salvarEdicao(op.id)}
+                    disabled={ocupado === op.id}
+                    className="toque h-10 flex-1 rounded-full bg-primario text-[13px] font-bold text-primario-tinta disabled:opacity-40"
+                  >
+                    {ocupado === op.id ? "Salvando…" : "Salvar"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setEditandoId(null);
+                      setCampos(null);
+                    }}
+                    className="toque h-10 rounded-full px-4 text-[13px] font-bold text-tinta-3 hover:text-tinta"
+                  >
+                    Cancelar
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
+                <span className="num text-[13px] font-bold">{fmtData(op.data)}</span>
+                <span
+                  className={`text-[12px] font-bold ${
+                    op.tipo === "compra" ? "text-acento" : "text-tinta-2"
+                  }`}
+                >
+                  {op.tipo === "compra" ? "Compra" : "Venda"}
+                </span>
+                <span className="num text-[13px] font-semibold text-tinta-2">
+                  {numero(op.quantidade, 0)} × {reais(op.preco)}
+                </span>
+                <div className="ml-auto flex gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => iniciarEdicao(op)}
+                    className="toque flex h-8 items-center rounded-full px-3 text-[11px] font-bold text-tinta-2 transition-colors hover:bg-linha hover:text-tinta"
+                  >
+                    Editar
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => apagar(op.id)}
+                    disabled={ocupado === op.id}
+                    className="toque flex h-8 items-center rounded-full px-3 text-[11px] font-bold text-tinta-2 transition-colors hover:bg-linha hover:text-baixa disabled:opacity-40"
+                  >
+                    Apagar
+                  </button>
+                </div>
+                <span className="num w-full text-[11px] font-semibold text-tinta-3">
+                  depois: {numero(op.quantidadeApos, 0)} · PM {reais(op.precoMedioApos)} · realizado{" "}
+                  {reais(op.realizadoApos)}
+                </span>
+              </div>
+            )}
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+
   return (
     <div className="flex flex-col gap-4">
       <section className="cartao flex flex-col gap-4 p-5">
@@ -297,268 +567,12 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
         </div>
       </section>
 
-      <section className="cartao flex flex-col gap-3 p-4 md:p-5">
-        <h2 className="text-[16px] font-extrabold">Resultado por pregão</h2>
-        <GraficoDeResultado snapshots={trade.snapshots} />
-      </section>
-
-      <section className="cartao flex flex-col gap-3 p-4 md:p-5">
-        <h2 className="text-[16px] font-extrabold">Pregões marcados</h2>
-        <div className="overflow-x-auto">
-          {/* No celular sai Acoes e Valor: com as cinco colunas, Resultado -- o numero
-              que interessa -- ficava escondido atras da rolagem horizontal. */}
-          <table className="w-full border-collapse text-[13px] sm:min-w-[480px]">
-            <thead>
-              <tr className="text-left">
-                <th className="rotulo pb-2 pr-3 font-bold">Pregão</th>
-                <th className="rotulo hidden pb-2 pr-3 text-right font-bold sm:table-cell">Ações</th>
-                <th className="rotulo pb-2 pr-3 text-right font-bold">Fechou</th>
-                <th className="rotulo hidden pb-2 pr-3 text-right font-bold sm:table-cell">Valor</th>
-                <th className="rotulo pb-2 text-right font-bold">Resultado</th>
-              </tr>
-            </thead>
-            <tbody>
-              {snapshotsRecentePrimeiro.map((s) => (
-                <tr key={s.data} className="border-t border-linha">
-                  <td className="num py-2 pr-3 font-semibold">{fmtData(s.data)}</td>
-                  <td className="num hidden py-2 pr-3 text-right sm:table-cell">
-                    {numero(s.quantidade, 0)}
-                  </td>
-                  <td className="num py-2 pr-3 text-right">
-                    {reais(s.fechamento)}
-                    {s.semNegocio && (
-                      <span className="block text-[10px] font-semibold text-tinta-3">sem negócio</span>
-                    )}
-                  </td>
-                  <td className="num hidden py-2 pr-3 text-right sm:table-cell">
-                    {reais(s.valorPosicao)}
-                  </td>
-                  <td
-                    className={`num py-2 text-right font-bold ${
-                      s.resultado >= 0 ? "text-alta" : "text-baixa"
-                    }`}
-                  >
-                    {reais(s.resultado)}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </section>
-
-      <section className="cartao flex flex-col gap-3 p-4 md:p-5">
-        <div className="flex items-center justify-between">
-          <h2 className="text-[16px] font-extrabold">Operações</h2>
-          {aberto && !novaAberta && (
-            <button
-              type="button"
-              onClick={abrirNova}
-              className="toque h-9 rounded-full bg-primario px-3.5 text-[12px] font-bold text-primario-tinta"
-            >
-              Nova operação
-            </button>
-          )}
-        </div>
-
-        {!aberto && (
-          <p className="text-[12px] font-semibold text-tinta-3">
-            Trade encerrado: uma nova compra na ficha do papel abre outro trade.
-          </p>
-        )}
-
-        {novaAberta && (
-          <div className="flex flex-col gap-2.5 rounded-2xl bg-painel-2 p-3.5">
-            <div className="flex rounded-xl border border-linha-2 p-0.5">
-              {(["compra", "venda"] as const).map((tipo) => (
-                <button
-                  key={tipo}
-                  type="button"
-                  onClick={() => setNovosCampos((c) => ({ ...c, tipo }))}
-                  aria-pressed={novosCampos.tipo === tipo}
-                  className={`toque h-9 flex-1 rounded-[10px] text-[12px] font-bold transition-colors ${
-                    novosCampos.tipo === tipo ? "bg-painel text-acento shadow-sm" : "text-tinta-3"
-                  }`}
-                >
-                  {tipo === "compra" ? "Compra" : "Venda"}
-                </button>
-              ))}
-            </div>
-            <div className="grid grid-cols-2 gap-2.5">
-              <label className="flex flex-col gap-1">
-                <span className="rotulo">Data</span>
-                <input
-                  type="date"
-                  value={novosCampos.data}
-                  max={diaNaB3(new Date())}
-                  onChange={(e) => setNovosCampos((c) => ({ ...c, data: e.target.value }))}
-                  className={campoInput}
-                />
-              </label>
-              <label className="flex flex-col gap-1">
-                <span className="rotulo">Quantidade</span>
-                <input
-                  type="text"
-                  inputMode="numeric"
-                  value={novosCampos.quantidade}
-                  onChange={(e) => setNovosCampos((c) => ({ ...c, quantidade: e.target.value }))}
-                  placeholder="100"
-                  className={campoInput}
-                />
-              </label>
-              <label className="col-span-2 flex flex-col gap-1">
-                <span className="rotulo">Preço</span>
-                <input
-                  type="text"
-                  inputMode="decimal"
-                  value={novosCampos.preco}
-                  onChange={(e) => setNovosCampos((c) => ({ ...c, preco: e.target.value }))}
-                  placeholder="0,00"
-                  className={campoInput}
-                />
-              </label>
-            </div>
-            <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={enviarNova}
-                disabled={
-                  ocupado === "nova" ||
-                  novosCampos.quantidade.trim() === "" ||
-                  novosCampos.preco.trim() === ""
-                }
-                className="toque h-10 flex-1 rounded-full bg-primario text-[13px] font-bold text-primario-tinta disabled:opacity-40"
-              >
-                {ocupado === "nova" ? "Salvando…" : "Confirmar"}
-              </button>
-              <button
-                type="button"
-                onClick={() => setNovaAberta(false)}
-                className="toque h-10 rounded-full px-4 text-[13px] font-bold text-tinta-3 hover:text-tinta"
-              >
-                Cancelar
-              </button>
-            </div>
-          </div>
-        )}
-
-        {erro && <p className="text-[12px] font-semibold text-baixa">{erro}</p>}
-
-        <ul className="flex flex-col gap-2">
-          {trade.operacoes.map((op) => (
-            <li key={op.id} className="rounded-2xl bg-painel-2 px-3.5 py-3">
-              {editandoId === op.id && campos ? (
-                <div className="flex flex-col gap-2.5">
-                  <div className="flex rounded-xl border border-linha-2 p-0.5">
-                    {(["compra", "venda"] as const).map((tipo) => (
-                      <button
-                        key={tipo}
-                        type="button"
-                        onClick={() => setCampos((c) => (c ? { ...c, tipo } : c))}
-                        aria-pressed={campos.tipo === tipo}
-                        className={`toque h-9 flex-1 rounded-[10px] text-[12px] font-bold transition-colors ${
-                          campos.tipo === tipo ? "bg-painel text-acento shadow-sm" : "text-tinta-3"
-                        }`}
-                      >
-                        {tipo === "compra" ? "Compra" : "Venda"}
-                      </button>
-                    ))}
-                  </div>
-                  <div className="grid grid-cols-2 gap-2.5">
-                    <label className="flex flex-col gap-1">
-                      <span className="rotulo">Data</span>
-                      <input
-                        type="date"
-                        value={campos.data}
-                        max={diaNaB3(new Date())}
-                        onChange={(e) => setCampos((c) => (c ? { ...c, data: e.target.value } : c))}
-                        className={campoInput}
-                      />
-                    </label>
-                    <label className="flex flex-col gap-1">
-                      <span className="rotulo">Quantidade</span>
-                      <input
-                        type="text"
-                        inputMode="numeric"
-                        value={campos.quantidade}
-                        onChange={(e) =>
-                          setCampos((c) => (c ? { ...c, quantidade: e.target.value } : c))
-                        }
-                        className={campoInput}
-                      />
-                    </label>
-                    <label className="col-span-2 flex flex-col gap-1">
-                      <span className="rotulo">Preço</span>
-                      <input
-                        type="text"
-                        inputMode="decimal"
-                        value={campos.preco}
-                        onChange={(e) => setCampos((c) => (c ? { ...c, preco: e.target.value } : c))}
-                        className={campoInput}
-                      />
-                    </label>
-                  </div>
-                  <div className="flex gap-2">
-                    <button
-                      type="button"
-                      onClick={() => salvarEdicao(op.id)}
-                      disabled={ocupado === op.id}
-                      className="toque h-10 flex-1 rounded-full bg-primario text-[13px] font-bold text-primario-tinta disabled:opacity-40"
-                    >
-                      {ocupado === op.id ? "Salvando…" : "Salvar"}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        setEditandoId(null);
-                        setCampos(null);
-                      }}
-                      className="toque h-10 rounded-full px-4 text-[13px] font-bold text-tinta-3 hover:text-tinta"
-                    >
-                      Cancelar
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <div className="flex flex-wrap items-center gap-x-3 gap-y-1.5">
-                  <span className="num text-[13px] font-bold">{fmtData(op.data)}</span>
-                  <span
-                    className={`text-[12px] font-bold ${
-                      op.tipo === "compra" ? "text-acento" : "text-tinta-2"
-                    }`}
-                  >
-                    {op.tipo === "compra" ? "Compra" : "Venda"}
-                  </span>
-                  <span className="num text-[13px] font-semibold text-tinta-2">
-                    {numero(op.quantidade, 0)} × {reais(op.preco)}
-                  </span>
-                  <div className="ml-auto flex gap-1.5">
-                    <button
-                      type="button"
-                      onClick={() => iniciarEdicao(op)}
-                      className="toque flex h-8 items-center rounded-full px-3 text-[11px] font-bold text-tinta-2 transition-colors hover:bg-linha hover:text-tinta"
-                    >
-                      Editar
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => apagar(op.id)}
-                      disabled={ocupado === op.id}
-                      className="toque flex h-8 items-center rounded-full px-3 text-[11px] font-bold text-tinta-2 transition-colors hover:bg-linha hover:text-baixa disabled:opacity-40"
-                    >
-                      Apagar
-                    </button>
-                  </div>
-                  <span className="num w-full text-[11px] font-semibold text-tinta-3">
-                    depois: {numero(op.quantidadeApos, 0)} · PM {reais(op.precoMedioApos)} · realizado{" "}
-                    {reais(op.realizadoApos)}
-                  </span>
-                </div>
-              )}
-            </li>
-          ))}
-        </ul>
-      </section>
+      {/* O cabecalho acima fica fixo; o Organizar muda a ordem do resto. */}
+      <ArranjoDaPagina pagina="trade">
+        <GradeDeCaixas
+          caixas={{ resultado: caixaResultado, pregoes: caixaPregoes, operacoes: caixaOperacoes }}
+        />
+      </ArranjoDaPagina>
     </div>
   );
 }

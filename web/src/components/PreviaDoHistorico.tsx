@@ -56,7 +56,8 @@ export function PreviaDoHistorico({
   const href = `/papel/${evento.ticker}/?data=${evento.tradeDate}`;
 
   return (
-    <section className="cartao sticky top-4 flex min-w-0 flex-col gap-3 p-4">
+    // Segue a rolagem pela grade do Organizar (a caixa e `fixa`), nao por aqui.
+    <section className="cartao flex min-w-0 flex-col gap-3 p-4">
       <div className="flex items-start gap-3">
         <div className="flex min-w-0 flex-1 flex-col">
           <span className="flex items-baseline gap-2">

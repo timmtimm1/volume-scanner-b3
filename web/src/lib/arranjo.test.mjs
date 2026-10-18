@@ -315,6 +315,24 @@ describe("paginas", () => {
     ]);
   });
 
+  it("toda pagina arrumavel tem caixas definidas", () => {
+    assert.deepEqual(Object.keys(PAGINAS_DE_CAIXAS).sort(), [...PAGINAS].sort());
+  });
+
+  it("Historico padrao: tabela e previa lado a lado; trades e trade numa coluna so", () => {
+    assert.deepEqual(planejar(arranjoPadrao(PAGINAS_DE_CAIXAS.historico), 2), {
+      tipo: "lado",
+      partes: [
+        { inicio: 0, largura: 1, no: { tipo: "pilha", ids: ["tabela"] } },
+        { inicio: 1, largura: 1, no: { tipo: "pilha", ids: ["previa"] } },
+      ],
+    });
+    assert.deepEqual(planejar(arranjoPadrao(PAGINAS_DE_CAIXAS.trade), 1), {
+      tipo: "pilha",
+      ids: ["resultado", "pregoes", "operacoes"],
+    });
+  });
+
   it("caixa que acompanha a rolagem comeca como a ultima da sua coluna", () => {
     for (const definicao of Object.values(PAGINAS_DE_CAIXAS)) {
       for (const caixa of definicao.caixas.filter((c) => c.fixa)) {

@@ -7,6 +7,7 @@ import { data as fmtData, numero, percentual, reais } from "@/lib/formato";
 import { marcarAgora } from "@/lib/posicao";
 import { precoDeAgora } from "@/lib/preco-de-agora";
 import type { TradeResumo } from "@/lib/trades";
+import { ArranjoDaPagina, GradeDeCaixas } from "./OrganizarCaixas";
 
 /**
  * A lista de trades: em aberto (com marcacao a mercado de agora) e encerrados.
@@ -65,94 +66,96 @@ export function ListaDeTrades({ iniciais }: { iniciais: TradeResumo[] }) {
   const resultadoTotal = marcados.reduce((soma, m) => soma + m.marca.resultado, 0);
   const pctTotal = custoTotal > 0 ? resultadoTotal / custoTotal : null;
 
-  return (
-    <div className="flex flex-col gap-4">
-      {abertos.length > 0 && (
-        <section className="cartao flex flex-col gap-3 p-4 md:p-5">
-          <div className="flex flex-wrap items-center justify-between gap-2">
-            <h2 className="text-[16px] font-extrabold">Em aberto</h2>
+  const caixaAbertos = abertos.length > 0 && (
+    <section className="cartao flex flex-col gap-3 p-4 md:p-5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <h2 className="text-[16px] font-extrabold">Em aberto</h2>
+        <span
+          className={`num flex items-center gap-1.5 text-[14px] font-extrabold ${
+            resultadoTotal >= 0 ? "text-alta" : "text-baixa"
+          }`}
+        >
+          {reais(resultadoTotal)}
+          <span className="text-[12px] font-bold">{percentual(pctTotal)}</span>
+        </span>
+      </div>
+
+      <ul className="flex flex-col gap-2">
+        {marcados.map(({ trade, info, marca }) => (
+          <li
+            key={trade.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl bg-painel-2 px-3.5 py-3"
+          >
+            <Link
+              href={`/trades/${trade.id}`}
+              className="text-[15px] font-extrabold transition-colors hover:text-acento"
+            >
+              {trade.ticker}
+            </Link>
+            <span className="num text-[12px] font-semibold text-tinta-3">
+              {numero(trade.quantidade, 0)} ações
+            </span>
             <span
-              className={`num flex items-center gap-1.5 text-[14px] font-extrabold ${
-                resultadoTotal >= 0 ? "text-alta" : "text-baixa"
+              className={`num ml-auto text-[14px] font-extrabold ${
+                marca.resultado >= 0 ? "text-alta" : "text-baixa"
               }`}
             >
-              {reais(resultadoTotal)}
-              <span className="text-[12px] font-bold">{percentual(pctTotal)}</span>
+              {reais(marca.resultado)}{" "}
+              <span className="text-[12px] font-bold">{percentual(marca.resultadoPct)}</span>
             </span>
-          </div>
 
-          <ul className="flex flex-col gap-2">
-            {marcados.map(({ trade, info, marca }) => (
-              <li
-                key={trade.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl bg-painel-2 px-3.5 py-3"
-              >
-                <Link
-                  href={`/trades/${trade.id}`}
-                  className="text-[15px] font-extrabold transition-colors hover:text-acento"
-                >
-                  {trade.ticker}
-                </Link>
-                <span className="num text-[12px] font-semibold text-tinta-3">
-                  {numero(trade.quantidade, 0)} ações
-                </span>
-                <span
-                  className={`num ml-auto text-[14px] font-extrabold ${
-                    marca.resultado >= 0 ? "text-alta" : "text-baixa"
-                  }`}
-                >
-                  {reais(marca.resultado)}{" "}
-                  <span className="text-[12px] font-bold">{percentual(marca.resultadoPct)}</span>
-                </span>
+            <span className="num w-full text-[11px] font-semibold text-tinta-3">
+              PM {reais(trade.precoMedio)}
+              {info && (
+                <>
+                  {" → "}
+                  {reais(info.preco)} <span className="text-tinta-3">· {info.rotulo}</span>
+                </>
+              )}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 
-                <span className="num w-full text-[11px] font-semibold text-tinta-3">
-                  PM {reais(trade.precoMedio)}
-                  {info && (
-                    <>
-                      {" → "}
-                      {reais(info.preco)} <span className="text-tinta-3">· {info.rotulo}</span>
-                    </>
-                  )}
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
+  const caixaEncerrados = encerrados.length > 0 && (
+    <section className="cartao flex flex-col gap-3 p-4 md:p-5">
+      <h2 className="text-[16px] font-extrabold">Encerrados</h2>
+      <ul className="flex flex-col gap-2">
+        {encerrados.map((t) => (
+          <li
+            key={t.id}
+            className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl bg-painel-2 px-3.5 py-3"
+          >
+            <Link
+              href={`/trades/${t.id}`}
+              className="text-[15px] font-extrabold transition-colors hover:text-acento"
+            >
+              {t.ticker}
+            </Link>
+            <span className="num text-[11px] font-semibold text-tinta-3">
+              {fmtData(t.abertoEm)} – {t.encerradoEm && fmtData(t.encerradoEm)}
+            </span>
+            <span
+              className={`num ml-auto text-[14px] font-extrabold ${
+                t.realizado >= 0 ? "text-alta" : "text-baixa"
+              }`}
+            >
+              {reais(t.realizado)}{" "}
+              <span className="text-[12px] font-bold">
+                {percentual(t.custoComprado > 0 ? t.realizado / t.custoComprado : null)}
+              </span>
+            </span>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
 
-      {encerrados.length > 0 && (
-        <section className="cartao flex flex-col gap-3 p-4 md:p-5">
-          <h2 className="text-[16px] font-extrabold">Encerrados</h2>
-          <ul className="flex flex-col gap-2">
-            {encerrados.map((t) => (
-              <li
-                key={t.id}
-                className="flex flex-wrap items-center gap-x-3 gap-y-1.5 rounded-2xl bg-painel-2 px-3.5 py-3"
-              >
-                <Link
-                  href={`/trades/${t.id}`}
-                  className="text-[15px] font-extrabold transition-colors hover:text-acento"
-                >
-                  {t.ticker}
-                </Link>
-                <span className="num text-[11px] font-semibold text-tinta-3">
-                  {fmtData(t.abertoEm)} – {t.encerradoEm && fmtData(t.encerradoEm)}
-                </span>
-                <span
-                  className={`num ml-auto text-[14px] font-extrabold ${
-                    t.realizado >= 0 ? "text-alta" : "text-baixa"
-                  }`}
-                >
-                  {reais(t.realizado)}{" "}
-                  <span className="text-[12px] font-bold">
-                    {percentual(t.custoComprado > 0 ? t.realizado / t.custoComprado : null)}
-                  </span>
-                </span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
-    </div>
+  return (
+    <ArranjoDaPagina pagina="trades">
+      <GradeDeCaixas caixas={{ abertos: caixaAbertos, encerrados: caixaEncerrados }} />
+    </ArranjoDaPagina>
   );
 }

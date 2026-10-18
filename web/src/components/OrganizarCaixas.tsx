@@ -132,7 +132,6 @@ export function ArranjoDaPagina({
   children: ReactNode;
 }) {
   const definicao = PAGINAS_DE_CAIXAS[pagina];
-  if (!definicao) throw new Error(`pagina sem caixas definidas: ${pagina}`);
   const colunas = definicao.trilhas.length;
   const padrao = useMemo(() => arranjoPadrao(definicao), [definicao]);
 

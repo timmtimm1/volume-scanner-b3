@@ -1,5 +1,5 @@
 import { nomeDaEmpresa, numero, reais } from "@/lib/formato";
-import { detalheDoAjuste } from "@/lib/semana";
+import { detalheDoAjuste, soQuemCaiu, soQuemSubiu } from "@/lib/semana";
 import type { AcaoDaSemana, AcoesDaSemana } from "@/lib/types";
 import { Bloco, LinkDoPapel, Nota, Rotulo, Variacao } from "./SemanaPecas";
 
@@ -58,16 +58,18 @@ function Lista({
   titulo,
   acoes,
   nomes,
+  vazio,
 }: {
   titulo: string;
   acoes: AcaoDaSemana[];
   nomes: Record<string, string>;
+  vazio: string;
 }) {
   return (
     <div className="flex min-w-0 flex-col">
       <Rotulo>{titulo}</Rotulo>
       {acoes.length === 0 ? (
-        <p className="py-3 text-[13px] text-tinta-3">Nenhum papel.</p>
+        <p className="py-3 text-[13px] text-tinta-3">{vazio}</p>
       ) : (
         <ul>
           {acoes.map((a, i) => (
@@ -89,8 +91,18 @@ export function SemanaAcoes({
   return (
     <Bloco titulo="Ações" subtitulo="Variação na semana, do fechamento da base ao da sexta">
       <div className="grid gap-x-8 gap-y-5 md:grid-cols-2">
-        <Lista titulo="Maiores altas" acoes={acoes.altas} nomes={nomes} />
-        <Lista titulo="Maiores quedas" acoes={acoes.quedas} nomes={nomes} />
+        <Lista
+          titulo="Maiores altas"
+          acoes={soQuemSubiu(acoes.altas, (a) => a.variacao)}
+          nomes={nomes}
+          vazio="Nenhum papel subiu na semana."
+        />
+        <Lista
+          titulo="Maiores quedas"
+          acoes={soQuemCaiu(acoes.quedas, (a) => a.variacao)}
+          nomes={nomes}
+          vazio="Nenhum papel caiu na semana."
+        />
       </div>
 
       {acoes.fora_do_ranking.length > 0 && (

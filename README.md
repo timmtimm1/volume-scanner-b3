@@ -541,6 +541,13 @@ erDiagram
         jsonb payload
         timestamptz enviado_em
     }
+    juros_historico {
+        date semana PK
+        text serie PK
+        numeric taxa
+        date data_base
+        text fonte
+    }
 
     daily_bars ||--o{ volume_metrics : "ticker + trade_date"
     daily_bars ||--o{ daily_features : "ticker + trade_date"
@@ -576,6 +583,7 @@ erDiagram
 | `proventos` | Dividendos e JCP por papel, com a data com. Uma linha por provento e por classe: a ON e a PN da mesma empresa recebem valores diferentes |
 | `arquivos_externos` | Controle de download condicional dos arquivos da CVM: o que já foi baixado, e quando a CVM publicou |
 | `resumos_semanais` | O [resumo da semana](#resumo-da-semana) inteiro, em JSON, um por semana. Depois de enviado, não muda mais |
+| `juros_historico` | A série de juros do gráfico da aba Semana: uma taxa por semana (a sexta) e por série — Pré 1, 2, 5 e 10 anos, IPCA+ 5 e 10 anos (Tesouro Direto) e Selic meta (Banco Central) —, com o dia de onde o número saiu. Só cresce: cada montagem regrava tudo (upsert) e nada é apagado |
 
 Migrations via Alembic, em `src/scanner/storage/migrations/versions/` — nunca schema por SQL solto.
 `scanner db status` mostra pregões, linhas e tamanho de cada tabela no banco atual.
@@ -1121,7 +1129,7 @@ Nada disto alimenta a regra do alerta. É um retrato do mercado, não um julgame
 
 Cada edição fica numa página pública, sem login: `/semana` mostra a mais recente e `/semana/AAAA-MM-DD` (a sexta-feira da semana) mostra qualquer uma, e é o link que a mensagem do Telegram traz. As páginas são geradas no build; uma edição que o build ainda não conhece é gerada no primeiro acesso, para o link do Telegram não dar 404 enquanto a Vercel reconstrói. No topo, setas para a edição anterior e a seguinte e uma lista para pular para qualquer semana.
 
-A tela lê o resumo já gravado em `resumos_semanais`, na ordem: abertura (Ibovespa, dólar, Brent e ouro), ações (maiores altas e quedas, com o selo "ajustada" e o detalhe do ajuste), notícias, cripto, juros no Brasil (curva prefixada contra a semana anterior), EUA (Treasuries e dot plot do Fed) e a semana que vem (feriados, agenda e balanços). Bloco cuja fonte falhou na montagem aparece como "Indisponível nesta edição". Cabe em 390 px; no celular o menu de baixo mostra só os ícones.
+A tela lê o resumo já gravado em `resumos_semanais`, na ordem: abertura (Ibovespa, dólar, Brent e ouro), ações (maiores altas e quedas, com o selo "ajustada" e o detalhe do ajuste), notícias, cripto, juros no Brasil (gráfico de 10 anos que se arrasta e dá zoom, e a tabela da semana contra a anterior), EUA (Treasuries e dot plot do Fed) e a semana que vem (feriados, agenda e balanços). Bloco cuja fonte falhou na montagem aparece como "Indisponível nesta edição". Cabe em 390 px; no celular o menu de baixo mostra só os ícones.
 
 
 ```bash
@@ -1161,8 +1169,8 @@ Cisão, e bonificação paga em **outro** papel (quem tem ON recebe PN), não t�
 | Ações | COTAHIST + B3 | 10 maiores altas e 10 maiores quedas do universo, ajustadas |
 | Abertura | Yahoo (`^BVSP`, `BRL=X`, `BZ=F`, `GC=F`) | valor e variação na semana, no mês e no ano |
 | Cripto | CoinGecko | top 20 por valor de mercado, BTC e ETH, as 5 que mais subiram e as 5 que mais caíram em 7 dias |
-| Curva de juros | ANBIMA (ETTJ prefixada) | 1, 2, 5 e 10 anos, com a variação em pontos-base |
-| Indicadores | Banco Central (SGS 432, 12, 13522) | Selic meta, CDI no mês e no ano, IPCA em 12 meses |
+| Curva de juros | Tesouro Direto (CSV do Tesouro Transparente) | Pré de 1, 2, 5 e 10 anos e IPCA+ de 5 e 10 anos, com a variação em pontos-base; a mesma fonte alimenta o gráfico de 10 anos |
+| Indicadores | Banco Central (SGS 432, 12, 13522) | Selic meta, CDI no mês e no ano, IPCA em 12 meses; a Selic meta semanal também entra no gráfico |
 | Treasuries | Tesouro dos EUA (CSV diário) | 3 e 6 meses, 2, 5, 10 e 30 anos |
 | Fed | Projeções do FOMC (dot plot) | mediana dos juros por ano e no longo prazo |
 
@@ -1172,6 +1180,10 @@ Detalhes que mudam a leitura:
 - **A janela da cripto termina na hora da coleta,** não na sexta: a API gratuita só dá "últimos 7 dias". O resumo guarda o horário da coleta.
 - **O Yahoo recusa User-Agent de navegador** (429) e aceita o do projeto, o mesmo de `cotacoes/yahoo.py`.
 - **A projeção do Fed** usada é a mais recente publicada até a sexta da semana. Ela só muda quatro vezes por ano.
+- **Juros: uma fonte só, o Tesouro Direto.** A curva da ANBIMA saiu: o download gratuito dela guarda só as últimas semanas (testado em 18/10/2026: 16/04/2026, 2024, 2020 e 2016 voltaram vazios), e um gráfico de 10 anos precisa de histórico. O CSV do Tesouro Transparente traz a taxa de cada título desde 2004. A taxa usada é a de compra (a que o investidor recebe; se vier 0, a de venda).
+- **Como o vértice é calculado.** O vértice de N anos é a interpolação linear da taxa em função do prazo ((vencimento − data base) / 365,25) entre os dois títulos vizinhos, na curva nominal (LTN e NTN-F) ou na real (IPCA+ e IPCA+ com juros semestrais). Dois títulos no mesmo vencimento: vale o sem cupom. **Prolongamento só na ponta longa:** o Tesouro lança uma NTN-F de ~10,9 anos em fevereiro dos anos pares; de janeiro de cada ano ímpar a fevereiro do seguinte o prefixado mais longo vence em 8,87 a 10 anos (57 semanas a cada 2 anos), e sem ajuda o Pré de 10 anos só teria ponto em 235 das 523 semanas desde 14/10/2016. Nesses períodos vale a reta dos dois prefixados mais longos (sempre a 2,00 anos um do outro) prolongada por até 1,2 ano (`EXTRAPOLACAO_MAXIMA_ANOS`; o maior alcance medido foi 1,13). Conferido nas 235 semanas em que dá para comparar: erro mediano de 6,0 bp, 90% abaixo de 13,8 bp e máximo de 23,4 bp; na troca entre o estimado e o observado o salto fica dentro do movimento semanal típico (mediana de 15,8 bp). Abaixo do menor prazo e além do limite o vértice fica sem valor e a linha do gráfico quebra. Na ponta curta o mesmo teste dá erro mediano de 13 bp e máximo de 70 bp, então ali não se prolonga: o Pré de 1 ano continua sem ponto de janeiro a junho de 2023 (26 semanas), quando o LTN mais curto tinha mais de 1 ano.
+- **A série cresce uma semana por sábado.** Começa em 14/10/2016 (`semana.juros_desde`, fixa: 10 anos antes da primeira execução). Como o CSV é baixado inteiro a cada montagem, `semana montar --gravar` e `semana enviar` regravam todas as semanas desde essa data (upsert, idempotente), então a série se conserta sozinha. O `montar` sem `--gravar` e o `enviar --dry-run` não escrevem no banco. O ponto da semana é a última data base entre a segunda e a sexta; semana sem dado do Tesouro fica sem ponto. A Selic meta é o valor vigente na sexta (SGS 432, em pedaços de 5 anos, porque a API diária recusa janela acima de 10 anos).
+- **Edições antigas continuam abrindo.** A de 16/10/2026 montada antes desta mudança tem a curva da ANBIMA, sem `fonte` e sem `curva_real`: a tabela diz "ANBIMA" e não mostra o IPCA+. O gráfico lê `juros_historico` até a sexta da edição, então uma edição antiga mostra a história até ela.
 - **Minério de ferro ficou de fora:** o contrato do Yahoo (`TIO=F`) parou de atualizar em agosto de 2021, e não há outra fonte gratuita semanal.
 
 ### As notícias

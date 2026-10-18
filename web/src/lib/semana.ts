@@ -187,6 +187,20 @@ export function descartesEmTexto(descartes: Record<string, number>): {
   };
 }
 
+/**
+ * Alta e so quem subiu; queda, so quem caiu. Ate 18/10/2026 a montagem
+ * completava a lista de altas com quedas quando poucos subiam (a edicao de
+ * 16/10 tem WBT e BCH caindo em "Maiores altas"). A tela filtra ao mostrar,
+ * entao as edicoes ja gravadas tambem aparecem certas.
+ */
+export function soQuemSubiu<T>(itens: T[], variacao: (item: T) => number | null | undefined): T[] {
+  return itens.filter((item) => (variacao(item) ?? 0) > 0);
+}
+
+export function soQuemCaiu<T>(itens: T[], variacao: (item: T) => number | null | undefined): T[] {
+  return itens.filter((item) => (variacao(item) ?? 0) < 0);
+}
+
 /** Os tickers que a tela vai ligar a um nome de empresa. */
 export function tickersDasAcoes(acoes: {
   altas: AcaoDaSemana[];

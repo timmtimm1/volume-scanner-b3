@@ -1,5 +1,13 @@
 import { data as fmtData, numero, reais } from "@/lib/formato";
-import { descartesEmTexto, diaComSemana, diaEmBrasilia, ehErro, instanteEmBrasilia } from "@/lib/semana";
+import {
+  descartesEmTexto,
+  diaComSemana,
+  diaEmBrasilia,
+  ehErro,
+  instanteEmBrasilia,
+  soQuemCaiu,
+  soQuemSubiu,
+} from "@/lib/semana";
 import type {
   Abertura,
   AtivoDaAbertura,
@@ -199,15 +207,19 @@ function LinhaDaMoeda({ moeda, rank = false }: { moeda: MoedaCripto; rank?: bool
   );
 }
 
-function ListaDeMoedas({ titulo, moedas }: { titulo: string; moedas: MoedaCripto[] }) {
+function ListaDeMoedas({ titulo, moedas, vazio }: { titulo: string; moedas: MoedaCripto[]; vazio: string }) {
   return (
     <div className="flex min-w-0 flex-col">
       <Rotulo>{titulo}</Rotulo>
-      <ul>
-        {moedas.map((m) => (
-          <LinhaDaMoeda key={m.id} moeda={m} />
-        ))}
-      </ul>
+      {moedas.length === 0 ? (
+        <p className="py-3 text-[13px] text-tinta-3">{vazio}</p>
+      ) : (
+        <ul>
+          {moedas.map((m) => (
+            <LinhaDaMoeda key={m.id} moeda={m} />
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -224,8 +236,16 @@ export function SemanaCripto({ cripto }: { cripto: CriptoDaSemana | BlocoComErro
         <Destaque moeda={cripto.eth} />
       </div>
       <div className="grid gap-x-6 gap-y-4 sm:grid-cols-2">
-        <ListaDeMoedas titulo="Maiores altas" moedas={cripto.altas} />
-        <ListaDeMoedas titulo="Maiores quedas" moedas={cripto.quedas} />
+        <ListaDeMoedas
+          titulo="Maiores altas"
+          moedas={soQuemSubiu(cripto.altas, (m) => m.variacao_7d)}
+          vazio="Nenhuma subiu na semana."
+        />
+        <ListaDeMoedas
+          titulo="Maiores quedas"
+          moedas={soQuemCaiu(cripto.quedas, (m) => m.variacao_7d)}
+          vazio="Nenhuma caiu na semana."
+        />
       </div>
       {cripto.moedas.length > 0 && (
         <details className="group">

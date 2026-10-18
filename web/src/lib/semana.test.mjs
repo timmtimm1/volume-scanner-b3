@@ -16,6 +16,8 @@ import {
   pontosBase,
   prazoDoTreasury,
   sextaValida,
+  soQuemCaiu,
+  soQuemSubiu,
   tickersDasAcoes,
   vizinhas,
 } from "./semana.ts";
@@ -211,5 +213,27 @@ describe("tickersDasAcoes", () => {
       tickersDasAcoes({ altas: [a("A1"), a("B1")], quedas: [a("B1")], fora_do_ranking: [a("C1")] }),
       ["A1", "B1", "C1"],
     );
+  });
+});
+
+describe("soQuemSubiu e soQuemCaiu", () => {
+  // As altas de cripto da edicao de 16/10/2026, como foram gravadas.
+  const ALTAS_GRAVADAS = [
+    { simbolo: "XMR", variacao_7d: 0.092 },
+    { simbolo: "LEO", variacao_7d: 0.014 },
+    { simbolo: "TRX", variacao_7d: 0.005 },
+    { simbolo: "WBT", variacao_7d: -0.031 },
+    { simbolo: "BCH", variacao_7d: -0.032 },
+  ];
+
+  it("a edicao de 16/10 mostra so as tres que subiram nas altas", () => {
+    const altas = soQuemSubiu(ALTAS_GRAVADAS, (m) => m.variacao_7d).map((m) => m.simbolo);
+    assert.deepEqual(altas, ["XMR", "LEO", "TRX"]);
+  });
+
+  it("zero e sem variacao nao sao alta nem queda", () => {
+    const itens = [{ v: 0 }, { v: null }, { v: undefined }, { v: -0.01 }, { v: 0.01 }];
+    assert.deepEqual(soQuemSubiu(itens, (i) => i.v), [{ v: 0.01 }]);
+    assert.deepEqual(soQuemCaiu(itens, (i) => i.v), [{ v: -0.01 }]);
   });
 });

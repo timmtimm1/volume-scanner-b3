@@ -1134,6 +1134,7 @@ e uma linha na tabela abaixo. Os testes novos sem outro lugar para morar ficam e
 | Link do resumo sem barra final (17/10/2026) | O site (`trailingSlash: true`) respondia 308 | `test_semana_mensagem.py::test_link_do_app_usa_a_sexta_e_ignora_barra_final` |
 | `semana enviar` sem Telegram (17/10/2026) | O que só foi ao terminal ficaria marcado como enviado | `test_cli.py::test_semana_enviar_sem_telegram_configurado_nao_marca` |
 | SGS do BCB em erro 500 o dia todo (18/10/2026) | O gráfico de juros saiu sem a Selic | `test_semana_bcb.py::test_selic_semanal_vem_do_historico_do_copom_sem_tocar_no_sgs`. A Selic do gráfico vem do histórico do Copom; o SGS é a reserva |
+| Quedas em "Maiores altas" (18/10/2026) | Com poucas altas na semana, a lista era completada com quedas: WBT (−3,1%) e BCH (−3,2%) apareceram nas altas de cripto. As ações tinham a mesma regra | `test_semana_cripto.py::test_altas_so_com_quem_subiu_e_quedas_so_com_quem_caiu`, `test_semana_acoes.py::test_altas_so_com_quem_subiu_e_quedas_so_com_quem_caiu` e, para as edições já gravadas, `web/src/lib/semana.test.mjs` (`soQuemSubiu`) |
 | Banco `*_pytest` em numeração velha (18/10/2026) | "Can't locate revision" no pytest | Sem teste: não é bug de código. Apague o banco `<db>_pytest` (`DROP DATABASE`) e rode de novo; a fixture `engine` o recria |
 
 ## Notícias na ficha
@@ -1235,9 +1236,9 @@ Cisão, e bonificação paga em **outro** papel (quem tem ON recebe PN), não t�
 
 | Bloco | Fonte | O que entra |
 |---|---|---|
-| Ações | COTAHIST + B3 | 10 maiores altas e 10 maiores quedas do universo, ajustadas |
+| Ações | COTAHIST + B3 | Até 10 maiores altas e 10 maiores quedas do universo, ajustadas. Alta é só quem subiu e queda só quem caiu: semana com 3 altas lista 3 |
 | Abertura | Yahoo (`^BVSP`, `BRL=X`, `BZ=F`, `GC=F`) | valor e variação na semana, no mês e no ano |
-| Cripto | CoinGecko | top 20 por valor de mercado, BTC e ETH, as 5 que mais subiram e as 5 que mais caíram em 7 dias |
+| Cripto | CoinGecko | top 20 por valor de mercado, BTC e ETH, até 5 que subiram e até 5 que caíram em 7 dias (só quem subiu entra nas altas, só quem caiu nas quedas) |
 | Curva de juros | Tesouro Direto (CSV do Tesouro Transparente) | Pré de 1, 2, 5 e 10 anos e IPCA+ de 5 e 10 anos, com a variação em pontos-base; a mesma fonte alimenta o gráfico de 10 anos |
 | Indicadores | Banco Central (SGS 432, 12, 13522) | Selic meta, CDI no mês e no ano, IPCA em 12 meses |
 | Selic do gráfico | Banco Central (histórico das decisões do Copom; SGS 432 de reserva) | A Selic meta vigente em cada sexta, desde 14/10/2016 |

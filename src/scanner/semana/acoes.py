@@ -204,16 +204,20 @@ def variacoes_da_semana(
 
 
 def ranking(variacoes: pd.DataFrame, n: int) -> tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
-    """(altas, quedas, fora): as `n` maiores e menores variacoes entre os comparaveis.
+    """(altas, quedas, fora): as `n` maiores altas e as `n` maiores quedas entre os comparaveis.
 
+    Alta e so quem subiu e queda so quem caiu: numa semana em que tres papeis
+    subiram, a lista de altas tem tres. Variacao zero nao entra em nenhuma.
     Empate desempata por ticker, para o resultado nao depender da ordem de entrada.
     `fora` sao os papeis que nao se comparam (cisao), todos, por ticker.
     """
     if variacoes.empty:
         return variacoes, variacoes, variacoes
     comparaveis = variacoes[variacoes["comparavel"]]
-    altas = comparaveis.sort_values(["variacao", "ticker"], ascending=[False, True]).head(n)
-    quedas = comparaveis.sort_values(["variacao", "ticker"], ascending=[True, True]).head(n)
+    subiram = comparaveis[comparaveis["variacao"] > 0]
+    cairam = comparaveis[comparaveis["variacao"] < 0]
+    altas = subiram.sort_values(["variacao", "ticker"], ascending=[False, True]).head(n)
+    quedas = cairam.sort_values(["variacao", "ticker"], ascending=[True, True]).head(n)
     fora = variacoes[~variacoes["comparavel"]].sort_values("ticker")
     return (
         altas.reset_index(drop=True),

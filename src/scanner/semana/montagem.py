@@ -449,11 +449,14 @@ def _previa_juros(juros: dict[str, Any]) -> list[str]:
         linhas.append(f"  Indicadores: {msg}")
     else:
         cdi_ate = f" (ate {_data_br(ind['cdi_data'])})" if ind["cdi_data"] else ""
+        ipca_ref = f" (ref. {ind['ipca_referencia']})" if ind["ipca_referencia"] else ""
         linhas.append(f"  Selic meta {br(ind['selic_meta'])}% a.a.")
         linhas.append(
             f"  CDI acumulado: mes {pct(ind['cdi_mes'], 2)}, ano {pct(ind['cdi_ano'], 2)}{cdi_ate}"
         )
-        linhas.append(f"  IPCA 12 meses {br(ind['ipca_12m'])}% (ref. {ind['ipca_referencia']})")
+        linhas.append(f"  IPCA 12 meses {br(ind['ipca_12m'])}%{ipca_ref}")
+        for campo, motivo in ind.get("erros", {}).items():
+            linhas.append(f"  {campo} indisponivel: {motivo}")
     return linhas
 
 

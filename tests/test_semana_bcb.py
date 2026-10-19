@@ -64,12 +64,50 @@ def test_acumulado_composto() -> None:
     assert acumulado([]) is None
 
 
-def test_sem_selic_ou_sem_ipca_levanta() -> None:
+def test_sem_selic_ou_sem_ipca_o_resto_continua() -> None:
     ipca = [(date(2026, 9, 1), 4.58)]
-    with pytest.raises(FonteIndisponivelError, match="Selic"):
-        montar_indicadores(FIM, [], [], [], ipca)
-    with pytest.raises(FonteIndisponivelError, match="IPCA"):
-        montar_indicadores(FIM, [(date(2026, 10, 9), 13.75)], [], [], [])
+
+    sem_selic = montar_indicadores(FIM, [], [], [], ipca)
+    sem_ipca = montar_indicadores(FIM, [(date(2026, 10, 9), 13.75)], [], [], [])
+
+    assert sem_selic["selic_meta"] is None
+    assert sem_selic["ipca_12m"] == 4.58
+    assert "Selic" in sem_selic["erros"]["selic_meta"]
+    assert sem_ipca["selic_meta"] == 13.75
+    assert sem_ipca["ipca_12m"] is None
+    assert sem_ipca["ipca_referencia"] is None
+    assert "IPCA" in sem_ipca["erros"]["ipca_12m"]
+
+
+def test_serie_que_nao_veio_sai_none_com_o_motivo() -> None:
+    r = montar_indicadores(
+        FIM,
+        [(date(2026, 10, 9), 13.75)],
+        None,
+        None,
+        None,
+        {"cdi_mes": "falha de rede", "cdi_ano": "falha de rede", "ipca_12m": "HTTP 500"},
+    )
+
+    assert r["selic_meta"] == 13.75
+    assert r["cdi_mes"] is None and r["cdi_ano"] is None and r["cdi_data"] is None
+    assert r["ipca_12m"] is None
+    assert r["erros"] == {
+        "cdi_mes": "falha de rede",
+        "cdi_ano": "falha de rede",
+        "ipca_12m": "HTTP 500",
+    }
+
+
+def test_sem_nenhum_indicador_levanta() -> None:
+    with pytest.raises(FonteIndisponivelError, match="HTTP 500"):
+        montar_indicadores(FIM, None, None, None, None, {"selic_meta": "HTTP 500"})
+
+
+def test_tudo_certo_nao_tem_erros() -> None:
+    r = montar_indicadores(FIM, [(date(2026, 10, 9), 13.75)], [], [], [(date(2026, 9, 1), 4.58)])
+
+    assert "erros" not in r
 
 
 @pytest.mark.parametrize(
@@ -81,13 +119,16 @@ def test_formato_inesperado(dados: Any) -> None:
 
 
 class _Cliente:
-    def __init__(self, respostas: list[httpx.Response]) -> None:
+    def __init__(self, respostas: list[httpx.Response | Exception]) -> None:
         self.respostas = list(respostas)
         self.urls: list[str] = []
 
     def request(self, metodo: str, url: str, **_kw: Any) -> httpx.Response:
         self.urls.append(url)
-        return self.respostas.pop(0)
+        resposta = self.respostas.pop(0)
+        if isinstance(resposta, Exception):
+            raise resposta
+        return resposta
 
     def close(self) -> None:
         pass
@@ -105,6 +146,51 @@ def test_502_tenta_mais_uma_vez(monkeypatch: pytest.MonkeyPatch) -> None:
     assert "dataInicial=16/09/2026&dataFinal=16/10/2026" in cliente.urls[0]
 
 
+def test_timeout_tenta_mais_uma_vez(monkeypatch: pytest.MonkeyPatch) -> None:
+    # 17/10/2026: o SGS passou do timeout; sem status, a falha de rede nao era repetida.
+    monkeypatch.setattr("scanner.semana.fontes.bcb.time.sleep", lambda _s: None)
+    cliente = _Cliente(
+        [
+            httpx.ReadTimeout("The read operation timed out"),
+            httpx.Response(200, json=[{"data": "16/10/2026", "valor": "13.75"}]),
+        ]
+    )
+
+    pontos = bcb_mod._serie(432, date(2026, 9, 16), FIM, cliente)  # type: ignore[arg-type]
+
+    assert pontos == [(date(2026, 10, 16), 13.75)]
+    assert len(cliente.urls) == 2
+
+
+@pytest.mark.parametrize(
+    "estragada",
+    [
+        httpx.Response(200, json={"erro": {"statusCode": 500, "detail": "Internal error"}}),
+        httpx.Response(200, text="<?xml version='1.0'?><html>erro</html>"),
+    ],
+)
+def test_resposta_200_que_nao_e_a_serie_tenta_mais_uma_vez(
+    monkeypatch: pytest.MonkeyPatch, estragada: httpx.Response
+) -> None:
+    # 18/10/2026: o SGS respondia 200 com o erro no corpo, JSON ou pagina HTML.
+    monkeypatch.setattr("scanner.semana.fontes.bcb.time.sleep", lambda _s: None)
+    cliente = _Cliente(
+        [estragada, httpx.Response(200, json=[{"data": "15/10/2026", "valor": "0.05"}])]
+    )
+
+    pontos = bcb_mod._serie(12, date(2026, 10, 1), FIM, cliente)  # type: ignore[arg-type]
+
+    assert pontos == [(date(2026, 10, 15), 0.05)]
+
+
+def test_erro_4xx_nao_tenta_de_novo() -> None:
+    cliente = _Cliente([httpx.Response(400)])
+
+    with pytest.raises(FonteIndisponivelError, match="HTTP 400"):
+        bcb_mod._serie(12, date(2026, 10, 1), FIM, cliente)  # type: ignore[arg-type]
+    assert len(cliente.urls) == 1
+
+
 def test_periodo_sem_dado_e_404_e_vira_lista_vazia() -> None:
     erro = {"erro": {"statusCode": 404, "detail": "Value(s) not found"}}
     cliente = _Cliente([httpx.Response(404, json=erro)])
@@ -112,11 +198,11 @@ def test_periodo_sem_dado_e_404_e_vira_lista_vazia() -> None:
     assert bcb_mod._serie(12, date(2026, 10, 1), FIM, cliente) == []  # type: ignore[arg-type]
 
 
-def test_busca_das_quatro_series_com_as_janelas_da_spec() -> None:
+def test_busca_da_selic_no_copom_e_das_outras_series_com_as_janelas_da_spec() -> None:
     um = httpx.Response(200, json=[{"data": "01/09/2026", "valor": "4.58"}])
     cliente = _Cliente(
         [
-            httpx.Response(200, json=[{"data": "16/10/2026", "valor": "13.75"}]),
+            httpx.Response(200, json=_copom()),
             httpx.Response(200, json=[{"data": "15/10/2026", "valor": "0.05"}]),
             httpx.Response(200, json=[{"data": "15/10/2026", "valor": "0.05"}]),
             um,
@@ -126,11 +212,49 @@ def test_busca_das_quatro_series_com_as_janelas_da_spec() -> None:
     r = bcb_mod.indicadores(semana_da_data(FIM), cliente=cliente)  # type: ignore[arg-type]
 
     urls = cliente.urls
-    assert "sgs.432" in urls[0]
+    assert urls[0] == bcb_mod.URL_COPOM
     assert "sgs.12/" in urls[1] and "dataInicial=01/10/2026" in urls[1]
     assert "sgs.12/" in urls[2] and "dataInicial=01/01/2026" in urls[2]
     assert "sgs.13522" in urls[3] and "dataInicial=11/09/2025" in urls[3]
     assert r["selic_meta"] == 13.75
+    assert "erros" not in r
+
+
+def test_sgs_fora_a_selic_dos_indicadores_vem_do_copom(monkeypatch: pytest.MonkeyPatch) -> None:
+    """17/10/2026: o SGS passou do timeout e a mensagem do Telegram saiu "Selic indisponivel".
+
+    A Selic dependia do SGS, e qualquer serie que falhasse derrubava o bloco
+    inteiro. Com o SGS todo fora, a Selic ainda vem do historico do Copom, e so
+    o CDI e o IPCA ficam vazios, cada um com o motivo.
+    """
+    monkeypatch.setattr("scanner.semana.fontes.bcb.time.sleep", lambda _s: None)
+    timeout = httpx.ReadTimeout("The read operation timed out")
+    cliente = _Cliente([httpx.Response(200, json=_copom())] + [timeout] * 6)
+
+    r = bcb_mod.indicadores(semana_da_data(FIM), cliente=cliente)  # type: ignore[arg-type]
+
+    assert r["selic_meta"] == 13.75
+    assert r["cdi_mes"] is None and r["cdi_ano"] is None and r["ipca_12m"] is None
+    assert set(r["erros"]) == {"cdi_mes", "cdi_ano", "ipca_12m"}
+    assert all("ReadTimeout" in motivo for motivo in r["erros"].values())
+
+
+def test_copom_fora_a_selic_dos_indicadores_vem_do_sgs() -> None:
+    cliente = _Cliente(
+        [
+            httpx.Response(503),
+            httpx.Response(200, json=[{"data": "16/10/2026", "valor": "13.75"}]),
+            httpx.Response(200, json=[{"data": "15/10/2026", "valor": "0.05"}]),
+            httpx.Response(200, json=[{"data": "15/10/2026", "valor": "0.05"}]),
+            httpx.Response(200, json=[{"data": "01/09/2026", "valor": "4.58"}]),
+        ]
+    )
+
+    r = bcb_mod.indicadores(semana_da_data(FIM), cliente=cliente)  # type: ignore[arg-type]
+
+    assert "sgs.432" in cliente.urls[1] and "dataInicial=16/09/2026" in cliente.urls[1]
+    assert r["selic_meta"] == 13.75
+    assert "erros" not in r
 
 
 def test_pedacos_cobrem_o_periodo_sem_buraco_nem_passar_de_10_anos() -> None:

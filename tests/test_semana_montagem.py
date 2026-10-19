@@ -549,3 +549,29 @@ def test_previa_mostra_as_duas_curvas_do_tesouro(monkeypatch: pytest.MonkeyPatch
 
     assert "Curva prefixada Tesouro Direto (15/10/2026 vs 09/10/2026)" in texto
     assert "Juro real IPCA+ Tesouro Direto (15/10/2026 vs 09/10/2026)" in texto
+
+
+def test_previa_com_indicador_faltando_mostra_o_resto_e_o_motivo(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    _patch_fontes(monkeypatch, cripto=FonteIndisponivelError("coingecko", "HTTP 429"))
+    monkeypatch.setattr(
+        bcb,
+        "indicadores",
+        lambda *_a, **_k: {
+            "selic_meta": 13.75,
+            "cdi_mes": None,
+            "cdi_ano": None,
+            "cdi_data": None,
+            "ipca_12m": None,
+            "ipca_referencia": None,
+            "erros": {"ipca_12m": "falha de rede (ReadTimeout)"},
+        },
+    )
+    payload = montar_dados_de_mercado(ENGINE, ScannerConfig(), SEMANA, agora=AGORA)
+
+    texto = previa(payload)
+
+    assert "  Selic meta 13,75% a.a." in texto
+    assert "  IPCA 12 meses -%\n" in texto
+    assert "  ipca_12m indisponivel: falha de rede (ReadTimeout)" in texto

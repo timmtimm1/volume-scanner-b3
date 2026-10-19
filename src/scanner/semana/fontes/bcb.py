@@ -13,6 +13,11 @@ com a meta e o inicio da vigencia de cada reuniao desde 1996. O SGS fica de
 reserva. Em 18/10/2026 o SGS passou o dia respondendo erro 500 para qualquer
 serie, e o historico do Copom respondia normal; conferido contra o SGS de
 17/10/2026, as datas de mudanca e os valores batem.
+
+Os indicadores da semana seguem a mesma ordem para a Selic, e cada numero falha
+sozinho: em 17/10/2026 o SGS demorou mais que o timeout, o bloco inteiro saiu
+"indisponivel" e a mensagem do Telegram foi sem Selic. Agora o que faltar vira
+`None`, com o motivo em `erros`, e o bloco so cai quando nao sobra nada.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ import logging
 import math
 import time
 from bisect import bisect_right
+from collections.abc import Callable
 from datetime import date, datetime, timedelta
 from typing import Any
 
@@ -94,43 +100,45 @@ def acumulado(pontos: list[tuple[date, float]]) -> float | None:
 
 def montar_indicadores(
     fim: date,
-    selic: list[tuple[date, float]],
-    cdi_mes: list[tuple[date, float]],
-    cdi_ano: list[tuple[date, float]],
-    ipca: list[tuple[date, float]],
+    selic: list[tuple[date, float]] | None,
+    cdi_mes: list[tuple[date, float]] | None,
+    cdi_ano: list[tuple[date, float]] | None,
+    ipca: list[tuple[date, float]] | None,
+    erros: dict[str, str] | None = None,
 ) -> dict[str, Any]:
-    """Aplica as regras de data: tudo ate `fim`, o ultimo valor valendo para Selic e IPCA."""
-    selic_ate = [p for p in selic if p[0] <= fim]
-    ipca_ate = [p for p in ipca if p[0] <= fim]
-    if not selic_ate:
-        raise FonteIndisponivelError(FONTE, "Selic meta sem valor ate o fim da semana")
-    if not ipca_ate:
-        raise FonteIndisponivelError(FONTE, "IPCA 12 meses sem valor ate o fim da semana")
-    cdi_ano_ate = [p for p in cdi_ano if p[0] <= fim]
-    cdi_mes_ate = [p for p in cdi_mes if p[0] <= fim]
-    referencia, ipca_valor = ipca_ate[-1]
-    return {
-        "selic_meta": selic_ate[-1][1],
+    """Aplica as regras de data: tudo ate `fim`, o ultimo valor valendo para Selic e IPCA.
+
+    Serie `None` e serie que nao veio (o motivo esta em `erros`, pelo campo):
+    o campo sai `None` e o resto continua. Sem nenhum numero, levanta.
+    """
+    erros = dict(erros or {})
+    selic_ate = [p for p in selic or [] if p[0] <= fim]
+    ipca_ate = [p for p in ipca or [] if p[0] <= fim]
+    if selic is not None and not selic_ate:
+        erros["selic_meta"] = "Selic meta sem valor ate o fim da semana"
+    if ipca is not None and not ipca_ate:
+        erros["ipca_12m"] = "IPCA 12 meses sem valor ate o fim da semana"
+    cdi_ano_ate = [p for p in cdi_ano or [] if p[0] <= fim]
+    cdi_mes_ate = [p for p in cdi_mes or [] if p[0] <= fim]
+    cdi_ate = cdi_ano_ate or cdi_mes_ate
+    resultado: dict[str, Any] = {
+        "selic_meta": selic_ate[-1][1] if selic_ate else None,
         "cdi_mes": acumulado(cdi_mes_ate),
         "cdi_ano": acumulado(cdi_ano_ate),
-        "cdi_data": cdi_ano_ate[-1][0].isoformat() if cdi_ano_ate else None,
-        "ipca_12m": ipca_valor,
-        "ipca_referencia": referencia.strftime("%Y-%m"),
+        "cdi_data": cdi_ate[-1][0].isoformat() if cdi_ate else None,
+        "ipca_12m": ipca_ate[-1][1] if ipca_ate else None,
+        "ipca_referencia": ipca_ate[-1][0].strftime("%Y-%m") if ipca_ate else None,
     }
+    if all(resultado[campo] is None for campo in ("selic_meta", "cdi_mes", "cdi_ano", "ipca_12m")):
+        raise FonteIndisponivelError(FONTE, "; ".join(erros.values()) or "nenhum indicador")
+    if erros:
+        resultado["erros"] = erros
+    return resultado
 
 
-def _serie(
-    numero: int, de: date, ate: date, cliente: httpx.Client | None
-) -> list[tuple[date, float]]:
-    url = URL.format(serie=numero, de=de.strftime("%d/%m/%Y"), ate=ate.strftime("%d/%m/%Y"))
+def _pedido_sgs(url: str, cliente: httpx.Client | None) -> list[tuple[date, float]]:
     try:
-        try:
-            resposta = baixar(FONTE, url, cliente=cliente)
-        except FonteIndisponivelError as exc:
-            if exc.status is None or exc.status < 500:
-                raise
-            time.sleep(ESPERA_APOS_5XX)
-            resposta = baixar(FONTE, url, cliente=cliente)
+        resposta = baixar(FONTE, url, cliente=cliente)
     except FonteIndisponivelError as exc:
         # Periodo sem dado volta 404 com {"erro": ...}: e "nao ha pontos", nao falha.
         if exc.status == 404:
@@ -142,16 +150,53 @@ def _serie(
         raise FonteIndisponivelError(FONTE, "resposta nao e JSON") from exc
 
 
+def _serie(
+    numero: int, de: date, ate: date, cliente: httpx.Client | None
+) -> list[tuple[date, float]]:
+    url = URL.format(serie=numero, de=de.strftime("%d/%m/%Y"), ate=ate.strftime("%d/%m/%Y"))
+    try:
+        return _pedido_sgs(url, cliente)
+    except FonteIndisponivelError as exc:
+        # Erro 4xx e definitivo. O resto tenta de novo: 5xx, falha de rede e
+        # resposta 200 que nao e a serie (em 18/10/2026 o SGS devolvia, com 200,
+        # uma pagina HTML de erro ou {"erro": {"statusCode": 500}}).
+        if exc.status is not None and exc.status < 500:
+            raise
+        time.sleep(ESPERA_APOS_5XX)
+        return _pedido_sgs(url, cliente)
+
+
+def _selic_meta(fim: date, cliente: httpx.Client | None) -> list[tuple[date, float]]:
+    """A Selic meta ate `fim`: historico do Copom primeiro, SGS de reserva (como o grafico)."""
+    try:
+        return _selic_do_copom(cliente)
+    except FonteIndisponivelError as exc:
+        logger.warning("[semana] historico do Copom indisponivel (%s); tentando o SGS", exc)
+        return _serie(SELIC_META, fim - timedelta(days=30), fim, cliente)
+
+
 def indicadores(semana: Semana, *, cliente: httpx.Client | None = None) -> dict[str, Any]:
     """Selic meta, CDI no mes e no ano, e IPCA em 12 meses ate o fim da semana."""
     fim = semana.fim
-    return montar_indicadores(
-        fim,
-        _serie(SELIC_META, fim - timedelta(days=30), fim, cliente),
-        _serie(CDI_DIARIO, date(fim.year, fim.month, 1), fim, cliente),
-        _serie(CDI_DIARIO, date(fim.year, 1, 1), fim, cliente),
-        _serie(IPCA_12M, fim - timedelta(days=400), fim, cliente),
+    erros: dict[str, str] = {}
+
+    def tentar(
+        campos: tuple[str, ...], busca: Callable[[], list[tuple[date, float]]]
+    ) -> list[tuple[date, float]] | None:
+        try:
+            return busca()
+        except FonteIndisponivelError as exc:
+            logger.warning("[semana] indicador %s indisponivel: %s", "/".join(campos), exc)
+            erros.update(dict.fromkeys(campos, exc.motivo))
+            return None
+
+    selic = tentar(("selic_meta",), lambda: _selic_meta(fim, cliente))
+    cdi_mes = tentar(
+        ("cdi_mes",), lambda: _serie(CDI_DIARIO, date(fim.year, fim.month, 1), fim, cliente)
     )
+    cdi_ano = tentar(("cdi_ano",), lambda: _serie(CDI_DIARIO, date(fim.year, 1, 1), fim, cliente))
+    ipca = tentar(("ipca_12m",), lambda: _serie(IPCA_12M, fim - timedelta(days=400), fim, cliente))
+    return montar_indicadores(fim, selic, cdi_mes, cdi_ano, ipca, erros)
 
 
 def _pedacos(de: date, ate: date) -> list[tuple[date, date]]:

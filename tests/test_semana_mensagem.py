@@ -174,6 +174,23 @@ def test_juros_com_fonte_fora_diz_indisponivel(payload: dict[str, Any]) -> None:
     assert juros[0].endswith("bp)")
 
 
+def test_juros_com_cdi_e_ipca_fora_ainda_mostra_a_selic(payload: dict[str, Any]) -> None:
+    # 17/10/2026: o SGS passou do timeout e a Selic saiu "indisponível" junto.
+    payload["juros_br"]["indicadores"] = {
+        "selic_meta": 13.75,
+        "cdi_mes": None,
+        "cdi_ano": None,
+        "cdi_data": None,
+        "ipca_12m": None,
+        "ipca_referencia": None,
+        "erros": {"cdi_mes": "falha de rede", "cdi_ano": "falha de rede", "ipca_12m": "HTTP 500"},
+    }
+
+    juros = _bloco(formatar_mensagem(payload, BASE), "Juros")
+
+    assert juros[2] == "Selic 13,75%"
+
+
 def test_juros_edicao_antiga_sem_curva_real_nao_tem_a_linha_do_ipca(
     payload: dict[str, Any],
 ) -> None:

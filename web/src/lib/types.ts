@@ -301,6 +301,8 @@ export type IndicadoresBr = {
   ipca_12m: number | null;
   /** Mes de referencia do IPCA, AAAA-MM. */
   ipca_referencia: string | null;
+  /** Por que um numero ficou `null` (a fonte falhou); ausente quando veio tudo. */
+  erros?: Partial<Record<"selic_meta" | "cdi_mes" | "cdi_ano" | "ipca_12m", string>>;
 };
 
 export type VencimentoTreasury = {

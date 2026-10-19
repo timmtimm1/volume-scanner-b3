@@ -53,9 +53,19 @@ function CabecalhoDeTaxas({ primeira }: { primeira: string }) {
 /* Juros no Brasil                                                     */
 /* ------------------------------------------------------------------ */
 
-function Indicador({ rotulo, valor, nota }: { rotulo: string; valor: string; nota?: string }) {
+function Indicador({
+  rotulo,
+  valor,
+  nota,
+  motivo,
+}: {
+  rotulo: string;
+  valor: string;
+  nota?: string;
+  motivo?: string;
+}) {
   return (
-    <div className="flex min-w-0 flex-col gap-0.5 rounded-2xl bg-painel-2 px-3.5 py-3">
+    <div title={motivo} className="flex min-w-0 flex-col gap-0.5 rounded-2xl bg-painel-2 px-3.5 py-3">
       <span className="truncate text-[11px] font-semibold text-tinta-3">{rotulo}</span>
       <span className="num text-[17px] font-extrabold">{valor}</span>
       {nota && <span className="num text-[11px] text-tinta-3">{nota}</span>}
@@ -67,21 +77,28 @@ function IndicadoresDoBrasil({ ind }: { ind: IndicadoresBr | BlocoComErro }) {
   if (ehErro(ind)) return <Indisponivel motivo={ind.erro} />;
   return (
     <div className="grid grid-cols-2 gap-2.5">
-      <Indicador rotulo="Selic meta" valor={ind.selic_meta === null ? "—" : `${numero(ind.selic_meta, 2)}% a.a.`} />
+      <Indicador
+        rotulo="Selic meta"
+        valor={ind.selic_meta === null ? "—" : `${numero(ind.selic_meta, 2)}% a.a.`}
+        motivo={ind.erros?.selic_meta}
+      />
       <Indicador
         rotulo="IPCA 12 meses"
         valor={taxa(ind.ipca_12m)}
         nota={ind.ipca_referencia ? `ref. ${mesDeReferencia(ind.ipca_referencia)}` : undefined}
+        motivo={ind.erros?.ipca_12m}
       />
       <Indicador
         rotulo="CDI no mês"
         valor={ind.cdi_mes === null ? "—" : proporcao(ind.cdi_mes, 2)}
         nota={ind.cdi_data ? `até ${fmtData(ind.cdi_data)}` : undefined}
+        motivo={ind.erros?.cdi_mes}
       />
       <Indicador
         rotulo="CDI no ano"
         valor={ind.cdi_ano === null ? "—" : proporcao(ind.cdi_ano, 2)}
         nota={ind.cdi_data ? `até ${fmtData(ind.cdi_data)}` : undefined}
+        motivo={ind.erros?.cdi_ano}
       />
     </div>
   );

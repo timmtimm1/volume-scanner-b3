@@ -1,7 +1,7 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { FichaDoPapel } from "@/components/FichaDoPapel";
-import { fundamentos, papeisComEvento, papel } from "@/lib/db";
+import { fundamentos, niveisDoPapel, papeisComEvento, papel } from "@/lib/db";
 import { TICKER } from "@/lib/ticker";
 
 /** Uma pagina estatica por papel que teve ao menos um evento. */
@@ -34,6 +34,8 @@ export default async function Papel({
     fundamentos(ticker),
   ]);
   if (dados.barras.length === 0) notFound();
+  // Suportes e resistencias que chegam ao trecho do grafico (aba Setups).
+  const niveis = await niveisDoPapel(dados.ticker, dados.barras[0].tradeDate);
 
   return (
     <Suspense
@@ -46,6 +48,7 @@ export default async function Papel({
         barras={dados.barras}
         eventos={dados.eventos}
         fundamentos={balancos}
+        niveis={niveis}
       />
     </Suspense>
   );

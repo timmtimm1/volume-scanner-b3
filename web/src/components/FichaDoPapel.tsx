@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { useMemo, useState } from "react";
 import { AnelDoDesvio } from "@/components/AnelDoDesvio";
-import { COR_DO_BALANCO, Grafico } from "@/components/Grafico";
+import { COR_DO_BALANCO, COR_DO_SETUP, Grafico } from "@/components/Grafico";
 import { ArranjoDaPagina, GradeDeCaixas } from "@/components/OrganizarCaixas";
 import type { Direcao } from "@/lib/alertas";
 import { PainelDeAlerta } from "@/components/PainelDeAlerta";
@@ -26,11 +26,12 @@ import {
   reais,
 } from "@/lib/formato";
 import { marcarAgora } from "@/lib/posicao";
-import type { Barra, Evento, Fundamentos } from "@/lib/types";
+import type { Barra, Evento, Fundamentos, NivelDoGrafico } from "@/lib/types";
 import { useAlertasDoPapel } from "@/lib/useAlertasDoPapel";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
 import { useComputador } from "@/lib/useComputador";
 import { useNoticias } from "@/lib/useNoticias";
+import { useSetupsDoPapel } from "@/lib/useSetupsDoPapel";
 import { useTradesDoPapel } from "@/lib/useTradesDoPapel";
 
 type Props = {
@@ -39,6 +40,8 @@ type Props = {
   eventos: Evento[];
   /** Nulo em papel sem empresa ligada -- um ETF, ou um codigo que saiu da bolsa. */
   fundamentos: Fundamentos | null;
+  /** Suportes e resistencias do trecho do grafico (aba Setups). */
+  niveis?: NivelDoGrafico[];
 };
 
 /**
@@ -123,7 +126,7 @@ function Quadro({ rotulo, valor, nota }: { rotulo: string; valor: string; nota?:
 
 const corDaDirecao = (v: number | null) => ((v ?? 0) >= 0 ? "text-alta" : "text-baixa");
 
-export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
+export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = [] }: Props) {
   const params = useSearchParams();
   const pedido = params.get("data");
   const hoje = useCandleDeHoje(ticker);
@@ -151,6 +154,7 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
 
   const estadoDosAlertas = useAlertasDoPapel(ticker, barras, evento?.tradeDate, hoje);
   const estadoDosTrades = useTradesDoPapel(ticker, estadoDosAlertas.autenticado);
+  const setups = useSetupsDoPapel(ticker, estadoDosAlertas.autenticado);
 
   // No computador, logado, o alerta e criado, arrastado e apagado no proprio
   // grafico, e os que ja dispararam saem dele (continuam na lista do painel).
@@ -372,6 +376,14 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
               balanço publicado
             </span>
           )}
+          {setups.length > 0 && (
+            <span className="flex items-center gap-1.5">
+              <span className="text-[11px] font-extrabold" style={{ color: COR_DO_SETUP }}>
+                ▲
+              </span>
+              setup (M martelo · L libélula · E engolfo · P piercing · ★ estrela · F força)
+            </span>
+          )}
         </p>
       </div>
 
@@ -386,6 +398,8 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos }: Props) {
         operacoes={operacoesDeTrade}
         posicao={posicaoDoGrafico}
         publicacoes={publicacoes}
+        niveis={niveis}
+        setups={setups}
         regua={regua}
         edicaoDeAlertas={edicaoDeAlertas}
         classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"

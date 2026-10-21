@@ -48,6 +48,25 @@ export type LinhaDoHistorico = Pick<
   | "volumeFinancial"
 >;
 
+/**
+ * Segmento de suporte ou resistencia que a ficha desenha (tabela `niveis`).
+ * Antes de `valeDesde` (o 3o toque) a linha e pontilhada; `virou` e o nivel que
+ * trocou de papel (resistencia rompida que virou suporte, ou o contrario).
+ */
+export type NivelDoGrafico = {
+  lado: "suporte" | "resistencia";
+  preco: number;
+  de: string;
+  ate: string;
+  valeDesde: string | null;
+  rompidoEm: string | null;
+  virou: boolean;
+  ativo: boolean;
+};
+
+/** Seta de setup no candle (so logado): o dia, as letras dos padroes e o destaque. */
+export type MarcaDeSetup = { data: string; letras: string; destaque: boolean; forca: boolean };
+
 export type Barra = {
   tradeDate: string;
   open: number | null;

@@ -99,6 +99,38 @@ class UniverseConfig(BaseModel):
     min_session_coverage: float = 0.8
 
 
+class SetupsConfig(BaseModel):
+    """Aba Setups: candle de reversao no suporte, filtrado (decisoes de 21/10/2026).
+
+    Nada aqui toca o alerta de 6 sigma. Os numeros vieram do estudo de 30 anos
+    de COTAHIST (`scripts/gatilhos_estudo.py`), escolhidos com 1995-2015 e
+    conferidos em 2016-2026.
+    """
+
+    enabled: bool = True
+    # Volume do dia sobre a mediana dos 20 pregoes anteriores.
+    volume_minimo: float = 1.5
+    volume_destaque: float = 2.5
+    # Resistencia mais proxima a pelo menos N vezes o risco (fechamento menos a
+    # minima do padrao). Sem resistencia acima, o espaco e livre.
+    espaco_minimo_r: float = 2.0
+    # Toques do suporte para o candle valer como gatilho.
+    toques_gatilho: int = 3
+    # Toques para um nivel existir no motor (e ser desenhado, pontilhado ate o
+    # gatilho). E o valor do estudo: com 3, nivel de 2 toques rompido morreria
+    # em vez de virar, e os niveis seriam outros.
+    toques_nivel: int = 2
+    # Depois de confirmado, o setup fica em andamento ate N pregoes.
+    prazo_pregoes: int = 20
+
+    @field_validator("volume_destaque")
+    @classmethod
+    def _destaque_acima(cls, value: float, info: ValidationInfo) -> float:
+        if value < info.data.get("volume_minimo", 0):
+            raise ValueError("setups.volume_destaque nao pode ser menor que volume_minimo")
+        return value
+
+
 class RetentionConfig(BaseModel):
     """Janela de barras mantida no banco hospedado (secao 5 do plano)."""
 
@@ -219,6 +251,7 @@ class ScannerConfig(BaseModel):
     retention: RetentionConfig = Field(default_factory=RetentionConfig)
     fundamentos: FundamentosConfig = Field(default_factory=FundamentosConfig)
     semana: SemanaConfig = Field(default_factory=SemanaConfig)
+    setups: SetupsConfig = Field(default_factory=SetupsConfig)
 
 
 class Settings(BaseSettings):

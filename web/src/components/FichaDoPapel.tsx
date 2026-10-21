@@ -394,7 +394,8 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = []
               <span className="text-[11px] font-extrabold" style={{ color: COR_DO_SETUP }}>
                 ▲
               </span>
-              setup (M martelo · L libélula · E engolfo · P piercing · ★ estrela · F força)
+              setup (M martelo · L libélula · E engolfo · P piercing · ★ estrela · F força; na
+              cor da média quando o suporte foi ela)
             </span>
           )}
         </p>

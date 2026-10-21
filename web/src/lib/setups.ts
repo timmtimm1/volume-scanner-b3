@@ -27,6 +27,8 @@ type Linha = {
   maxima: string | number;
   minima: string | number;
   suporte: string | number;
+  // Ausente antes da migration 0015: vale como suporte horizontal.
+  suporte_tipo?: string;
   resistencia: string | number | null;
   espaco_r: string | number | null;
   risco_pct: string | number;
@@ -71,7 +73,7 @@ function paraSetup(r: Linha): Setup {
     id: Number(r.id),
     ticker: r.ticker,
     tradeDate: dia(r.trade_date) ?? "",
-    categoria: r.categoria === "forca" ? "forca" : "reversao",
+    categoria: r.categoria === "forca" ? "forca" : r.categoria === "media" ? "media" : "reversao",
     padroes: r.padroes,
     toques: Number(r.toques),
     virou: r.virou,
@@ -83,6 +85,7 @@ function paraSetup(r: Linha): Setup {
     maxima: Number(r.maxima),
     minima: Number(r.minima),
     suporte: Number(r.suporte),
+    suporteTipo: r.suporte_tipo ?? "nivel",
     resistencia: num(r.resistencia),
     espacoR: num(r.espaco_r),
     riscoPct: Number(r.risco_pct),

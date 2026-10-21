@@ -83,6 +83,10 @@ const SERIE = {
   setup: COR_DO_SETUP,
   // Candle de forca: fora da regra conferida, entao a seta e cinza.
   setupForca: "#8C8EAD",
+  // Setup na media movel: a seta toma a cor da media tocada, a mesma das linhas
+  // padrao do grafico (lib/medias.ts): MME 9 rosa, MMA 20 amarelo.
+  setupMme9: "#EC4899",
+  setupMma20: "#EAB308",
 };
 
 /** Tamanho do rotulo da regua, em pixels -- para ele nao sair da area do grafico. */
@@ -590,7 +594,13 @@ export function Grafico({
         time: m.data as Time,
         position: "belowBar",
         shape: "arrowUp",
-        color: m.forca ? SERIE.setupForca : SERIE.setup,
+        color: m.forca
+          ? SERIE.setupForca
+          : m.suporte.startsWith("mme9")
+            ? SERIE.setupMme9
+            : m.suporte.startsWith("mma20")
+              ? SERIE.setupMma20
+              : SERIE.setup,
         text: m.letras,
         size: m.destaque ? 2 : 1,
       }));

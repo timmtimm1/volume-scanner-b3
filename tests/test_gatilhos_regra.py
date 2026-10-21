@@ -104,3 +104,36 @@ def test_niveis_para_a_ficha() -> None:
     assert linha["vale_desde"] is not None and linha["vale_desde"] > linha["de"]
     assert len(linha["toques"]) >= 3
     assert all(isinstance(t[0], str) and isinstance(t[1], bool) for t in linha["toques"])
+
+
+def test_martelo_na_media_em_alta_vira_setup_na_media() -> None:
+    from tests.gatilhos_sinteticos import alta_com_martelo_na_media
+
+    frame = alta_com_martelo_na_media()
+    s = _no_dia(frame)
+    assert len(s) == 1
+    linha = s.iloc[0]
+    assert linha["categoria"] == "media"
+    assert "mma20" in linha["suporte_tipo"].split(",")
+    assert linha["padroes"] == ["martelo"]
+    assert linha["toques"] == 0
+    assert np.isnan(linha["resistencia"])  # a serie so sobe: nada acima
+
+
+def test_na_media_sem_volume_nao_entra() -> None:
+    from tests.gatilhos_sinteticos import alta_com_martelo_na_media
+
+    assert _no_dia(alta_com_martelo_na_media(volume_martelo=1.2)).empty
+
+
+def test_sem_medias_no_config_nao_ha_setup_na_media() -> None:
+    from tests.gatilhos_sinteticos import alta_com_martelo_na_media
+
+    cfg = SetupsConfig(medias=[])
+    frame = alta_com_martelo_na_media()
+    s = setups(analisar(frame, cfg, UNIVERSO), cfg)
+    assert s[s["trade_date"] == dia_do_martelo(frame)].empty
+
+
+def test_setup_no_suporte_horizontal_tem_tipo_nivel() -> None:
+    assert _no_dia(barras(volume_martelo=2.0)).iloc[0]["suporte_tipo"] == "nivel"

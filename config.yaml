@@ -95,3 +95,8 @@ setups:
   prazo_pregoes: 20       # em andamento ate 20 pregoes depois de confirmar
   alerta: true            # alerta automatico acima da maxima, valido no pregao seguinte
   alerta_forca: false     # candle de forca nao passou na conferencia: sem alerta
+  # Media movel como suporte em tendencia de alta (secao propria "Na media"):
+  # as do grafico do site. Media subindo, preco vindo de cima, candle encosta e
+  # fecha acima. Mesmos filtros de volume, contexto e espaco.
+  medias: [[MME, 9], [MMA, 20]]
+  alerta_media: true

@@ -692,7 +692,7 @@ class Setup(Base):
     __tablename__ = "setups"
     __table_args__ = (
         UniqueConstraint("ticker", "trade_date", "categoria", name="uq_setups_papel_dia"),
-        CheckConstraint("categoria IN ('reversao', 'forca')", name="ck_setups_categoria"),
+        CheckConstraint("categoria IN ('reversao', 'forca', 'media')", name="ck_setups_categoria"),
         CheckConstraint(
             "estado IN ('armado', 'confirmado', 'nao_confirmou', 'stop', 'prazo')",
             name="ck_setups_estado",
@@ -720,6 +720,9 @@ class Setup(Base):
     maxima: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     minima: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
     suporte: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    # O que segurou o candle: `nivel` (suporte horizontal) ou as medias tocadas
+    # (`mme9`, `mma20`, `mme9,mma20`) na categoria `media`.
+    suporte_tipo: Mapped[str] = mapped_column(Text, nullable=False, server_default="nivel")
     resistencia: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
     espaco_r: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     risco_pct: Mapped[Decimal] = mapped_column(Numeric(8, 3), nullable=False)

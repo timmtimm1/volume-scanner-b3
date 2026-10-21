@@ -35,6 +35,7 @@ from scanner.config import SetupsConfig, UniverseConfig
 from scanner.gatilhos.candles import padroes
 from scanner.gatilhos.contexto import atr_wilder, calcular
 from scanner.gatilhos.matrizes import Matrizes, ajuste_acumulado, montar
+from scanner.gatilhos.medias import RegrasDaMedia, toques_na_media
 from scanner.gatilhos.niveis import ROMPEU, Eventos, Regras, Retrato, detectar
 
 F64 = npt.NDArray[np.float64]
@@ -59,6 +60,7 @@ COLUNAS_SETUP = (
     "maxima",
     "minima",
     "suporte",
+    "suporte_tipo",
     "resistencia",
     "espaco_r",
     "risco_pct",
@@ -90,6 +92,8 @@ class Analise:
     retrato: Retrato
     eventos: Eventos
     liquido: B
+    # Por media (mme9, mma20): valores e toque em tendencia, (3, dias, papeis).
+    medias: dict[str, tuple[F64, B]]
 
 
 def liquidez(volume: F64, universo: UniverseConfig) -> B:
@@ -125,6 +129,9 @@ def analisar(barras: pd.DataFrame, cfg: SetupsConfig, universo: UniverseConfig) 
         retrato=retrato,
         eventos=eventos,
         liquido=liquidez(m.volume, universo),
+        medias=toques_na_media(
+            m.minima, m.fechamento, atr, RegrasDaMedia(medias=tuple(cfg.medias))
+        ),
     )
 
 
@@ -140,7 +147,17 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
     em = {p: pad[p] & toca[CAMADA[p]] for p in REVERSAO}
     reversao = np.logical_or.reduce([em[p] for p in REVERSAO])
     rompe = ret.rompeu_res_forca >= cfg.toques_gatilho
-    forca = pad["forca"] & (toca[0] | rompe)
+    # na media: o mesmo candle, encostando numa media em tendencia de alta
+    nomes_media = list(a.medias)
+    toca_media = [
+        np.logical_or.reduce([a.medias[n][1][k] for n in nomes_media])
+        if nomes_media
+        else np.zeros_like(toca[k])
+        for k in range(3)
+    ]
+    em_media = {p: pad[p] & toca_media[CAMADA[p]] for p in REVERSAO}
+    na_media = np.logical_or.reduce([em_media[p] for p in REVERSAO]) & ~reversao
+    forca = pad["forca"] & (toca[0] | rompe) & ~na_media
 
     # Stop = minima do padrao (o tamanho vem do padrao do dia, como no estudo).
     tam = np.where(pad["estrela"], 3, np.where(pad["engolfo"] | pad["piercing"], 2, 1))
@@ -161,7 +178,11 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
         )
 
     partes = []
-    for categoria, sinal in (("reversao", reversao), ("forca", forca & ~reversao)):
+    for categoria, sinal in (
+        ("reversao", reversao),
+        ("media", na_media),
+        ("forca", forca & ~reversao),
+    ):
         dd, tt = np.nonzero(sinal & filtro)
         if dd.size == 0:
             continue
@@ -175,6 +196,30 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
             toques = ret.toca_forca[camada, dd, tt]
             virou = ret.toca_virou[camada, dd, tt]
             furou = ret.toca_furou[camada, dd, tt]
+            tipo = ["nivel"] * dd.size
+        elif categoria == "media":
+            camada = np.where(
+                em_media["estrela"][dd, tt],
+                2,
+                np.where((em_media["engolfo"] | em_media["piercing"])[dd, tt], 1, 0),
+            )
+            nomes = [
+                [p for p in REVERSAO if em_media[p][d, t]] for d, t in zip(dd, tt, strict=True)
+            ]
+            # a media tocada (as duas, quando o candle encosta nas duas)
+            tocadas = np.stack([a.medias[n][1][camada, dd, tt] for n in nomes_media])
+            valores = np.stack([a.medias[n][0][dd, tt] for n in nomes_media])
+            # das tocadas, a mais perto da minima do padrao vira o "suporte"
+            dist = np.where(tocadas, np.abs(valores - stop[dd, tt]), np.inf)
+            sup = valores[np.argmin(dist, axis=0), np.arange(dd.size)]
+            tipo = [
+                ",".join(n for n, t in zip(nomes_media, tocadas[:, i], strict=True) if t)
+                for i in range(dd.size)
+            ]
+            toques = np.zeros(dd.size, dtype=int)
+            virou = np.zeros(dd.size, dtype=bool)
+            tol = np.fmax(0.5 * a.atr[dd, tt], 0.004 * c[dd, tt])
+            furou = stop[dd, tt] < sup - tol
         else:
             no_suporte = toca[0][dd, tt]
             nomes = [["forca"]] * dd.size
@@ -182,6 +227,7 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
             toques = np.where(no_suporte, ret.toca_forca[0, dd, tt], ret.rompeu_res_forca[dd, tt])
             virou = np.where(no_suporte, ret.toca_virou[0, dd, tt], False)
             furou = np.where(no_suporte, ret.toca_furou[0, dd, tt], False)
+            tipo = ["nivel"] * dd.size
         escala = a.ajuste[dd, tt]  # volta cada preco para a escala do proprio dia
         lateral = ~np.isnan(ret.caixa_altura[dd, tt])
         correcao = np.asarray(ctx["correcao"], dtype=bool)[dd, tt]
@@ -205,6 +251,7 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
                     "maxima": m.maxima[dd, tt] / escala,
                     "minima": stop[dd, tt] / escala,
                     "suporte": sup / escala,
+                    "suporte_tipo": tipo,
                     "resistencia": ret.res_preco[dd, tt] / escala,
                     "espaco_r": espaco[dd, tt],
                     "risco_pct": risco[dd, tt] / c[dd, tt] * 100,

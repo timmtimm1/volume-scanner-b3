@@ -46,7 +46,7 @@ from scanner.storage.repository import (
     criar_alerta,
     gravar_setups,
     trocar_niveis,
-    ultimo_setup,
+    ultimos_por_categoria,
 )
 
 F64 = npt.NDArray[np.float64]
@@ -209,7 +209,11 @@ def criar_alertas(engine: Engine, gravados: pd.DataFrame, config: ScannerConfig)
     cfg = config.setups
     if not cfg.alerta or gravados.empty:
         return 0
-    categorias = ["reversao", "forca"] if cfg.alerta_forca else ["reversao"]
+    categorias = (
+        ["reversao"]
+        + (["forca"] if cfg.alerta_forca else [])
+        + (["media"] if cfg.alerta_media else [])
+    )
     alvo = gravados[gravados["ao_vivo"].astype(bool) & gravados["categoria"].isin(categorias)]
     # Poucos por noite (cerca de um por semana): um INSERT por setup basta.
     for linha in alvo.to_dict("records"):
@@ -234,6 +238,7 @@ class RelatorioDeSetups:
     estreia: bool = False
     gravados: int = 0
     armados: list[tuple[str, bool]] = field(default_factory=list)  # (ticker, destaque)
+    media: list[str] = field(default_factory=list)
     forca: list[str] = field(default_factory=list)
     confirmados: list[str] = field(default_factory=list)
     nao_confirmaram: list[str] = field(default_factory=list)
@@ -250,6 +255,8 @@ class RelatorioDeSetups:
         prefixo = "[dry-run] " if self.dry_run else ""
         armados = ", ".join(f"{t}{' (destaque)' if d else ''}" for t, d in self.armados) or "nenhum"
         partes = [f"{prefixo}setups: armados hoje {armados}"]
+        if self.media:
+            partes.append(f"na media {', '.join(self.media)}")
         if self.forca:
             partes.append(f"forca {', '.join(self.forca)}")
         partes.append(f"{len(self.confirmados)} confirmado(s)")
@@ -260,6 +267,8 @@ class RelatorioDeSetups:
             partes.append(f"{self.alertas} alerta(s) de confirmacao criado(s)")
         if self.estreia:
             partes.append(f"estreia: {self.gravados} setups retroativos gravados")
+        elif self.gravados > len(self.armados) + len(self.media) + len(self.forca):
+            partes.append(f"{self.gravados} gravados (retroativos de categoria nova)")
         return "; ".join(partes)
 
 
@@ -280,9 +289,17 @@ def run_setups(
 
     a = analisar(barras, cfg, config.universe)
     todos = setups(a, cfg)
-    ultimo = ultimo_setup(engine)
-    estreia = ultimo is None
-    novos = todos if estreia else todos[todos["trade_date"] > ultimo]
+    # Cada categoria a partir do seu ultimo candle gravado: categoria nova (a
+    # `media`, de 21/10/2026) grava a janela inteira na primeira noite.
+    ultimos = ultimos_por_categoria(engine)
+    estreia = not ultimos
+    # poucas centenas de linhas: comparar data a data e mais simples que alinhar
+    # datas com categorias ausentes num Series
+    entra = [
+        cat not in ultimos or dia_ > ultimos[cat]
+        for cat, dia_ in zip(todos["categoria"], todos["trade_date"], strict=True)
+    ]
+    novos = todos[entra]
     novos = novos.assign(ao_vivo=novos["trade_date"] == dia, estado="armado")
     desenho = niveis(a, cfg)
 
@@ -312,6 +329,7 @@ def run_setups(
         estreia=estreia,
         gravados=len(gravados),
         armados=[(str(r.ticker), bool(r.destaque)) for r in rev.itertuples()],
+        media=[str(t) for t in hoje.loc[hoje["categoria"] == "media", "ticker"]],
         forca=[str(t) for t in hoje.loc[hoje["categoria"] == "forca", "ticker"]],
         confirmados=[str(tickers_mud.get(i, "?")) for i in mudancas.loc[confirmou, "id"]],
         nao_confirmaram=[str(tickers_mud.get(i, "?")) for i in mudancas.loc[nao, "id"]],

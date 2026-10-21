@@ -62,3 +62,29 @@ def barras(
 
 def dia_do_martelo(frame: pd.DataFrame, extra: int = 0) -> object:
     return frame["trade_date"].iloc[-1 - extra]
+
+
+def alta_com_martelo_na_media(
+    ticker: str = "BBBB3", dias: int = 120, volume_martelo: float = 2.0
+) -> pd.DataFrame:
+    """Alta firme (+0,4% ao dia) e, no ultimo dia, um martelo que encosta na MMA 20.
+
+    Sem fundos nem topos (a serie so sobe), nao ha suporte horizontal: o que
+    segura o martelo e a media.
+    """
+    c = 10 * 1.004 ** np.arange(dias - 1)
+    o = np.concatenate([[c[0]], c[:-1]])
+    h = np.fmax(o, c) + 0.05
+    low = np.fmin(o, c) - 0.05
+    fecha = c[-1] * 1.002
+    mm20 = (c[-19:].sum() + fecha) / 20
+    o = np.append(o, fecha - 0.08)  # corpo de 8 centavos: martelo, nao libelula
+    h = np.append(h, fecha + 0.01)
+    low = np.append(low, mm20 + 0.01)
+    c = np.append(c, fecha)
+    vol = np.full(dias, VOLUME)
+    vol[-1] = VOLUME * volume_martelo
+    frame = pd.DataFrame({"open": o, "high": h, "low": low, "close": c, "volume_financial": vol})
+    frame.insert(0, "trade_date", pd.bdate_range("2025-01-02", periods=dias).date)
+    frame.insert(0, "ticker", ticker)
+    return frame

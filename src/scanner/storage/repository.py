@@ -1673,6 +1673,17 @@ def ultimo_setup(engine: Engine) -> date | None:
     return valor if isinstance(valor, date) else None
 
 
+def ultimos_por_categoria(engine: Engine) -> dict[str, date]:
+    """O candle mais recente gravado de cada categoria.
+
+    Categoria ausente = nunca gravada: a primeira noite dela grava a janela
+    inteira, retroativa, como a estreia da tabela fez para as outras.
+    """
+    stmt = select(Setup.categoria, func.max(Setup.trade_date)).group_by(Setup.categoria)
+    with engine.connect() as conn:
+        return {str(c): d for c, d in conn.execute(stmt) if isinstance(d, date)}
+
+
 def gravar_setups(engine: Engine, frame: pd.DataFrame) -> pd.DataFrame:
     """Grava setups novos e devolve as linhas que de fato entraram, com id.
 

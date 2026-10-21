@@ -99,6 +99,11 @@ class UniverseConfig(BaseModel):
     min_session_coverage: float = 0.8
 
 
+TipoDeMedia = Literal["MMA", "MME"]
+# As medias do grafico do site (web/src/lib/medias.ts, MEDIAS_PADRAO).
+MEDIAS_PADRAO: tuple[tuple[TipoDeMedia, int], ...] = (("MME", 9), ("MMA", 20))
+
+
 class SetupsConfig(BaseModel):
     """Aba Setups: candle de reversao no suporte, filtrado (decisoes de 21/10/2026).
 
@@ -127,6 +132,12 @@ class SetupsConfig(BaseModel):
     # passou na conferencia do estudo, e alerta e convite para agir.
     alerta: bool = True
     alerta_forca: bool = False
+    # Media movel como suporte em tendencia de alta (decisao de 21/10/2026):
+    # as do grafico do site. Secao propria na aba, com alerta. No estudo,
+    # positiva no trade de referencia nos dois periodos, mas negativa contra o
+    # mercado em 2016-2026 -- por isso nao se mistura com a regra principal.
+    medias: list[tuple[TipoDeMedia, int]] = Field(default_factory=lambda: list(MEDIAS_PADRAO))
+    alerta_media: bool = True
 
     @field_validator("volume_destaque")
     @classmethod

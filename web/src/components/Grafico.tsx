@@ -46,7 +46,8 @@ import {
 } from "@/lib/medias";
 import { medirMovimento, type PontoDaRegua, type TradeDaRegua } from "@/lib/regua";
 import { useTema } from "@/lib/tema";
-import type { Barra, Evento } from "@/lib/types";
+import { trechosDosNiveis } from "@/lib/niveis-grafico";
+import type { Barra, Evento, MarcaDeSetup, NivelDoGrafico } from "@/lib/types";
 import { useMedias } from "@/lib/useMedias";
 import { CamadaDeAlertas } from "./CamadaDeAlertas";
 import { PainelDaRegua } from "./PainelDaRegua";
@@ -54,6 +55,8 @@ import { PainelDaRegua } from "./PainelDaRegua";
 /** Cores das series: fixas nos dois temas. */
 /** A cor da marca de balanco no candle. A ficha le para montar a legenda. */
 export const COR_DO_BALANCO = "#7C8AA5";
+/** A cor da seta de setup (aba Setups). A ficha le para montar a legenda. */
+export const COR_DO_SETUP = "#0891B2";
 
 const SERIE = {
   alta: "#0E9F6E",
@@ -72,6 +75,14 @@ const SERIE = {
   // Balanco publicado: cinza-azulado, de proposito sem verde nem vermelho --
   // nao e direcao de preco, e uma data em que a empresa falou.
   balanco: COR_DO_BALANCO,
+  // Suporte e resistencia (aba Setups): ciano e laranja, um par que segue
+  // distinguivel para daltonicos (conferido no validador de paleta). Nenhum
+  // dos dois e verde ou vermelho: nivel nao e direcao de preco.
+  suporte: "#0891B2",
+  resistencia: "#EA580C",
+  setup: COR_DO_SETUP,
+  // Candle de forca: fora da regra conferida, entao a seta e cinza.
+  setupForca: "#8C8EAD",
 };
 
 /** Tamanho do rotulo da regua, em pixels -- para ele nao sair da area do grafico. */
@@ -107,6 +118,10 @@ type Props = {
    * dar para ver se o volume anomalo veio logo depois do resultado.
    */
   publicacoes?: { data: string; rotulo: string }[];
+  /** Suportes e resistencias do papel (tabela `niveis`), para todos. */
+  niveis?: NivelDoGrafico[];
+  /** Setas dos setups do papel (so logado). */
+  setups?: MarcaDeSetup[];
   /**
    * O trade aberto do papel, ja marcado a mercado, para a linha tracejada do
    * preco medio. Null sem trade aberto -- sem ela, nao ha linha.
@@ -198,6 +213,8 @@ export function Grafico({
   hoje = null,
   operacoes = [],
   publicacoes = [],
+  niveis = [],
+  setups = [],
   posicao = null,
   regua,
   edicaoDeAlertas,
@@ -206,6 +223,7 @@ export function Grafico({
   const { tema } = useTema();
   const [medias, salvarMedias] = useMedias();
   const [mostrarBandas, setMostrarBandas] = useState(true);
+  const [mostrarNiveis, setMostrarNiveis] = useState(true);
   const [adicionando, setAdicionando] = useState(false);
   const [tipoNovo, setTipoNovo] = useState<TipoDeMedia>("MMA");
   const [periodoNovo, setPeriodoNovo] = useState("50");
@@ -249,6 +267,8 @@ export function Grafico({
   const linhaDoParcial = useRef<IPriceLine | null>(null);
   const marcadoresDeTrade = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const marcadoresDeBalanco = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const marcadoresDeSetup = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
+  const linhasDeNivel = useRef<ISeriesApi<"Line">[]>([]);
   const linhaDoPM = useRef<IPriceLine | null>(null);
   // Cores da superficie para o rotulo da regua (HTML por cima do canvas, nao
   // desenhado pelo lightweight-charts). Estado, nao ref -- o render le para
@@ -479,6 +499,8 @@ export function Grafico({
       // desfaz os primitivos da serie); so zerar as refs evita usa-las presas
       // a um grafico que ja sumiu.
       marcadoresDeTrade.current = null;
+      marcadoresDeSetup.current = null;
+      linhasDeNivel.current = [];
       linhaDoPM.current = null;
       mapaDeMedias.clear();
       // Os indices da regua eram relativos a este grafico (a este `barras`);
@@ -509,6 +531,62 @@ export function Grafico({
   useEffect(() => {
     for (const s of bandas.current) s.applyOptions({ visible: mostrarBandas });
   }, [mostrarBandas, barras, eventos, destaque]);
+
+  /**
+   * Suportes e resistencias: uma linha por trecho, que nao entra na autoescala
+   * (um nivel antigo longe do preco achataria os candles). Redesenhadas quando
+   * o grafico e reconstruido -- `barras`, `eventos` e `destaque` nas
+   * dependencias pelo mesmo motivo das bandas e dos marcadores.
+   */
+  useEffect(() => {
+    const c = chart.current;
+    if (!c) return;
+    for (const s of linhasDeNivel.current) c.removeSeries(s);
+    linhasDeNivel.current = [];
+    if (!mostrarNiveis) return;
+    const datas = barras.map((b) => b.tradeDate);
+    for (const t of trechosDosNiveis(niveis, datas)) {
+      const s = c.addSeries(LineSeries, {
+        color: t.lado === "suporte" ? SERIE.suporte : SERIE.resistencia,
+        lineWidth: t.largura,
+        lineStyle:
+          t.estilo === "cheio"
+            ? LineStyle.Solid
+            : t.estilo === "pontilhado"
+              ? LineStyle.Dotted
+              : LineStyle.Dashed,
+        priceLineVisible: false,
+        lastValueVisible: false,
+        crosshairMarkerVisible: false,
+        autoscaleInfoProvider: () => null,
+      });
+      s.setData([
+        { time: t.de as Time, value: t.preco },
+        { time: t.ate as Time, value: t.preco },
+      ]);
+      linhasDeNivel.current.push(s);
+    }
+  }, [niveis, mostrarNiveis, barras, eventos, destaque]);
+
+  /** Setas dos setups, embaixo do candle (so chegam com login). */
+  useEffect(() => {
+    const s = serie.current;
+    if (!s) return;
+    marcadoresDeSetup.current?.detach();
+    const dias = new Set(barras.map((b) => b.tradeDate));
+    const marcas: SeriesMarker<Time>[] = setups
+      .filter((m) => dias.has(m.data))
+      .sort((a, b) => a.data.localeCompare(b.data))
+      .map((m) => ({
+        time: m.data as Time,
+        position: "belowBar",
+        shape: "arrowUp",
+        color: m.forca ? SERIE.setupForca : SERIE.setup,
+        text: m.letras,
+        size: m.destaque ? 2 : 1,
+      }));
+    marcadoresDeSetup.current = createSeriesMarkers(s, marcas);
+  }, [setups, barras, eventos, destaque]);
 
   /**
    * As medias moveis, sincronizadas com a lista escolhida.
@@ -928,6 +1006,24 @@ export function Grafico({
             </span>
           )}
         </button>
+
+        {niveis.length > 0 && (
+          <button
+            type="button"
+            onClick={() => setMostrarNiveis((v) => !v)}
+            aria-pressed={mostrarNiveis}
+            title="Suporte e resistência: onde o preço bateu 3 vezes ou mais sem fechar além. Pontilhado antes do 3º toque; tracejado se trocou de papel."
+            className={`inline-flex h-8 items-center gap-2 rounded-full px-3 text-[12px] font-bold transition-colors ${
+              mostrarNiveis ? "bg-selecao text-acento" : "bg-painel-2 text-tinta-3"
+            }`}
+          >
+            <span className="flex flex-col gap-[3px]">
+              <span className="h-0.5 w-3.5" style={{ background: SERIE.resistencia }} />
+              <span className="h-0.5 w-3.5" style={{ background: SERIE.suporte }} />
+            </span>
+            Suportes e resistências
+          </button>
+        )}
 
         {medias.map((m) => (
           <span

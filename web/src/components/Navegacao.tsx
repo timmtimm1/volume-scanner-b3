@@ -57,6 +57,17 @@ const ITENS: Item[] = [
     ),
   },
   {
+    href: "/setups",
+    nome: "Setups",
+    icone: (
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+        <path d="M7 2.5v3M7 13.5v4" />
+        <rect x="5" y="5.5" width="4" height="8" rx="1" />
+        <path d="M12 11.5l2.5-3 2.5 3M14.5 8.5v8" />
+      </svg>
+    ),
+  },
+  {
     href: "/alertas",
     nome: "Alertas",
     icone: (
@@ -185,7 +196,7 @@ export function Navegacao() {
               aria-current={on ? "page" : undefined}
               aria-label={item.nome}
               title={item.nome}
-              className={`flex h-12 min-w-11 max-w-12 flex-1 items-center justify-center rounded-full transition-colors ${
+              className={`flex h-12 min-w-10 max-w-12 flex-1 items-center justify-center rounded-full transition-colors ${
                 on ? "bg-primario text-primario-tinta" : "text-tinta-3"
               }`}
             >

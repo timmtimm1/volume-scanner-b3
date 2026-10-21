@@ -30,6 +30,7 @@ import type {
   FaixaDeDesvio,
   Fundamentos,
   LinhaDeJuros,
+  NivelDoGrafico,
   Papel,
   Pregao,
   ResumoDaSemana,
@@ -315,6 +316,38 @@ export async function papel(ticker: string, sessoes = 180): Promise<Papel> {
     .reverse();
 
   return { ticker, barras, eventos };
+}
+
+/**
+ * Suportes e resistencias de um papel, para o grafico da ficha.
+ *
+ * Tabela derivada, refeita a cada pregao pelo pipeline (aba Setups, fase 1).
+ * So os segmentos que chegam ao trecho do grafico. Sem a tabela (banco antes
+ * da migration 0013), a ficha sai sem as linhas em vez de quebrar o build.
+ */
+export async function niveisDoPapel(ticker: string, desde: string): Promise<NivelDoGrafico[]> {
+  try {
+    const { rows } = await conexao().query(
+      `SELECT lado, preco, de, ate, vale_desde, rompido_em, virou, ativo
+         FROM volume_scanner.niveis
+        WHERE ticker = $1 AND ate >= $2
+        ORDER BY de`,
+      [ticker, desde],
+    );
+    return rows.map((r) => ({
+      lado: r.lado === "resistencia" ? "resistencia" : "suporte",
+      preco: num(r.preco) ?? 0,
+      de: dia(r.de),
+      ate: dia(r.ate),
+      valeDesde: r.vale_desde ? dia(r.vale_desde) : null,
+      rompidoEm: r.rompido_em ? dia(r.rompido_em) : null,
+      virou: Boolean(r.virou),
+      ativo: Boolean(r.ativo),
+    }));
+  } catch (erro) {
+    if ((erro as { code?: string }).code === "42P01") return [];
+    throw erro;
+  }
 }
 
 /** Papeis que ganham pagina estatica: os que tem ao menos um evento. */

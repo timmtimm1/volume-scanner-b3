@@ -382,7 +382,7 @@ def daily(
         ),
     ] = False,
 ) -> None:
-    """O pregao inteiro num comando: carga, metricas, alerta, trades, resumo e poda.
+    """O pregao inteiro num comando: carga, metricas, alerta, trades, setups, resumo e poda.
 
     Os comandos separados continuam existindo e fazem exatamente o mesmo. A
     diferenca esta em quantas vezes o trabalho e feito: rodando um a um, cada
@@ -408,6 +408,7 @@ def daily(
     from scanner.digest import run_resumo
     from scanner.ingest.pipeline import ingest_day
     from scanner.recompute import carregar_contexto, refresh_metrics
+    from scanner.setups import run_setups
     from scanner.storage.engine import build_engine
     from scanner.storage.repository import (
         digest_enviado,
@@ -440,7 +441,7 @@ def daily(
 
     def etapa(numero: int, texto: str) -> None:
         """Uma linha por etapa: sem isto, um comando so vira uma caixa preta."""
-        typer.echo(f"[{numero}/7] {texto}")
+        typer.echo(f"[{numero}/8] {texto}")
 
     if dry_run:
         # A carga grava; num ensaio ela fica de fora e vale o que ja esta la.
@@ -484,17 +485,21 @@ def daily(
     relatorio_snapshots = run_snapshots(engine, dia, bars=contexto.bars, dry_run=dry_run)
     etapa(5, relatorio_snapshots.summary())
 
+    # Lente separada do alerta: le as mesmas barras e nao muda nada acima.
+    relatorio_setups = run_setups(engine, config, dia, bars=contexto.bars, dry_run=dry_run)
+    etapa(6, relatorio_setups.summary())
+
     if not config.digest.enabled:
-        etapa(6, "resumo desligado no config")
+        etapa(7, "resumo desligado no config")
     else:
         saida = run_resumo(
             engine, config, dia, notifier=notifier, contexto=contexto, dry_run=dry_run
         )
         if saida.repetido:
-            etapa(6, f"resumo de {dia.isoformat()} ja enviado antes; nao reenviado")
+            etapa(7, f"resumo de {dia.isoformat()} ja enviado antes; nao reenviado")
         else:
             etapa(
-                6,
+                7,
                 f"resumo: {len(saida.linhas)} papeis, {saida.avaliados} avaliados, "
                 f"{saida.cruzaram} acima do limiar",
             )
@@ -515,7 +520,25 @@ def daily(
     # do plano gratuito do Neon, sem precisar abrir o painel.
     total, tabelas = tamanho_do_banco(engine)
     maiores = ", ".join(f"{nome} {mb(tam)}" for nome, tam in list(tabelas.items())[:3])
-    etapa(7, f"{poda_texto}; banco com {mb(total)} ({maiores})")
+    etapa(8, f"{poda_texto}; banco com {mb(total)} ({maiores})")
+
+
+@app.command("setups")
+def setups_cmd(
+    trade_date: Annotated[str, typer.Option("--date", help="Pregao a processar.")] = "today",
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Calcula e mostra, sem gravar.")
+    ] = False,
+) -> None:
+    """So a etapa de setups do `daily`: detecta, avanca estados e troca os niveis."""
+    from scanner.setups import run_setups
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import load_bars
+
+    dia = parse_trade_date(trade_date)
+    engine = build_engine()
+    relatorio = run_setups(engine, load_config(), dia, bars=load_bars(engine), dry_run=dry_run)
+    typer.echo(relatorio.summary())
 
 
 alerta_app = typer.Typer(help="Alertas de rompimento de preco.", no_args_is_help=True)

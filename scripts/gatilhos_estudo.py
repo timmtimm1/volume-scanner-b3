@@ -32,12 +32,15 @@ import pandas as pd
 from scanner.gatilhos.candles import padroes
 from scanner.gatilhos.contexto import atr_wilder, calcular
 from scanner.gatilhos.matrizes import montar
+from scanner.gatilhos.medias import toques_na_media
 from scanner.gatilhos.niveis import Regras, detectar
 
 F64 = npt.NDArray[np.float64]
 
 PISO_HOJE = 500_000.0
-LOTE = 250
+# Papeis por lote. O pico de memoria cresce com o lote: com 250, ~1,3 GB; numa
+# maquina com pouca memoria livre, GATILHOS_LOTE=100 cabe em bem menos.
+LOTE = int(__import__("os").environ.get("GATILHOS_LOTE", "250"))
 HORIZONTES = (5, 10, 20, 60)
 ALVO_R = 2.0
 PRAZO_R = 20
@@ -83,6 +86,7 @@ def processar_lote(
     ctx = calcular(h, c, m.volume)
     pad = padroes(o, h, low, c, atr)
     ret, ev = detectar(h, low, c, atr, regras)
+    medias = toques_na_media(low, c, atr)
 
     # o que veio depois
     cff = pd.DataFrame(c).ffill(limit=5).to_numpy(dtype=np.float64)
@@ -148,7 +152,7 @@ def processar_lote(
 
     linhas = {
         "s": dd.astype(np.int32),
-        "ticker": np.asarray(tickers)[tt],
+        "ticker": pd.Categorical(np.asarray(tickers)[tt]),
         "close": col(c),
         "atr": col(atr),
         "tol": col(ret.tol),
@@ -176,6 +180,9 @@ def processar_lote(
         **{k: col(v) for k, v in conf.items()},
         **{k: col(v) for k, v in d1.items()},
     }
+    for nome_media, (_, toque) in medias.items():
+        for camada in range(3):
+            linhas[f"{nome_media}_toca{camada + 1}"] = col(toque[camada], "bool")
     for camada in range(3):
         linhas[f"toca{camada + 1}_forca"] = col(ret.toca_forca[camada], "int16")
         linhas[f"toca{camada + 1}_furou"] = col(ret.toca_furou[camada], "bool")
@@ -202,30 +209,45 @@ def processar(barras: Path, saida: Path, regras: Regras) -> None:
     alguma_vez = liq_s.groupby(level=0).any()
     sempre = sorted(alguma_vez.index[alguma_vez.to_numpy()])
     liq_s = liq_s[liq_s.index.get_level_values(0).isin(sempre)]
-    liq = liq_s.unstack("ticker")
+    # booleano, e nao objeto: com NaN o unstack daria uma matriz de objetos
+    liq = liq_s.unstack("ticker").fillna(False).astype(bool)
     print(
         f"universo: {len(sempre)} papeis liquidos em algum dia ({time.time() - t0:.0f}s)",
         flush=True,
     )
     b = b[b["ticker"].isin(sempre)]
 
-    partes, segs, toques, despejos = [], [], [], 0
+    saida.mkdir(parents=True, exist_ok=True)
+    partes: list[int] = []
+    segs, toques, despejos = [], [], 0
     resumo: dict[str, int] = {}
     for k in range(0, len(sempre), LOTE):
         lote = sempre[k : k + LOTE]
         df, extra = processar_lote(b, lote, sessoes, liq, regras)
-        partes.append(df)
+        # cada lote vai para o disco: com pouca memoria livre, acumular os lotes
+        # em memoria matava o processo antes do fim
+        df.to_pickle(saida / f"_lote_{k // LOTE:03d}.pkl")
+        partes.append(len(df))
         segs.append(extra["segmentos"])
         toques.append(extra["toques"])
         despejos += int(extra["despejos"])  # type: ignore[call-overload]
         for chave, v in extra["resumo"].items():  # type: ignore[attr-defined]
             resumo[chave] = resumo.get(chave, 0) + int(v)
         print(
-            f"lote {k // LOTE + 1}: {len(lote)} papeis, {len(df)} linhas ({time.time() - t0:.0f}s)",
+            f"lote {k // LOTE + 1}: {len(lote)} papeis, {partes[-1]} linhas "
+            f"({time.time() - t0:.0f}s)",
             flush=True,
         )
+        del df, extra
+        __import__("gc").collect()
 
-    dados = pd.concat(partes, ignore_index=True)
+    del b, liq, liq_s
+    __import__("gc").collect()
+    arquivos = sorted(saida.glob("_lote_*.pkl"))
+    dados = pd.concat([pd.read_pickle(a) for a in arquivos], ignore_index=True)
+    dados["ticker"] = dados["ticker"].astype("category")
+    for a in arquivos:
+        a.unlink()
     for hz in HORIZONTES:
         media = dados.groupby("s")[f"r{hz}"].transform("mean")
         dados[f"x{hz}"] = (dados[f"r{hz}"] - media).astype("float32")
@@ -884,6 +906,96 @@ def validar(pasta: Path, saida: Path) -> None:
     print("hoje:", lista, "por semana 2025-26:", round(por_semana, 2))
 
 
+# ---------------------------------------------------------------------------
+# Etapa 5: media movel como suporte (MME 9 e MMA 20, em tendencia).
+# ---------------------------------------------------------------------------
+
+
+def _filtrar(
+    d: pd.DataFrame, base: pd.Series, vol: float, sem_ruim: bool, espaco: float
+) -> pd.Series:
+    m = base & (d["rvol"] >= vol) if vol > 0 else base.copy()
+    if sem_ruim:
+        m &= ~(d["queda"] | d["baixa"])
+    if espaco > 0:
+        livre = (d["res_preco"] - d["close"]) / (d["risco"] * d["close"])
+        m &= (livre >= espaco) | d["res_preco"].isna()
+    return m
+
+
+def validar_medias(pasta: Path, saida: Path) -> None:
+    import json
+
+    d = pd.read_pickle(pasta / "linhas.pkl")
+    with (pasta / "eventos.pkl").open("rb") as f:
+        sessoes: pd.DatetimeIndex = pickle.load(f)["sessoes"]
+    c = camadas(d)
+    rev1, rev2, rev3 = c["rev1"], c["rev2"], d["estrela"]
+
+    def na_media(nm: str) -> pd.Series:
+        return (rev1 & d[f"{nm}_toca1"]) | (rev2 & d[f"{nm}_toca2"]) | (rev3 & d[f"{nm}_toca3"])
+
+    mme9, mma20 = na_media("mme9"), na_media("mma20")
+    media = mme9 | mma20
+    ano = pd.Series(sessoes.year.to_numpy()[d["s"].to_numpy()], index=d.index)
+    partes = {"dentro": ano.between(*DENTRO), "fora": ano.between(*FORA), "tudo": ano > 0}
+
+    def resumo(m: pd.Series, onde: pd.Series) -> dict[str, object]:
+        e = _dedup(d, m & onde)
+        out = medir(e, sessoes)
+        ec = _confirmados(e)
+        out["confirmados"] = round(len(ec) / max(len(e), 1) * 100, 1)
+        out["conf"] = medir(ec, sessoes) if len(ec) >= 30 else None
+        return out
+
+    regra_atual = _filtrar(d, c["gat"], 1.5, True, 2.0)
+    grupos = {
+        "candle_qualquer": ("Candle de reversão em qualquer lugar", c["candle"]),
+        "media_sem_filtro": ("Candle na média, sem filtro", media),
+        "mme9_sem_filtro": ("Candle na MME 9, sem filtro", mme9),
+        "mma20_sem_filtro": ("Candle na MMA 20, sem filtro", mma20),
+        "media_filtros": ("Candle na média + filtros da aba", _filtrar(d, media, 1.5, True, 2.0)),
+        "mme9_filtros": ("Candle na MME 9 + filtros", _filtrar(d, mme9, 1.5, True, 2.0)),
+        "mma20_filtros": ("Candle na MMA 20 + filtros", _filtrar(d, mma20, 1.5, True, 2.0)),
+        "media_destaque": (
+            "Candle na média + filtros, volume ≥ 2,5×",
+            _filtrar(d, media, 2.5, True, 2.0),
+        ),
+        "media_sem_espaco": (
+            "Candle na média, volume e contexto, sem exigir espaço",
+            _filtrar(d, media, 1.5, True, 0.0),
+        ),
+        "so_media_filtros": (
+            "Só na média (fora do suporte horizontal) + filtros",
+            _filtrar(d, media & ~c["gat"], 1.5, True, 2.0),
+        ),
+        "regra_atual": ("Regra atual (suporte horizontal + filtros)", regra_atual),
+        "uniao": (
+            "Suporte horizontal OU média + filtros",
+            _filtrar(d, c["gat"] | media, 1.5, True, 2.0),
+        ),
+    }
+    out: dict[str, object] = {}
+    for gid, (nome_grupo, m) in grupos.items():
+        out[gid] = {"nome": nome_grupo, **{p: resumo(m, onde) for p, onde in partes.items()}}
+        b = out[gid]
+        f20 = lambda x: (x["n"], (x.get("20") or {}).get("mensal"), (x.get("20") or {}).get("ic"))  # noqa: E731
+        print(
+            f"{gid:18} dentro {f20(b['dentro'])}  fora {f20(b['fora'])}  "
+            f"R {(b['tudo'].get('r') or {}).get('exp')} -> "
+            f"conf {((b['tudo'].get('conf') or {}).get('r') or {}).get('exp')}",
+            flush=True,
+        )
+    recente = ano >= 2025
+    semanas = d.loc[recente, "s"].nunique() / 5
+    out["por_semana"] = {
+        k: round(len(_dedup(d, grupos[k][1] & recente)) / semanas, 2)
+        for k in ("regra_atual", "media_filtros", "so_media_filtros", "uniao")
+    }
+    print("por semana 2025-26:", out["por_semana"])
+    saida.write_text(json.dumps(out, ensure_ascii=False))
+
+
 if __name__ == "__main__":
     if sys.argv[1] == "processar":
         regras = replace(Regras(), toques_min=2)
@@ -894,5 +1006,7 @@ if __name__ == "__main__":
         relatorio(Path(sys.argv[2]), Path(sys.argv[3]))
     elif sys.argv[1] == "validar":
         validar(Path(sys.argv[2]), Path(sys.argv[3]))
+    elif sys.argv[1] == "medias":
+        validar_medias(Path(sys.argv[2]), Path(sys.argv[3]))
     elif sys.argv[1] == "exemplos":
         exemplos(Path(sys.argv[2]), Path(sys.argv[3]), Path(sys.argv[4]))

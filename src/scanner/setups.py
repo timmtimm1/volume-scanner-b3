@@ -29,6 +29,7 @@ from __future__ import annotations
 import warnings
 from dataclasses import dataclass, field
 from datetime import date
+from decimal import Decimal
 from typing import cast
 
 import numpy as np
@@ -36,12 +37,14 @@ import numpy.typing as npt
 import pandas as pd
 from sqlalchemy import Engine
 
+from scanner.calendar import next_trading_day
 from scanner.config import ScannerConfig
 from scanner.gatilhos.regra import Analise, analisar, niveis, setups
 from scanner.storage.repository import (
     atualizar_setups,
     carregar_setups,
-    inserir_setups,
+    criar_alerta,
+    gravar_setups,
     trocar_niveis,
     ultimo_setup,
 )
@@ -195,6 +198,34 @@ def resultados(gravados: pd.DataFrame, a: Analise) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+def criar_alertas(engine: Engine, gravados: pd.DataFrame, config: ScannerConfig) -> int:
+    """Um alerta "acima da maxima" para cada setup armado ao vivo nesta noite.
+
+    O alerta vale so no pregao seguinte ao candle, que e quando o setup confirma
+    ou nao, e nasce um centavo acima da maxima: a confirmacao pede passar dela,
+    e tocar exatamente a maxima nao e passar. Setup retroativo (estreia, ou
+    noite perdida) nao ganha alerta -- o pregao da confirmacao ja passou.
+    """
+    cfg = config.setups
+    if not cfg.alerta or gravados.empty:
+        return 0
+    categorias = ["reversao", "forca"] if cfg.alerta_forca else ["reversao"]
+    alvo = gravados[gravados["ao_vivo"].astype(bool) & gravados["categoria"].isin(categorias)]
+    # Poucos por noite (cerca de um por semana): um INSERT por setup basta.
+    for linha in alvo.to_dict("records"):
+        candle: date = linha["trade_date"]
+        criar_alerta(
+            engine,
+            str(linha["ticker"]),
+            candle,
+            Decimal(str(round(float(linha["maxima"]) + 0.01, 2))),
+            "acima",
+            expira_em=next_trading_day(candle),
+            setup_id=int(linha["id"]),
+        )
+    return len(alvo)
+
+
 @dataclass(frozen=True)
 class RelatorioDeSetups:
     """O que a etapa de setups fez num pregao."""
@@ -209,6 +240,7 @@ class RelatorioDeSetups:
     encerrados: int = 0
     em_andamento: int = 0
     niveis: int = 0
+    alertas: int = 0
     dry_run: bool = False
     desligado: bool = False
 
@@ -224,6 +256,8 @@ class RelatorioDeSetups:
         partes.append(f"{len(self.nao_confirmaram)} nao confirmou")
         partes.append(f"{self.encerrados} encerrado(s), {self.em_andamento} em andamento")
         partes.append(f"{self.niveis:,} niveis")
+        if self.alertas:
+            partes.append(f"{self.alertas} alerta(s) de confirmacao criado(s)")
         if self.estreia:
             partes.append(f"estreia: {self.gravados} setups retroativos gravados")
         return "; ".join(partes)
@@ -252,7 +286,8 @@ def run_setups(
     novos = novos.assign(ao_vivo=novos["trade_date"] == dia, estado="armado")
     desenho = niveis(a, cfg)
 
-    gravados = 0 if dry_run else inserir_setups(engine, novos)
+    gravados = novos.head(0) if dry_run else gravar_setups(engine, novos)
+    alertas = 0 if dry_run else criar_alertas(engine, gravados, config)
     abertos = carregar_setups(engine, abertos=True)
     mudancas = avancar(abertos, a, cfg.prazo_pregoes)
     if not dry_run:
@@ -267,18 +302,22 @@ def run_setups(
     nao = mudancas["estado"] == "nao_confirmou"
     encerrou = mudancas["estado"].isin(["stop", "prazo"])
     tickers_mud = abertos.set_index("id")["ticker"] if not abertos.empty else pd.Series(dtype=str)
-    em_andamento = int((abertos["estado"] == "confirmado").sum()) if not abertos.empty else 0
-    em_andamento += int(confirmou.sum()) - int(encerrou.sum())
+    # estado de cada aberto ao fim da noite: o de antes, trocado pelo que mudou
+    final = abertos.set_index("id")["estado"].copy() if not abertos.empty else pd.Series(dtype=str)
+    if not mudancas.empty:
+        final.update(mudancas.set_index("id")["estado"])
+    em_andamento = int((final == "confirmado").sum())
     return RelatorioDeSetups(
         dia=dia,
         estreia=estreia,
-        gravados=gravados,
+        gravados=len(gravados),
         armados=[(str(r.ticker), bool(r.destaque)) for r in rev.itertuples()],
         forca=[str(t) for t in hoje.loc[hoje["categoria"] == "forca", "ticker"]],
         confirmados=[str(tickers_mud.get(i, "?")) for i in mudancas.loc[confirmou, "id"]],
         nao_confirmaram=[str(tickers_mud.get(i, "?")) for i in mudancas.loc[nao, "id"]],
         encerrados=int(encerrou.sum()),
-        em_andamento=max(em_andamento, 0),
+        em_andamento=em_andamento,
         niveis=len(desenho),
+        alertas=alertas,
         dry_run=dry_run,
     )

@@ -122,6 +122,11 @@ class SetupsConfig(BaseModel):
     toques_nivel: int = 2
     # Depois de confirmado, o setup fica em andamento ate N pregoes.
     prazo_pregoes: int = 20
+    # Alerta automatico de rompimento acima da maxima do candle, valido no
+    # pregao seguinte (o da confirmacao). O candle de forca fica sem alerta: nao
+    # passou na conferencia do estudo, e alerta e convite para agir.
+    alerta: bool = True
+    alerta_forca: bool = False
 
     @field_validator("volume_destaque")
     @classmethod

@@ -37,7 +37,7 @@ Se você achar que uma dessas coisas melhoraria o sistema, sugira em texto. Não
 
 Decidida pelo usuário em 21/10/2026, com estudo de 30 anos de COTAHIST antes (`scripts/gatilhos_estudo.py`). É a **única** exceção à lista acima, e não muda nada no alerta:
 
-- A aba Setups classifica candle de reversão (martelo, doji libélula, engolfo, piercing, estrela da manhã) em suporte de 3+ toques e filtra por volume, contexto e espaço até a resistência. As regras estão em `scanner/gatilhos/regra.py` e na seção `setups` do `config.yaml`; a seção 13 do plano tem a especificação.
+- A aba Setups classifica candle de reversão (martelo, doji libélula, engolfo, piercing, estrela da manhã) em suporte de 3+ toques e filtra por volume, contexto e espaço até a resistência. Numa seção própria ("Na média"), o mesmo candle encostando na MME 9 ou na MMA 20 em tendência de alta — decisão do usuário de 21/10/2026, sabendo que no estudo essa categoria foi positiva no trade de referência nos dois períodos, mas negativa contra o mercado em 2016–2026. Por isso ela não se mistura com a regra principal. As regras estão em `scanner/gatilhos/regra.py` e na seção `setups` do `config.yaml`; a seção 13 do plano tem a especificação.
 - É lente separada: não alimenta, não altera e não suprime o alerta de 6σ. A regra mecânica da seção 1 e a lista de "não fazer" continuam valendo para todo o resto.
 - Mudar um corte da regra exige refazer o estudo: escolher com 1995–2015 e conferir em 2016–2026, que não pode ser usado para escolher.
 - Nada de "probabilidade", "chance de subir" ou "recomendação" no texto: a aba mostra uma leitura, não uma promessa. Só para quem está logado.

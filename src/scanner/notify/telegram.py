@@ -98,9 +98,15 @@ def _z_por_janela(zs: Mapping[int, float | None]) -> str:
     return "z_log: " + (" | ".join(partes) if partes else "-")
 
 
-def chart_url(base_url: str, ticker: str, trade_date: date) -> str:
-    """Link da ficha do papel. Do celular, um toque entre o alerta e o grafico."""
-    return f"{base_url.rstrip('/')}/papel/{ticker}?data={trade_date.isoformat()}"
+def chart_url(base_url: str, ticker: str, trade_date: date, *, foco: bool = False) -> str:
+    """Link da ficha do papel. Do celular, um toque entre o alerta e o grafico.
+
+    `foco=True` e para os setups: `?foco=` centra o grafico no candle sem
+    trata-lo como evento. Com `?data=` a ficha caia no evento mais recente do
+    papel, as vezes meses antes (incidente de 21/10/2026).
+    """
+    parametro = "foco" if foco else "data"
+    return f"{base_url.rstrip('/')}/papel/{ticker}?{parametro}={trade_date.isoformat()}"
 
 
 def format_alert(payload: Mapping[str, Any], base_url: str) -> str:
@@ -468,7 +474,7 @@ def format_setup_confirmado(payload: Mapping[str, Any], base_url: str | None = N
     ]
     if base_url:
         alvo = (
-            chart_url(base_url, ticker, candle)
+            chart_url(base_url, ticker, candle, foco=True)
             if isinstance(candle, date)
             else f"{base_url.rstrip('/')}/papel/{ticker}"
         )
@@ -494,7 +500,7 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
         ticker = str(linha["ticker"])
         candle = linha.get("trade_date")
         if base_url and isinstance(candle, date):
-            return f'<a href="{chart_url(base_url, ticker, candle)}">{ticker}</a>'
+            return f'<a href="{chart_url(base_url, ticker, candle, foco=True)}">{ticker}</a>'
         return ticker
 
     partes = [""]

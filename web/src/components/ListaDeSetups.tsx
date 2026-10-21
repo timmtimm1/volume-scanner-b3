@@ -8,6 +8,7 @@ import {
   desdeAEntrada,
   folgaAteOStop,
   HORIZONTES,
+  linkDaFicha,
   NOME_DO_CONTEXTO,
   nomeDosPadroes,
   resumoDoHistorico,
@@ -158,7 +159,7 @@ function Cabecalho({ s }: { s: Setup }) {
   return (
     <div className="flex flex-wrap items-center gap-2">
       <Link
-        href={`/papel/${s.ticker}?data=${s.tradeDate}`}
+        href={linkDaFicha(s)}
         className="text-[18px] font-extrabold transition-colors hover:text-acento"
       >
         {s.ticker}
@@ -289,7 +290,7 @@ function LinhaDeForca({ s }: { s: Setup }) {
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
       <Link
-        href={`/papel/${s.ticker}?data=${s.tradeDate}`}
+        href={linkDaFicha(s)}
         className="w-16 text-[14px] font-extrabold transition-colors hover:text-acento"
       >
         {s.ticker}
@@ -376,7 +377,7 @@ function Historico({ lista }: { lista: Setup[] }) {
               )}
             </span>
             <Link
-              href={`/papel/${s.ticker}?data=${s.tradeDate}`}
+              href={linkDaFicha(s)}
               className="text-[15px] font-extrabold transition-colors hover:text-acento md:text-[14px]"
             >
               {s.ticker}

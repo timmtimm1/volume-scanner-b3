@@ -31,6 +31,7 @@ import { useAlertasDoPapel } from "@/lib/useAlertasDoPapel";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
 import { useComputador } from "@/lib/useComputador";
 import { useNoticias } from "@/lib/useNoticias";
+import { focoDoGrafico } from "@/lib/foco";
 import { useSetupsDoPapel } from "@/lib/useSetupsDoPapel";
 import { useTradesDoPapel } from "@/lib/useTradesDoPapel";
 
@@ -150,6 +151,18 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = []
   const barra = useMemo(
     () => barras.find((b) => b.tradeDate === evento?.tradeDate) ?? null,
     [barras, evento],
+  );
+
+  // `?foco=` (links dos Setups) centra o grafico num pregao sem mudar o evento.
+  const focoPedido = params.get("foco");
+  const focoDoGraficoNaFicha = useMemo(
+    () =>
+      focoDoGrafico(
+        focoPedido,
+        barras.map((b) => b.tradeDate),
+        evento?.tradeDate,
+      ),
+    [focoPedido, barras, evento],
   );
 
   const estadoDosAlertas = useAlertasDoPapel(ticker, barras, evento?.tradeDate, hoje);
@@ -390,7 +403,8 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = []
       <Grafico
         barras={barras}
         eventos={eventos}
-        destaque={evento?.tradeDate}
+        destaque={focoDoGraficoNaFicha.dia}
+        janelaDepois={focoDoGraficoNaFicha.depois}
         alertas={alertasNoGrafico}
         escolhendoPreco={estadoDosAlertas.escolhendo}
         aoEscolherPreco={estadoDosAlertas.escolherNoGrafico}

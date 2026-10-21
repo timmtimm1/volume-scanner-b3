@@ -337,7 +337,8 @@ def format_resumo(resumo: Mapping[str, Any], base_url: str | None = None) -> str
     Com a chave `trades` (ausente ou vazia na maioria dos pregoes), a mensagem
     ganha um segundo bloco no mesmo espirito: "Seus trades", a posicao real do
     usuario naquele pregao. Sem essa chave a mensagem fica identica a de antes
-    desta secao existir.
+    desta secao existir. A chave `setups` faz o mesmo com o bloco "Setups
+    armados" da aba Setups -- e some quando nao ha nada a mostrar.
     """
     dia = resumo["trade_date"].strftime("%d/%m/%Y")
     linhas = list(resumo.get("linhas") or [])
@@ -368,6 +369,10 @@ def format_resumo(resumo: Mapping[str, Any], base_url: str | None = None) -> str
     if trades:
         partes += _bloco_de_trades(trades, base_url)
 
+    setups = resumo.get("setups")
+    if setups:
+        partes += _bloco_de_setups(setups, base_url)
+
     return "\n".join(partes)
 
 
@@ -379,6 +384,8 @@ def format_rompimento(payload: Mapping[str, Any], base_url: str | None = None) -
     11,51" e o que permite reconhecer ruido sem abrir o grafico. E a fonte vai
     junto pelo mesmo motivo: cotacao estranha tem culpado.
     """
+    if payload.get("setup"):
+        return format_setup_confirmado(payload, base_url)
     ticker = str(payload["ticker"])
     direcao = "subiu até" if payload.get("direcao") == "acima" else "caiu até"
     nivel = money_simples(payload.get("nivel"))
@@ -406,6 +413,111 @@ def format_rompimento(payload: Mapping[str, Any], base_url: str | None = None) -
         )
         linhas += ["", f'<a href="{alvo}">→ abrir grafico</a>']
     return "\n".join(linhas)
+
+
+NOME_DO_PADRAO = {
+    "martelo": "martelo",
+    "libelula": "doji libélula",
+    "engolfo": "engolfo de alta",
+    "piercing": "piercing",
+    "estrela": "estrela da manhã",
+    "forca": "candle de força",
+}
+
+
+def _padroes(setup: Mapping[str, Any]) -> str:
+    nomes = [NOME_DO_PADRAO.get(str(p), str(p)) for p in (setup.get("padroes") or [])]
+    return " + ".join(nomes) or "candle"
+
+
+def _numero(valor: Any) -> float | None:
+    return None if valor is None else float(valor)
+
+
+def _espaco(setup: Mapping[str, Any]) -> str:
+    resistencia = _numero(setup.get("resistencia"))
+    if resistencia is None:
+        return "sem resistência acima"
+    espaco = _numero(setup.get("espaco_r"))
+    vezes = f" ({br(espaco, 1)}R)" if espaco is not None else ""
+    return f"resistência {money_simples(resistencia)}{vezes}"
+
+
+def format_setup_confirmado(payload: Mapping[str, Any], base_url: str | None = None) -> str:
+    """Aviso de que um setup armado passou da maxima do candle durante o pregao.
+
+    E o mesmo alerta de rompimento, criado pelo pipeline: a mensagem conta de
+    qual setup ele e. Sem <pre>: no iPhone o bloco de codigo cobre os numeros.
+    """
+    setup = payload["setup"]
+    ticker = str(payload["ticker"])
+    hora = payload.get("hora")
+    quando = f" às {hora.astimezone(FUSO_B3):%H:%M}" if hora is not None else ""
+    candle = setup.get("trade_date")
+    dia = f" de {candle.strftime('%d/%m')}" if isinstance(candle, date) else ""
+    volume = _numero(setup.get("rvol"))
+    destaque = " · destaque" if setup.get("destaque") else ""
+    linhas = [
+        f"🎯 <b>{ticker} confirmou o setup</b>",
+        f"passou da máxima do {_padroes(setup)}{dia}"
+        f" ({money_simples(_numero(setup.get('maxima')))})",
+        f"{money_simples(payload.get('preco'))}{quando} · {payload.get('fonte', '-')}",
+        f"mínima do padrão {money_simples(_numero(setup.get('minima')))}"
+        f" · risco {br(_numero(setup.get('risco_pct')) or 0, 1)}%",
+        f"{_espaco(setup)} · volume do candle {br(volume or 0, 1)}×{destaque}",
+    ]
+    if base_url:
+        alvo = (
+            chart_url(base_url, ticker, candle)
+            if isinstance(candle, date)
+            else f"{base_url.rstrip('/')}/papel/{ticker}"
+        )
+        linhas += ["", f'<a href="{alvo}">→ abrir grafico</a>']
+    return "\n".join(linhas)
+
+
+def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[str]:
+    """Bloco "Setups armados" do resumo diario. Lista, sem <pre>.
+
+    Armados: candles de reversao deste pregao, que confirmam se o proximo
+    pregao passar da maxima. O candle de forca vem numa linha a parte, com o
+    aviso de que nao passou na conferencia do estudo. Confirmados: setups de
+    candles anteriores que passaram da maxima hoje.
+    """
+    armados = list(setups.get("armados") or [])
+    forca = list(setups.get("forca") or [])
+    confirmados = list(setups.get("confirmados") or [])
+    if not (armados or forca or confirmados):
+        return []
+
+    def papel(linha: Mapping[str, Any]) -> str:
+        ticker = str(linha["ticker"])
+        candle = linha.get("trade_date")
+        if base_url and isinstance(candle, date):
+            return f'<a href="{chart_url(base_url, ticker, candle)}">{ticker}</a>'
+        return ticker
+
+    partes = [""]
+    if armados:
+        partes.append("<b>Setups armados</b> · confirmam se o próximo pregão passar da máxima")
+        for s in armados:
+            marca = "★" if s.get("destaque") else "▲"
+            partes.append(
+                f"{marca} <b>{papel(s)}</b> {_padroes(s)}"
+                f" · volume {br(_numero(s.get('rvol')) or 0, 1)}×"
+                f" · acima de {money_simples(_numero(s.get('maxima')))}"
+                f" · mínima {money_simples(_numero(s.get('minima')))}"
+                f" ({br(_numero(s.get('risco_pct')) or 0, 1)}%) · {_espaco(s)}"
+            )
+    if forca:
+        nomes = ", ".join(papel(s) for s in forca)
+        partes.append(f"<i>Candle de força (não passou na conferência):</i> {nomes}")
+    if confirmados:
+        nomes = ", ".join(
+            f"{papel(s)} ({money_simples(_numero(s.get('entrada')))})" for s in confirmados
+        )
+        partes.append(f"<b>Confirmados hoje:</b> {nomes}")
+    return partes
 
 
 def money_simples(valor: float | None) -> str:

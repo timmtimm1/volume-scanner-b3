@@ -192,7 +192,7 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
                 em["estrela"][dd, tt], 2, np.where((em["engolfo"] | em["piercing"])[dd, tt], 1, 0)
             )
             nomes = [[p for p in REVERSAO if em[p][d, t]] for d, t in zip(dd, tt, strict=True)]
-            sup = ret.toca_preco[camada, dd, tt]
+            sup = ret.toca_preco[camada, dd, tt].astype(np.float64)
             toques = ret.toca_forca[camada, dd, tt]
             virou = ret.toca_virou[camada, dd, tt]
             furou = ret.toca_furou[camada, dd, tt]
@@ -223,7 +223,9 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
         else:
             no_suporte = toca[0][dd, tt]
             nomes = [["forca"]] * dd.size
-            sup = np.where(no_suporte, ret.toca_preco[0, dd, tt], ret.rompeu_res_preco[dd, tt])
+            sup = np.where(
+                no_suporte, ret.toca_preco[0, dd, tt], ret.rompeu_res_preco[dd, tt]
+            ).astype(np.float64)
             toques = np.where(no_suporte, ret.toca_forca[0, dd, tt], ret.rompeu_res_forca[dd, tt])
             virou = np.where(no_suporte, ret.toca_virou[0, dd, tt], False)
             furou = np.where(no_suporte, ret.toca_furou[0, dd, tt], False)

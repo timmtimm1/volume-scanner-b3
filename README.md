@@ -36,6 +36,7 @@ O sistema **detecta e apresenta**.
 - [Testes de regressão](#testes-de-regressão)
 - [Notícias na ficha](#notícias-na-ficha)
 - [Resumo da semana](#resumo-da-semana)
+- [Setups](#setups)
 - [Desempenho](#desempenho)
 - [Segredos](#segredos)
 
@@ -177,7 +178,7 @@ GitHub Actions o Neon — se o seu PC estiver desligado, ele funciona igual.
 
 Os comandos abaixo rodam o código e carregam os dados
 (`.github/workflows/pregao.yml`): carga, métricas, alerta, snapshot dos trades,
-resumo e poda, na ordem certa, lendo o banco uma vez só.
+setups, resumo e poda, na ordem certa, lendo o banco uma vez só.
 
 ```bash
 scanner daily --date today            # processa o pregão de hoje
@@ -194,6 +195,7 @@ scanner metrics compute --mode incremental
 scanner scan --date today --dry-run
 scanner scan --date today
 scanner resumo --date today --dry-run
+scanner setups --date today --dry-run   # so a etapa dos setups (aba Setups)
 scanner report ticker PETR4 --window 60
 scanner db status
 ```
@@ -228,7 +230,9 @@ nativo do GitHub foi abandonado.
 
 ## Além do plano
 
-Pedidos feitos depois das fases, nenhum deles filtro, ranking ou previsão:
+Pedidos feitos depois das fases. Nenhum deles é filtro, ranking ou previsão, com
+uma exceção escrita no CLAUDE.md: a aba [Setups](#setups), que filtra candles de
+reversão no suporte e não mexe no alerta.
 
 - **Resumo diário no Telegram.** Os 10 papéis que mais fugiram do próprio volume
   normal no pregão, tenham cruzado o limiar ou não. Sai uma vez por pregão.
@@ -1299,6 +1303,69 @@ A agenda de segunda a sexta seguintes, em horário de Brasília, e os balanços 
 **Banco.** Tabela `resumos_semanais` (migration 0010), uma linha por semana, chaveada pela sexta, com o resumo inteiro em JSON. Depois de enviado (`enviado_em`), o resumo não é mais sobrescrito, só com `--substituir-enviado`: a aba do site mostra cada edição exatamente como ela saiu.
 
 O ponto de restauração antes desta feature é a tag `v0.7-antes-do-resumo-semanal`.
+
+## Setups
+
+Pedido em 21/10/2026: o volume anômalo é condição necessária, mas a entrada
+acontece quando aparece um candle de reversão num suporte. A aba Setups mostra
+esses candles, já filtrados. É a única exceção ao "sem filtro e sem
+classificação" do projeto, escrita no CLAUDE.md, e não muda nada no alerta de
+6σ. Especificação completa na seção 13 do `docs/PLANO.md`.
+
+**A regra** (`src/scanner/gatilhos/regra.py`, cortes no `config.yaml`):
+
+- martelo, doji libélula, engolfo, piercing ou estrela da manhã, com a mínima
+  do padrão num suporte de 3 ou mais toques. Martelo no meio do movimento não
+  conta;
+- volume de 1,5× o normal ou mais (destaque a partir de 2,5×);
+- fora de queda recente e de tendência de baixa;
+- resistência mais próxima a pelo menos 2 vezes o risco.
+
+**O suporte** (`src/scanner/gatilhos/niveis.py`) é o que o usuário definiu: o
+preço bate várias vezes e não fecha além, até fechar. Um toque é um fundo local
+(a menor mínima de 3 pregões para cada lado) a menos de meio ATR do nível; a
+sombra que fura e o fechamento que volta também contam. Rompido, o nível troca
+de papel uma vez, e só se já valia. O motor anda pregão a pregão com todos os
+papéis juntos (nenhum laço por papel) e nada olha o futuro: um fundo só entra
+no dia em que fica conhecido. Os testes provam as duas coisas: rodar com o
+histórico inteiro ou cortado no dia D dá o mesmo retrato de D, e rodar um papel
+sozinho dá o mesmo que rodar com os outros.
+
+**O ciclo:** armado na noite do candle → confirmado se o pregão seguinte passar
+da máxima, ou não confirmou → em andamento até fechar abaixo da mínima do padrão
+ou completar 20 pregões. Fica na tabela `setups`, gravada uma vez por noite (o
+que foi mostrado não muda depois); os níveis que a ficha desenha ficam em
+`niveis`, refeita a cada pregão. É a etapa 6/8 do `scanner daily`.
+
+### O estudo de 30 anos
+
+Antes de construir, a regra foi medida no COTAHIST de 1995 a 2026 (1,41 milhão
+de dias de papel líquido, 1.184 papéis, incluindo os que deixaram de existir).
+O universo de cada dia não olha o futuro, e o piso de liquidez é o de hoje
+escalado pelo tamanho do mercado de cada época.
+
+```bash
+python scripts/gatilhos_carregar.py <pasta dos COTAHIST anuais> <pasta dos diários> barras.pkl
+python scripts/gatilhos_estudo.py processar barras.pkl estudo/
+python scripts/gatilhos_estudo.py relatorio estudo/ estudo/relatorio.json
+python scripts/gatilhos_estudo.py validar estudo/ estudo/validacao.json
+```
+
+O que ele mostrou (retorno em excesso à média do mercado, 20 pregões):
+
+| | 1995–2015 (escolha dos cortes) | 2016–2026 (conferência) |
+|---|---|---|
+| Candle no suporte, sem filtro | −0,73% | −0,44% |
+| Regra da aba | +0,32% | +0,69% |
+| Destaque (≥ 2,5×) | +1,09% | +1,88% |
+
+O candle sozinho, mesmo no suporte, perde para o mercado; com volume baixo
+perde mais (−1,13%), e em tendência de baixa, mais ainda (−3,21% em 60
+pregões). Os cortes foram escolhidos só com 1995–2015 e conferidos num período
+que nunca foi usado para escolher. Os intervalos de 95% ainda cruzam o zero:
+é sinal consistente, não garantia. Conferir no olho foi parte do estudo, e
+pegou dois erros antes dos números: engolfo que "engolia" um candle sem corpo,
+e nível fraco que, rompido, continuava vivo somando toques dos dois lados.
 
 ## Desempenho
 

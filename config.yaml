@@ -81,3 +81,15 @@ semana:
     - inflação
     - economia
     - fiscal OR arcabouço OR "contas públicas"
+
+setups:
+  # Aba Setups: candle de reversao (martelo, libelula, engolfo, piercing, estrela
+  # da manha) num suporte de 3+ toques, filtrado. Lente separada: nao muda nada
+  # no alerta de 6 sigma. Numeros do estudo de 30 anos (scripts/gatilhos_estudo.py).
+  enabled: true
+  volume_minimo: 1.5      # volume do dia / mediana dos 20 pregoes anteriores
+  volume_destaque: 2.5
+  espaco_minimo_r: 2.0    # resistencia a pelo menos 2x o risco
+  toques_gatilho: 3
+  toques_nivel: 2         # nivel existe (e e desenhado) a partir de 2 toques
+  prazo_pregoes: 20       # em andamento ate 20 pregoes depois de confirmar

@@ -663,3 +663,109 @@ class Arranjo(Base):
     atualizado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class Setup(Base):
+    """Um setup: candle de reversao no suporte que passou nos filtros da aba.
+
+    Nasce armado na noite do candle; o dia seguinte confirma (passou da maxima)
+    ou nao; confirmado, fica em andamento ate fechar abaixo da minima do padrao
+    (`stop`) ou completar o prazo (`prazo`). O que foi mostrado na noite do
+    candle fica congelado -- so estado e resultados mudam depois.
+
+    `ao_vivo` e falso para o que entrou na carga retroativa da estreia: o
+    historico da aba conta so o que foi visto na hora. Precos na escala do dia
+    do candle (o COTAHIST, sem ajuste de desdobramento). `r*` sao retornos do
+    fechamento do candle, `m*` a media do universo liquido na mesma janela e
+    `rc*` retornos desde a entrada confirmada. Nada aqui alimenta o alerta de
+    6 sigma.
+    """
+
+    __tablename__ = "setups"
+    __table_args__ = (
+        UniqueConstraint("ticker", "trade_date", "categoria", name="uq_setups_papel_dia"),
+        CheckConstraint("categoria IN ('reversao', 'forca')", name="ck_setups_categoria"),
+        CheckConstraint(
+            "estado IN ('armado', 'confirmado', 'nao_confirmou', 'stop', 'prazo')",
+            name="ck_setups_estado",
+        ),
+        CheckConstraint(
+            "(estado IN ('armado', 'nao_confirmou')) = (confirmado_em IS NULL)",
+            name="ck_setups_confirmacao",
+        ),
+        Index("ix_setups_estado", "estado"),
+        Index("ix_setups_ticker", "ticker", "trade_date"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(Text, nullable=False)
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    categoria: Mapped[str] = mapped_column(Text, nullable=False)
+    padroes: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    toques: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    virou: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    furou: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    rvol: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
+    destaque: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    contexto: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
+    fechamento: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    maxima: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    minima: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    suporte: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    resistencia: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    espaco_r: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
+    risco_pct: Mapped[Decimal] = mapped_column(Numeric(8, 3), nullable=False)
+    ao_vivo: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    estado: Mapped[str] = mapped_column(Text, nullable=False, server_default="armado")
+    confirmado_em: Mapped[date | None] = mapped_column(Date)
+    entrada: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    encerrado_em: Mapped[date | None] = mapped_column(Date)
+    saida: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    r5: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    r10: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    r20: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    m5: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    m10: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    m20: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    rc5: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    rc10: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    rc20: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class Nivel(Base):
+    """Segmento de suporte ou resistencia que a ficha desenha.
+
+    Tabela derivada: trocada inteira a cada pregao, a partir do motor rodado
+    sobre as barras do banco. `vale_desde` e o dia do 3o toque (antes dele a
+    linha e pontilhada); `virou` marca o nivel que trocou de papel (resistencia
+    rompida que virou suporte, ou o contrario). `toques` e a lista
+    [[data, furou_e_voltou], ...]. Preco na escala do periodo do segmento.
+    """
+
+    __tablename__ = "niveis"
+    __table_args__ = (
+        CheckConstraint("lado IN ('suporte', 'resistencia')", name="ck_niveis_lado"),
+        CheckConstraint("de <= ate", name="ck_niveis_periodo"),
+        Index("ix_niveis_ticker", "ticker"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    ticker: Mapped[str] = mapped_column(Text, nullable=False)
+    lado: Mapped[str] = mapped_column(Text, nullable=False)
+    preco: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    de: Mapped[date] = mapped_column(Date, nullable=False)
+    ate: Mapped[date] = mapped_column(Date, nullable=False)
+    vale_desde: Mapped[date | None] = mapped_column(Date)
+    rompido_em: Mapped[date | None] = mapped_column(Date)
+    virou: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    ativo: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    toques: Mapped[list[list[Any]]] = mapped_column(JSONB, nullable=False)
+    calculado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

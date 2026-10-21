@@ -370,3 +370,47 @@ scanner report ticker PETR4 --window 60
 > O escopo é detectar e avisar. Não adicione filtro de qualidade, score de confiança, classificação de padrão ou qualquer heurística que decida por conta própria quais eventos merecem alerta. Todo evento acima do limiar vai para a lista. A leitura é do usuário.
 >
 > A seção 6 (interface) não é acessório: é onde a ferramenta é usada. Trate a ficha do papel com o mesmo cuidado do pipeline.
+
+---
+
+## 13. Setups — a aba de candles gatilho (decidida em 21/10/2026)
+
+Exceção escrita ao escopo da seção 12, pedida pelo usuário: o volume anômalo é condição necessária, mas a entrada dele acontece quando um candle de reversão aparece num suporte. A aba mostra esses candles, filtrados. Não mexe no alerta de 6σ.
+
+### A regra
+
+| Camada | Regra |
+|---|---|
+| Candle | Martelo, doji libélula, engolfo de alta, piercing, estrela da manhã. Só contam com a mínima do padrão no suporte. |
+| Suporte | Preço onde o preço bate várias vezes e não fecha além, até fechar. 3+ toques do mesmo lado. Rompido, troca de papel uma vez (resistência rompida vira suporte); nível fraco rompido some. |
+| Volume | 1,5× a mediana dos 20 pregões anteriores ou mais; destaque a partir de 2,5×. |
+| Contexto | Fora de queda recente (−10% em 20 pregões) e de tendência de baixa (abaixo da MM200 caindo). Lateralização e correção em alta aparecem como etiqueta. |
+| Espaço | Resistência mais próxima a 2× o risco ou mais (risco = fechamento − mínima do padrão), ou nenhuma acima. |
+
+O candle de força (verde largo saindo do suporte ou rompendo resistência, mesmos filtros) aparece numa seção à parte, com aviso: passou em 1995–2015 e falhou em 2016–2026.
+
+### O ciclo
+
+1. **Armado** na noite do candle: "confirma acima da máxima".
+2. **Confirmado** se o pregão seguinte passar da máxima (entrada de referência: a máxima, ou a abertura se abriu acima). Se não passar, **não confirmou**.
+3. Confirmado fica **em andamento** até fechar abaixo da mínima do padrão (`stop`) ou completar 20 pregões (`prazo`).
+4. **Histórico** com o resultado (5, 10 e 20 pregões, contra a média do universo líquido) — a conferência ao vivo da regra.
+
+### O estudo que sustenta os cortes
+
+COTAHIST de 1995 a 2026, 1,41 milhão de dias de papel líquido, retorno em excesso à média do mercado em 20 pregões:
+
+| Grupo | 1995–2015 (escolha) | 2016–2026 (conferência) |
+|---|---|---|
+| Candle no suporte, sem filtro | −0,73% | −0,44% |
+| Regra acima | +0,32% | +0,69% |
+| Destaque (≥ 2,5×) | +1,09% | +1,88% |
+
+Os intervalos de 95% ainda cruzam o zero: é sinal consistente, não garantia. Esperar a confirmação melhora o trade de referência (stop na mínima, alvo 2R) de +0,02 R para +0,10 R.
+
+### Fases
+
+1. Motor e dados: `scanner.gatilhos`, migration 0013 (`setups`, `niveis`), etapa 6/8 do `scanner daily`.
+2. Alerta automático de rompimento na máxima de cada armado; bloco no resumo diário do Telegram.
+3. Site: aba Setups (só logado) e linhas de suporte/resistência com as setas na ficha.
+

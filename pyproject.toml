@@ -67,6 +67,10 @@ select = [
 "src/scanner/notify/telegram.py" = ["RUF001", "RUF002", "RUF003"]
 # O teste compara a mensagem literal do plano, com os mesmos sinais.
 "tests/test_telegram.py" = ["RUF001", "RUF002", "RUF003"]
+# Os rotulos do estudo vao para a pagina de resultados em portugues, com os
+# sinais de verdade: x de multiplicacao (1,5x), sigma (6 sigma) e travessao de
+# intervalo (1995-2015). Nao sao homoglifos acidentais.
+"scripts/gatilhos_estudo.py" = ["RUF001"]
 
 [tool.mypy]
 # Sem `python_version` fixo: os stubs do numpy usam `type X = ...` e so parseiam

@@ -33,6 +33,16 @@ Todo evento acima do limiar entra na lista. O único filtro é o piso absoluto d
 
 Se você achar que uma dessas coisas melhoraria o sistema, sugira em texto. Não implemente.
 
+## A exceção escrita: aba Setups
+
+Decidida pelo usuário em 21/10/2026, com estudo de 30 anos de COTAHIST antes (`scripts/gatilhos_estudo.py`). É a **única** exceção à lista acima, e não muda nada no alerta:
+
+- A aba Setups classifica candle de reversão (martelo, doji libélula, engolfo, piercing, estrela da manhã) em suporte de 3+ toques e filtra por volume, contexto e espaço até a resistência. As regras estão em `scanner/gatilhos/regra.py` e na seção `setups` do `config.yaml`; a seção 13 do plano tem a especificação.
+- É lente separada: não alimenta, não altera e não suprime o alerta de 6σ. A regra mecânica da seção 1 e a lista de "não fazer" continuam valendo para todo o resto.
+- Mudar um corte da regra exige refazer o estudo: escolher com 1995–2015 e conferir em 2016–2026, que não pode ser usado para escolher.
+- Nada de "probabilidade", "chance de subir" ou "recomendação" no texto: a aba mostra uma leitura, não uma promessa. Só para quem está logado.
+- O site usa só os 400 pregões do banco. Os 30 anos ficam na máquina do usuário.
+
 ## Padrões de código
 
 - Python 3.11+, type hints obrigatórios, `mypy --strict` limpo.

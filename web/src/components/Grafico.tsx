@@ -95,6 +95,8 @@ type Props = {
   eventos: Pick<Evento, "tradeDate">[];
   /** Pregao a centralizar e destacar. */
   destaque?: string;
+  /** Pregoes mostrados depois do `destaque` ao abrir (mais no foco de um setup). */
+  janelaDepois?: number;
   /** Altura do grafico, em classes (muda entre celular e computador). */
   classeDeAltura?: string;
   /** Niveis a desenhar como linha horizontal. So do papel desta ficha. */
@@ -206,6 +208,7 @@ export function Grafico({
   barras,
   eventos,
   destaque,
+  janelaDepois = 14,
   classeDeAltura = "h-[340px] md:h-[500px]",
   alertas = [],
   escolhendoPreco = false,
@@ -269,6 +272,7 @@ export function Grafico({
   const marcadoresDeBalanco = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const marcadoresDeSetup = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const linhasDeNivel = useRef<ISeriesApi<"Line">[]>([]);
+
   const linhaDoPM = useRef<IPriceLine | null>(null);
   // Cores da superficie para o rotulo da regua (HTML por cima do canvas, nao
   // desenhado pelo lightweight-charts). Estado, nao ref -- o render le para
@@ -290,9 +294,14 @@ export function Grafico({
   // precisasse, cada render do pai reassinaria o evento e remontaria o grafico.
   const aoEscolher = useRef(aoEscolherPreco);
   const escolhendo = useRef(escolhendoPreco);
+  // A janela depois do destaque tambem vai por ref: mudar so ela nao pode
+  // reconstruir o grafico sem os efeitos de bandas e marcadores rodarem junto.
+  // Ela muda sempre com o `destaque`, que ja reconstroi.
+  const janelaDepoisRef = useRef(janelaDepois);
   useEffect(() => {
     aoEscolher.current = aoEscolherPreco;
     escolhendo.current = escolhendoPreco;
+    janelaDepoisRef.current = janelaDepois;
   });
 
   // Tela de toque ou caneta: muda so o texto da dica da regua ("toque e
@@ -459,7 +468,7 @@ export function Grafico({
       const i = barras.findIndex((b) => b.tradeDate === destaque);
       if (i >= 0) {
         const de = Math.max(0, i - 40);
-        const ate = Math.min(barras.length - 1, i + 14);
+        const ate = Math.min(barras.length - 1, i + janelaDepoisRef.current);
         c.timeScale().setVisibleRange({
           from: barras[de].tradeDate as Time,
           to: barras[ate].tradeDate as Time,

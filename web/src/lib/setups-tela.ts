@@ -81,6 +81,17 @@ export const LETRA_DO_PADRAO: Record<string, string> = {
   forca: "F",
 };
 
+/**
+ * Link da ficha centrado no candle do setup.
+ *
+ * `?foco=` e nao `?data=`: a ficha le `data` como o EVENTO de volume a abrir, e
+ * o dia do setup quase nunca e evento -- ai ela caia no evento mais recente do
+ * papel e o grafico pulava para meses atras (incidente de 21/10/2026).
+ */
+export function linkDaFicha(s: Pick<Setup, "ticker" | "tradeDate">): string {
+  return `/papel/${s.ticker}?foco=${s.tradeDate}`;
+}
+
 export function nomeDosPadroes(s: Pick<Setup, "padroes">): string {
   return s.padroes.map((p) => NOME_DO_PADRAO[p] ?? p).join(" + ");
 }

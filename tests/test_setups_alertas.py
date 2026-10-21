@@ -217,3 +217,16 @@ def test_religar_tira_a_validade(engine: Engine) -> None:
         assert alerta_id in ativo and ativo[alerta_id].expira_em is None
     finally:
         apagar_alerta(engine, alerta_id)
+
+
+def test_links_do_setup_centram_no_candle_e_nao_no_evento() -> None:
+    """Regressao de 21/10/2026: com `?data=` a ficha abria no evento mais recente.
+
+    O dia do setup quase nunca e evento de volume; a ficha caia no ultimo evento
+    do papel e o grafico pulava para meses antes.
+    """
+    confirmado = format_rompimento(_disparo(SETUP), BASE)
+    resumo = _resumo_com(pd.DataFrame([SETUP]))
+    for texto in (confirmado, resumo):
+        assert f"{BASE}/papel/SAPR11?foco=2026-10-20" in texto
+        assert "?data=" not in texto

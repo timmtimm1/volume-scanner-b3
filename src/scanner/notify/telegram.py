@@ -431,6 +431,18 @@ NOME_DO_PADRAO = {
 }
 
 
+def nome_da_media(tipo: str) -> str:
+    """mme9 -> MME 9; mme9,mma20 -> MME 9 e MMA 20."""
+    nomes = [f"{t[:3].upper()} {t[3:]}" for t in tipo.split(",") if t]
+    return " e ".join(nomes)
+
+
+def _onde(setup: Mapping[str, Any]) -> str:
+    """' na MME 9' para o setup na media; vazio no suporte horizontal."""
+    tipo = str(setup.get("suporte_tipo") or "nivel")
+    return "" if tipo == "nivel" else f" na {nome_da_media(tipo)}"
+
+
 def _padroes(setup: Mapping[str, Any]) -> str:
     nomes = [NOME_DO_PADRAO.get(str(p), str(p)) for p in (setup.get("padroes") or [])]
     return " + ".join(nomes) or "candle"
@@ -465,7 +477,7 @@ def format_setup_confirmado(payload: Mapping[str, Any], base_url: str | None = N
     destaque = " · destaque" if setup.get("destaque") else ""
     linhas = [
         f"🎯 <b>{ticker} confirmou o setup</b>",
-        f"passou da máxima do {_padroes(setup)}{dia}"
+        f"passou da máxima do {_padroes(setup)}{_onde(setup)}{dia}"
         f" ({money_simples(_numero(setup.get('maxima')))})",
         f"{money_simples(payload.get('preco'))}{quando} · {payload.get('fonte', '-')}",
         f"mínima do padrão {money_simples(_numero(setup.get('minima')))}"
@@ -491,9 +503,10 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
     candles anteriores que passaram da maxima hoje.
     """
     armados = list(setups.get("armados") or [])
+    media = list(setups.get("media") or [])
     forca = list(setups.get("forca") or [])
     confirmados = list(setups.get("confirmados") or [])
-    if not (armados or forca or confirmados):
+    if not (armados or media or forca or confirmados):
         return []
 
     def papel(linha: Mapping[str, Any]) -> str:
@@ -503,18 +516,23 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
             return f'<a href="{chart_url(base_url, ticker, candle, foco=True)}">{ticker}</a>'
         return ticker
 
+    def item(s: Mapping[str, Any]) -> str:
+        marca = "★" if s.get("destaque") else "▲"
+        return (
+            f"{marca} <b>{papel(s)}</b> {_padroes(s)}{_onde(s)}"
+            f" · volume {br(_numero(s.get('rvol')) or 0, 1)}×"
+            f" · acima de {money_simples(_numero(s.get('maxima')))}"
+            f" · mínima {money_simples(_numero(s.get('minima')))}"
+            f" ({br(_numero(s.get('risco_pct')) or 0, 1)}%) · {_espaco(s)}"
+        )
+
     partes = [""]
     if armados:
         partes.append("<b>Setups armados</b> · confirmam se o próximo pregão passar da máxima")
-        for s in armados:
-            marca = "★" if s.get("destaque") else "▲"
-            partes.append(
-                f"{marca} <b>{papel(s)}</b> {_padroes(s)}"
-                f" · volume {br(_numero(s.get('rvol')) or 0, 1)}×"
-                f" · acima de {money_simples(_numero(s.get('maxima')))}"
-                f" · mínima {money_simples(_numero(s.get('minima')))}"
-                f" ({br(_numero(s.get('risco_pct')) or 0, 1)}%) · {_espaco(s)}"
-            )
+        partes += [item(s) for s in armados]
+    if media:
+        partes.append("<b>Na média</b> (tendência de alta) · mesma confirmação")
+        partes += [item(s) for s in media]
     if forca:
         nomes = ", ".join(papel(s) for s in forca)
         partes.append(f"<i>Candle de força (não passou na conferência):</i> {nomes}")

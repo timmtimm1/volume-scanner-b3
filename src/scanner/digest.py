@@ -186,6 +186,7 @@ def payload_do_resumo(
         confirmados = setups[setups["confirmado_em"] == resumo.trade_date]
         payload["setups"] = {
             "armados": armados[armados["categoria"] == "reversao"].to_dict("records"),
+            "media": armados[armados["categoria"] == "media"].to_dict("records"),
             "forca": armados[armados["categoria"] == "forca"].to_dict("records"),
             "confirmados": confirmados.to_dict("records"),
         }

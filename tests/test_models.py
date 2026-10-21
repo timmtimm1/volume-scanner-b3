@@ -46,6 +46,9 @@ def test_nomes_das_tabelas() -> None:
     # uma taxa por semana e por serie (Tesouro Direto e Selic meta).
     # `arranjos` (migration 0012) guarda o arranjo das caixas de cada pagina do
     # site, escolhido pelo dono; so o site escreve, o pipeline nao toca.
+    # `setups` e `niveis` (migration 0013) sao a aba Setups: o ciclo de vida de
+    # cada candle de reversao filtrado, e os segmentos de suporte/resistencia
+    # que a ficha desenha (derivada, trocada a cada pregao).
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -67,6 +70,8 @@ def test_nomes_das_tabelas() -> None:
         "resumos_semanais",
         "juros_historico",
         "arranjos",
+        "setups",
+        "niveis",
     }
 
 

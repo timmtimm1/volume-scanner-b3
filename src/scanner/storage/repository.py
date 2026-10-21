@@ -13,10 +13,21 @@ import json
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, NamedTuple
+from typing import Any, NamedTuple, cast
 
 import pandas as pd
-from sqlalchemy import Connection, Engine, delete, func, select, text, tuple_, update
+from sqlalchemy import (
+    Connection,
+    Engine,
+    Table,
+    bindparam,
+    delete,
+    func,
+    select,
+    text,
+    tuple_,
+    update,
+)
 from sqlalchemy.dialects.postgresql import insert
 
 from scanner.features import FEATURE_COLUMNS
@@ -37,8 +48,10 @@ from scanner.storage.models import (
     Event,
     FundamentoTrimestre,
     JurosHistorico,
+    Nivel,
     PriceAlert,
     ResumoSemanal,
+    Setup,
     Trade,
     TradeOperacao,
     TradeSnapshot,
@@ -1620,3 +1633,73 @@ def balancos_do_ano_anterior(
     with engine.connect() as conn:
         linhas = conn.execute(stmt, params).all()
     return pd.DataFrame(linhas, columns=colunas)
+
+
+# ---------------------------------------------------------------------------
+# Setups (aba Setups) e niveis de suporte/resistencia (ficha)
+# ---------------------------------------------------------------------------
+
+ESTADOS_ABERTOS = ("armado", "confirmado")
+
+
+def ultimo_setup(engine: Engine) -> date | None:
+    """O dia do candle mais recente ja gravado; None com a tabela vazia (estreia)."""
+    with engine.connect() as conn:
+        valor = conn.execute(select(func.max(Setup.trade_date))).scalar()
+    return valor if isinstance(valor, date) else None
+
+
+def inserir_setups(engine: Engine, frame: pd.DataFrame) -> int:
+    """Grava setups novos. O que ja existe fica como estava: a linha e congelada."""
+    if frame.empty:
+        return 0
+    linhas = _registros_sql(frame)
+    stmt = insert(Setup).on_conflict_do_nothing(constraint="uq_setups_papel_dia")
+    with engine.begin() as conn:
+        resultado = conn.execute(stmt.returning(Setup.id), linhas)
+        return len(resultado.fetchall())
+
+
+def carregar_setups(
+    engine: Engine, *, abertos: bool = False, desde: date | None = None
+) -> pd.DataFrame:
+    """Setups gravados, como DataFrame. `abertos` = armados e confirmados."""
+    stmt = select(Setup.__table__)
+    if abertos:
+        stmt = stmt.where(Setup.estado.in_(ESTADOS_ABERTOS))
+    if desde is not None:
+        stmt = stmt.where(Setup.trade_date >= desde)
+    with engine.connect() as conn:
+        frame = pd.DataFrame(
+            conn.execute(stmt.order_by(Setup.trade_date, Setup.ticker)).mappings().all()
+        )
+    if frame.empty:
+        return pd.DataFrame({c.name: pd.Series(dtype="object") for c in Setup.__table__.columns})
+    return frame
+
+
+def atualizar_setups(engine: Engine, frame: pd.DataFrame) -> int:
+    """Atualiza setups pelo id com as colunas do `frame` (todas, inclusive nulas)."""
+    if frame.empty:
+        return 0
+    tabela = cast(Table, Setup.__table__)
+    colunas = [c for c in frame.columns if c != "id"]
+    stmt = (
+        update(tabela)
+        .where(tabela.c.id == bindparam("_id"))
+        .values({c: bindparam(c) for c in colunas} | {"atualizado_em": func.now()})
+    )
+    linhas = _registros_sql(frame.rename(columns={"id": "_id"}))
+    with engine.begin() as conn:
+        conn.execute(stmt, linhas)
+    return len(linhas)
+
+
+def trocar_niveis(engine: Engine, frame: pd.DataFrame) -> int:
+    """Troca a tabela de niveis pela recem-calculada (tabela derivada, como os trimestres)."""
+    linhas = _registros_sql(frame) if not frame.empty else []
+    with engine.begin() as conn:
+        conn.execute(delete(Nivel))
+        if linhas:
+            conn.execute(insert(Nivel), linhas)
+    return len(linhas)

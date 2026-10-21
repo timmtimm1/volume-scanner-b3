@@ -517,6 +517,8 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
             f"{papel(s)} ({money_simples(_numero(s.get('entrada')))})" for s in confirmados
         )
         partes.append(f"<b>Confirmados hoje:</b> {nomes}")
+    if base_url:
+        partes.append(f'<a href="{base_url.rstrip("/")}/setups/">abrir setups</a>')
     return partes
 
 

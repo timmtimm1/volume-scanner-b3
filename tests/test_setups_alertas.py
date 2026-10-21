@@ -108,6 +108,7 @@ def test_resumo_ganha_o_bloco_de_setups_armados() -> None:
     assert "Candle de força (não passou na conferência)" in texto and "CYRE4" in texto
     assert "Confirmados hoje:" in texto and "VBBR3" in texto and "R$ 36,98" in texto
     assert texto.count("<pre>") == 1  # so a tabela de sempre; o bloco novo e lista
+    assert f'<a href="{BASE}/setups/">abrir setups</a>' in texto
 
 
 def test_resumo_sem_setups_fica_igual() -> None:

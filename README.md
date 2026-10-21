@@ -1337,6 +1337,32 @@ ou completar 20 pregões. Fica na tabela `setups`, gravada uma vez por noite (o
 que foi mostrado não muda depois); os níveis que a ficha desenha ficam em
 `niveis`, refeita a cada pregão. É a etapa 6/8 do `scanner daily`.
 
+### A aba e a ficha
+
+A aba **Setups** (`/setups`, só para quem está logado, como Trades e Alertas)
+tem quatro partes:
+
+- **Armados**: os candles do último pregão, cada um com o preço que confirma
+  (a máxima), a mínima do padrão e o risco, a resistência e o espaço até ela,
+  o suporte com os toques, o volume (com estrela a partir de 2,5×) e a situação
+  do alerta de confirmação;
+- **Em andamento**: os confirmados, com a entrada, o último fechamento, quanto
+  andou desde a entrada, a folga até a mínima do padrão e o "pregão N de 20";
+- **Candle de força**, numa lista compacta à parte, com o aviso de que não
+  passou na conferência do estudo;
+- **Histórico**: os encerrados, com o retorno contra o mercado em 5, 10 e 20
+  pregões e desde a entrada. Os retroativos (calculados na estreia) aparecem
+  marcados e somem com "Só ao vivo"; o resumo de cima separa os dois, porque
+  só o ao vivo é conferência de verdade.
+
+Na **ficha** de todo papel, o gráfico ganha as linhas de suporte (ciano) e
+resistência (laranja), lidas da tabela `niveis` no build: pontilhadas antes do
+3º toque, tracejadas quando o nível trocou de papel, mais grossas enquanto
+valem. Um botão esconde todas. As linhas não entram na escala do gráfico — um
+nível antigo longe do preço achataria os candles. Para quem está logado, as
+setas dos setups aparecem embaixo do candle (M martelo, L libélula, E engolfo,
+P piercing, ★ estrela, F força; maior no destaque).
+
 ### O alerta de confirmação e o resumo
 
 Cada setup armado ganha, na mesma noite, um alerta de rompimento um centavo
@@ -1352,7 +1378,7 @@ Setup que entra atrasado (a estreia, ou uma noite que falhou) não ganha alerta:
 o pregão da confirmação já passou. O candle de força também não, porque não
 passou na conferência do estudo (`alerta_forca: false` no `config.yaml`).
 
-O resumo diário ganha o bloco "Setups armados" quando há o que mostrar: cada
+O resumo diário ganha o bloco "Setups armados" (com link para a aba) quando há o que mostrar: cada
 papel com o padrão, o volume, o preço que confirma, a mínima do padrão e a
 resistência; o candle de força numa linha à parte, com o aviso; e os setups que
 confirmaram no pregão. Lista, sem `<pre>`: no iPhone o bloco de código cobre os

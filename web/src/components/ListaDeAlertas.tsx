@@ -60,7 +60,7 @@ export function ListaDeAlertas({ iniciais }: { iniciais: Alerta[] }) {
   }
 
   const ativos = alertas.filter((a) => a.ativo).length;
-  const disparados = alertas.length - ativos;
+  const disparados = alertas.filter((a) => !a.ativo && !a.vencido).length;
 
   return (
     <section className="cartao flex flex-col gap-3 p-4 md:p-5">
@@ -99,6 +99,14 @@ export function ListaDeAlertas({ iniciais }: { iniciais: Alerta[] }) {
             >
               {a.ticker}
             </Link>
+            {a.setupId !== null && (
+              <span
+                className="rounded-md bg-selecao px-1.5 py-0.5 text-[10px] font-bold uppercase tracking-wide text-acento md:hidden"
+                title="Criado pela aba Setups: confirma se passar da máxima do candle"
+              >
+                setup
+              </span>
+            )}
             <span className="text-[13px] font-semibold text-tinta-2">
               {a.direcao === "acima" ? "Subir até" : "Cair até"}
             </span>
@@ -108,6 +116,17 @@ export function ListaDeAlertas({ iniciais }: { iniciais: Alerta[] }) {
                 <span className="inline-flex items-center gap-2 text-acento">
                   <span className="h-2 w-2 rounded-full bg-acento" />
                   vigiando
+                  {a.expiraEm && (
+                    <span className="num font-semibold text-tinta-3">
+                      até {fmtData(a.expiraEm)}
+                      {a.setupId !== null && " · setup"}
+                    </span>
+                  )}
+                </span>
+              ) : a.vencido ? (
+                <span className="text-tinta-3">
+                  venceu em <span className="num">{fmtData(a.expiraEm ?? "")}</span> sem romper
+                  {a.setupId !== null && " · setup não confirmou"}
                 </span>
               ) : (
                 <>

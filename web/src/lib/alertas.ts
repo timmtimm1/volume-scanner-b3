@@ -12,6 +12,7 @@
 
 import { conexaoDeAlertas } from "./db";
 import { TICKER } from "./ticker";
+import { alertaVencido, hojeNaB3 } from "./validade";
 
 export type Direcao = "acima" | "abaixo";
 
@@ -25,6 +26,13 @@ export type Alerta = {
   disparadoEm: string | null;
   precoDisparo: number | null;
   fonteDisparo: string | null;
+  /** Ultimo pregao em que vale (alerta do setup); null = sem validade. */
+  expiraEm: string | null;
+  /** O setup que criou o alerta; null nos manuais. */
+  setupId: number | null;
+  /** Tinha validade e ela passou sem disparar. */
+  vencido: boolean;
+  /** Ainda vigiando: nao disparou e nao venceu. */
   ativo: boolean;
 };
 
@@ -38,6 +46,10 @@ type Linha = {
   disparado_em: Date | string | null;
   preco_disparo: string | number | null;
   fonte_disparo: string | null;
+  // Opcionais: o banco ganha estas colunas na migration 0014. Ate ela rodar,
+  // o `SELECT *` simplesmente nao as traz, e o alerta vale como manual.
+  expira_em?: Date | string | null;
+  setup_id?: string | number | null;
 };
 
 function dia(v: Date | string): string {
@@ -50,6 +62,8 @@ function dia(v: Date | string): string {
 }
 
 function paraAlerta(r: Linha): Alerta {
+  const expiraEm = r.expira_em ? dia(r.expira_em) : null;
+  const vencido = r.disparado_em === null && alertaVencido(expiraEm, hojeNaB3());
   return {
     id: Number(r.id),
     ticker: r.ticker,
@@ -60,12 +74,16 @@ function paraAlerta(r: Linha): Alerta {
     disparadoEm: r.disparado_em ? new Date(r.disparado_em).toISOString() : null,
     precoDisparo: r.preco_disparo === null ? null : Number(r.preco_disparo),
     fonteDisparo: r.fonte_disparo,
-    ativo: r.disparado_em === null,
+    expiraEm,
+    setupId: r.setup_id === null || r.setup_id === undefined ? null : Number(r.setup_id),
+    vencido,
+    ativo: r.disparado_em === null && !vencido,
   };
 }
 
-const COLUNAS = `id, ticker, trade_date, preco, direcao, criado_em,
-                 disparado_em, preco_disparo, fonte_disparo`;
+// `*` e nao uma lista: assim o site funciona antes e depois da migration 0014,
+// que acrescenta `expira_em` e `setup_id` (o deploy do site nao espera o banco).
+const COLUNAS = "*";
 
 export async function listarAlertas(ticker?: string): Promise<Alerta[]> {
   const filtro = ticker ? "WHERE ticker = $1" : "";
@@ -156,11 +174,15 @@ export async function moverAlerta(
   return rows.length ? paraAlerta(rows[0]) : null;
 }
 
-/** Religa um alerta ja disparado, limpando o registro do disparo. */
+/**
+ * Religa um alerta ja disparado (ou vencido), limpando o registro do disparo.
+ * Tira tambem a validade: o alerta vencido de um setup volta como manual.
+ */
 export async function reativarAlerta(id: number): Promise<Alerta | null> {
   const { rows } = await conexaoDeAlertas().query<Linha>(
     `UPDATE volume_scanner.price_alerts
-        SET disparado_em = NULL, preco_disparo = NULL, fonte_disparo = NULL
+        SET disparado_em = NULL, preco_disparo = NULL, fonte_disparo = NULL,
+            expira_em = NULL
       WHERE id = $1 RETURNING ${COLUNAS}`,
     [id],
   );

@@ -162,7 +162,7 @@ export function PainelDeAlerta({
               )}
             </span>
             <span className={`text-[12px] font-bold ${a.ativo ? "text-acento" : "text-tinta-3"}`}>
-              {a.ativo ? "vigiando" : "disparou"}
+              {a.ativo ? "vigiando" : a.vencido ? "venceu" : "disparou"}
             </span>
             <button
               type="button"

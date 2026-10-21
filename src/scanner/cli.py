@@ -613,13 +613,16 @@ def alerta_list(
     if not alertas:
         typer.echo("nenhum alerta")
         return
+    hoje = hoje_na_b3()
     for a in alertas:
-        estado = (
-            "ativo"
-            if a.ativo
-            else f"disparou em {a.disparado_em:%d/%m %H:%M} a R$ {a.preco_disparo}"
-        )
-        typer.echo(f"{a.id:>4}  {a.ticker:<8} {a.direcao:<6} R$ {a.preco:>9}  {estado}")
+        if a.disparado_em is not None:
+            estado = f"disparou em {a.disparado_em:%d/%m %H:%M} a R$ {a.preco_disparo}"
+        elif a.vale_em(hoje):
+            estado = "ativo" + (f" ate {a.expira_em:%d/%m}" if a.expira_em else "")
+        else:
+            estado = f"venceu em {a.expira_em:%d/%m}"
+        origem = "  (setup)" if a.setup_id is not None else ""
+        typer.echo(f"{a.id:>4}  {a.ticker:<8} {a.direcao:<6} R$ {a.preco:>9}  {estado}{origem}")
 
 
 @alerta_app.command("rm")

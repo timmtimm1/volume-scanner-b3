@@ -23,6 +23,7 @@ from sqlalchemy import (
     bindparam,
     delete,
     func,
+    or_,
     select,
     text,
     tuple_,
@@ -30,6 +31,7 @@ from sqlalchemy import (
 )
 from sqlalchemy.dialects.postgresql import insert
 
+from scanner.calendar import hoje_na_b3
 from scanner.features import FEATURE_COLUMNS
 from scanner.fundamentos.cvm import Extracao
 from scanner.ingest.cotahist import BAR_COLUMNS
@@ -521,6 +523,8 @@ _ALERTA_COLUNAS = (
     PriceAlert.disparado_em,
     PriceAlert.preco_disparo,
     PriceAlert.fonte_disparo,
+    PriceAlert.expira_em,
+    PriceAlert.setup_id,
 )
 
 
@@ -537,11 +541,20 @@ def _para_alerta(linha: Any) -> Alerta:
         disparado_em=linha.disparado_em,
         preco_disparo=linha.preco_disparo,
         fonte_disparo=linha.fonte_disparo,
+        expira_em=linha.expira_em,
+        setup_id=None if linha.setup_id is None else int(linha.setup_id),
     )
 
 
 def criar_alerta(
-    engine: Engine, ticker: str, trade_date: date, preco: Decimal, direcao: str
+    engine: Engine,
+    ticker: str,
+    trade_date: date,
+    preco: Decimal,
+    direcao: str,
+    *,
+    expira_em: date | None = None,
+    setup_id: int | None = None,
 ) -> int:
     """Grava um alerta novo e devolve o id.
 
@@ -558,6 +571,8 @@ def criar_alerta(
             trade_date=trade_date,
             preco=preco,
             direcao=direcao,
+            expira_em=expira_em,
+            setup_id=setup_id,
         )
         .returning(PriceAlert.id)
     )
@@ -565,9 +580,17 @@ def criar_alerta(
         return int(conn.execute(statement).scalar_one())
 
 
-def alertas_ativos(engine: Engine) -> list[Alerta]:
-    """Os que ainda nao dispararam -- o que o job de 15 minutos consulta."""
-    stmt = select(*_ALERTA_COLUNAS).where(PriceAlert.disparado_em.is_(None))
+def alertas_ativos(engine: Engine, hoje: date | None = None) -> list[Alerta]:
+    """Os que ainda nao dispararam e valem hoje -- o que a checagem consulta.
+
+    Alerta com validade (`expira_em`, o do setup) sai da lista depois do
+    ultimo pregao em que vale, mesmo sem ter disparado.
+    """
+    dia = hoje if hoje is not None else hoje_na_b3()
+    stmt = select(*_ALERTA_COLUNAS).where(
+        PriceAlert.disparado_em.is_(None),
+        or_(PriceAlert.expira_em.is_(None), PriceAlert.expira_em >= dia),
+    )
     with engine.connect() as conn:
         return [_para_alerta(linha) for linha in conn.execute(stmt)]
 
@@ -605,7 +628,8 @@ def reativar_alerta(engine: Engine, alerta_id: int) -> bool:
     stmt = (
         update(PriceAlert)
         .where(PriceAlert.id == alerta_id)
-        .values(disparado_em=None, preco_disparo=None, fonte_disparo=None)
+        # Religar tira a validade: o alerta vencido do setup volta como manual.
+        .values(disparado_em=None, preco_disparo=None, fonte_disparo=None, expira_em=None)
     )
     with engine.begin() as conn:
         return conn.execute(stmt).rowcount > 0
@@ -1649,15 +1673,54 @@ def ultimo_setup(engine: Engine) -> date | None:
     return valor if isinstance(valor, date) else None
 
 
-def inserir_setups(engine: Engine, frame: pd.DataFrame) -> int:
-    """Grava setups novos. O que ja existe fica como estava: a linha e congelada."""
+def gravar_setups(engine: Engine, frame: pd.DataFrame) -> pd.DataFrame:
+    """Grava setups novos e devolve as linhas que de fato entraram, com id.
+
+    O que ja existe fica como estava (a linha e congelada) e nao volta: e assim
+    que o alerta do setup nasce uma vez so, mesmo rodando a mesma noite duas vezes.
+    """
+    vazio = pd.DataFrame({"id": pd.Series(dtype="int64"), "ticker": pd.Series(dtype=str)})
     if frame.empty:
-        return 0
-    linhas = _registros_sql(frame)
-    stmt = insert(Setup).on_conflict_do_nothing(constraint="uq_setups_papel_dia")
+        return vazio
+    stmt = (
+        insert(Setup)
+        .on_conflict_do_nothing(constraint="uq_setups_papel_dia")
+        .returning(Setup.id, Setup.ticker, Setup.trade_date, Setup.categoria)
+    )
     with engine.begin() as conn:
-        resultado = conn.execute(stmt.returning(Setup.id), linhas)
-        return len(resultado.fetchall())
+        linhas = [dict(r._mapping) for r in conn.execute(stmt, _registros_sql(frame)).all()]
+    if not linhas:
+        return vazio
+    chaves = pd.DataFrame(linhas)
+    return chaves.merge(frame, on=["ticker", "trade_date", "categoria"], how="left")
+
+
+def setups_por_id(engine: Engine, ids: Sequence[int]) -> pd.DataFrame:
+    """Os setups pedidos, para a mensagem do alerta que disparou."""
+    if not ids:
+        return carregar_setups(engine).head(0)
+    stmt = select(Setup.__table__).where(Setup.id.in_(list(ids)))
+    with engine.connect() as conn:
+        return pd.DataFrame(conn.execute(stmt).mappings().all())
+
+
+def setups_do_resumo(engine: Engine, dia: date) -> pd.DataFrame:
+    """O que o resumo do pregao mostra: armados no dia e confirmados no dia.
+
+    Armado = candle deste pregao, visto ao vivo. Confirmado = setup de um
+    candle anterior cujo pregao seguinte foi este.
+    """
+    stmt = select(Setup.__table__).where(
+        or_(
+            (Setup.trade_date == dia) & Setup.ao_vivo,
+            Setup.confirmado_em == dia,
+        )
+    )
+    with engine.connect() as conn:
+        frame = pd.DataFrame(conn.execute(stmt.order_by(Setup.rvol.desc())).mappings().all())
+    if frame.empty:
+        return carregar_setups(engine).head(0)
+    return frame
 
 
 def carregar_setups(

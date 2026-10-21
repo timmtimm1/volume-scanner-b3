@@ -129,7 +129,9 @@ def montar_resumo(
     )
 
 
-def payload_do_resumo(resumo: Resumo, trades: pd.DataFrame | None = None) -> dict[str, Any]:
+def payload_do_resumo(
+    resumo: Resumo, trades: pd.DataFrame | None = None, setups: pd.DataFrame | None = None
+) -> dict[str, Any]:
     """Converte o resumo no formato que a mensagem espera.
 
     Os nomes das chaves sao os do dia a dia, nao os das colunas do banco: quem
@@ -137,7 +139,8 @@ def payload_do_resumo(resumo: Resumo, trades: pd.DataFrame | None = None) -> dic
 
     `trades` e opcional e de proposito: quem monta o payload sem chamar
     `trades_do_pregao` (a maioria dos testes) continua recebendo exatamente o
-    payload de antes, sem a chave `trades`.
+    payload de antes, sem a chave `trades`. `setups` (o que `setups_do_resumo`
+    devolve) segue a mesma ideia: sem nada a mostrar, nao ha chave.
     """
 
     def valor(bruto: Any) -> float | None:
@@ -176,6 +179,17 @@ def payload_do_resumo(resumo: Resumo, trades: pd.DataFrame | None = None) -> dic
             )
         payload["trades"] = linhas_trades
 
+    if setups is not None and not setups.empty:
+        armados = setups[
+            (setups["trade_date"] == resumo.trade_date) & (setups["estado"] == "armado")
+        ]
+        confirmados = setups[setups["confirmado_em"] == resumo.trade_date]
+        payload["setups"] = {
+            "armados": armados[armados["categoria"] == "reversao"].to_dict("records"),
+            "forca": armados[armados["categoria"] == "forca"].to_dict("records"),
+            "confirmados": confirmados.to_dict("records"),
+        }
+
     return payload
 
 
@@ -210,7 +224,12 @@ def run_resumo(
     banco quando a mensagem de fato vai ser montada -- nao ha por que consultar
     `trade_snapshots` num pregao sem resumo ou sem notificador.
     """
-    from scanner.storage.repository import digest_enviado, marcar_digest_enviado, trades_do_pregao
+    from scanner.storage.repository import (
+        digest_enviado,
+        marcar_digest_enviado,
+        setups_do_resumo,
+        trades_do_pregao,
+    )
 
     ctx = carregar_contexto(engine, config, bars=bars) if contexto is None else contexto
     if ctx.vazio:
@@ -229,13 +248,15 @@ def run_resumo(
 
     if dry_run:
         trades = trades_do_pregao(engine, trade_date)
-        notifier.send_resumo(payload_do_resumo(resumo, trades))
+        setups = setups_do_resumo(engine, trade_date)
+        notifier.send_resumo(payload_do_resumo(resumo, trades, setups))
         return resumo
 
     if digest_enviado(engine, trade_date):
         return replace(resumo, repetido=True)
 
     trades = trades_do_pregao(engine, trade_date)
-    if notifier.send_resumo(payload_do_resumo(resumo, trades)):
+    setups = setups_do_resumo(engine, trade_date)
+    if notifier.send_resumo(payload_do_resumo(resumo, trades, setups)):
         marcar_digest_enviado(engine, trade_date)
     return resumo

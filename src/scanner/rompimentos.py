@@ -39,10 +39,18 @@ class Alerta:
     disparado_em: datetime | None = None
     preco_disparo: Decimal | None = None
     fonte_disparo: str | None = None
+    # Ultimo pregao em que vale; nulo = sem validade (alerta manual).
+    expira_em: date | None = None
+    # O setup que criou o alerta (aba Setups); nulo nos manuais.
+    setup_id: int | None = None
 
     @property
     def ativo(self) -> bool:
         return self.disparado_em is None
+
+    def vale_em(self, dia: date) -> bool:
+        """Ativo e dentro da validade (o alerta do setup so vale um pregao)."""
+        return self.ativo and (self.expira_em is None or dia <= self.expira_em)
 
 
 @dataclass(frozen=True)
@@ -134,9 +142,13 @@ def selecionar_disparos(alertas: list[Alerta], cotacoes: dict[str, Cotacao]) -> 
     ]
 
 
-def payload_do_disparo(disparo: Disparo) -> dict[str, Any]:
-    """O que a mensagem do Telegram precisa saber."""
-    return {
+def payload_do_disparo(disparo: Disparo, setup: dict[str, Any] | None = None) -> dict[str, Any]:
+    """O que a mensagem do Telegram precisa saber.
+
+    `setup` vem quando o alerta nasceu de um setup da aba Setups: a mensagem
+    vira "confirmou o setup", com a minima do padrao e a resistencia.
+    """
+    payload: dict[str, Any] = {
         "ticker": disparo.alerta.ticker,
         "direcao": disparo.alerta.direcao,
         "nivel": float(disparo.alerta.preco),
@@ -146,6 +158,9 @@ def payload_do_disparo(disparo: Disparo) -> dict[str, Any]:
         "criado_em": disparo.alerta.criado_em,
         "trade_date": disparo.alerta.trade_date,
     }
+    if setup is not None:
+        payload["setup"] = setup
+    return payload
 
 
 def checar_rompimentos(
@@ -165,20 +180,29 @@ def checar_rompimentos(
 
     `hoje` existe para os testes fixarem o dia; em producao e o dia em Sao Paulo.
     """
-    from scanner.storage.repository import alertas_ativos, marcar_disparado
+    from scanner.storage.repository import alertas_ativos, marcar_disparado, setups_por_id
 
-    alertas = alertas_ativos(engine)
+    dia = hoje if hoje is not None else hoje_na_b3()
+    alertas = alertas_ativos(engine, dia)
     if not alertas:
         return RelatorioDeChecagem(0, 0, 0, 0)
 
     tickers = sorted({a.ticker for a in alertas})
     recebidas = provedor.cotacoes(tickers)
-    cotacoes = cotacoes_de_hoje(recebidas, hoje if hoje is not None else hoje_na_b3())
+    cotacoes = cotacoes_de_hoje(recebidas, dia)
     disparos = selecionar_disparos(alertas, cotacoes)
+    ids = sorted({d.alerta.setup_id for d in disparos if d.alerta.setup_id is not None})
+    setups: dict[int, dict[str, Any]] = {
+        int(linha["id"]): {str(k): v for k, v in linha.items()}
+        for linha in setups_por_id(engine, ids).to_dict("records")
+    }
 
     enviados = 0
     for disparo in disparos:
-        if notifier is not None and not notifier.send_rompimento(payload_do_disparo(disparo)):
+        setup = setups.get(disparo.alerta.setup_id) if disparo.alerta.setup_id else None
+        if notifier is not None and not notifier.send_rompimento(
+            payload_do_disparo(disparo, setup)
+        ):
             continue
         if not dry_run:
             marcar_disparado(

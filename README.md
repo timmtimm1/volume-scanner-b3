@@ -1337,6 +1337,27 @@ ou completar 20 pregões. Fica na tabela `setups`, gravada uma vez por noite (o
 que foi mostrado não muda depois); os níveis que a ficha desenha ficam em
 `niveis`, refeita a cada pregão. É a etapa 6/8 do `scanner daily`.
 
+### O alerta de confirmação e o resumo
+
+Cada setup armado ganha, na mesma noite, um alerta de rompimento um centavo
+acima da máxima do candle — o mesmo sistema dos alertas manuais, checado de 5
+em 5 minutos pelo `rompimentos.yml`. A diferença é a validade: o alerta do setup
+só vale no pregão seguinte ao candle (`price_alerts.expira_em`), que é quando o
+setup confirma ou não. Se disparar, a mensagem é "SAPR11 confirmou o setup",
+com a mínima do padrão, o risco e a distância até a resistência. Se o pregão
+passar sem romper, ele vence: some da checagem e aparece como "venceu" no site.
+Religar um alerta vencido tira a validade, e ele vira um alerta manual comum.
+
+Setup que entra atrasado (a estreia, ou uma noite que falhou) não ganha alerta:
+o pregão da confirmação já passou. O candle de força também não, porque não
+passou na conferência do estudo (`alerta_forca: false` no `config.yaml`).
+
+O resumo diário ganha o bloco "Setups armados" quando há o que mostrar: cada
+papel com o padrão, o volume, o preço que confirma, a mínima do padrão e a
+resistência; o candle de força numa linha à parte, com o aviso; e os setups que
+confirmaram no pregão. Lista, sem `<pre>`: no iPhone o bloco de código cobre os
+números.
+
 ### O estudo de 30 anos
 
 Antes de construir, a regra foi medida no COTAHIST de 1995 a 2026 (1,41 milhão

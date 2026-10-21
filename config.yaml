@@ -93,3 +93,5 @@ setups:
   toques_gatilho: 3
   toques_nivel: 2         # nivel existe (e e desenhado) a partir de 2 toques
   prazo_pregoes: 20       # em andamento ate 20 pregoes depois de confirmar
+  alerta: true            # alerta automatico acima da maxima, valido no pregao seguinte
+  alerta_forca: false     # candle de forca nao passou na conferencia: sem alerta

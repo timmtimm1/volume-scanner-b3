@@ -163,6 +163,7 @@ class PriceAlert(Base):
     __tablename__ = "price_alerts"
     __table_args__ = (
         Index("ix_price_alerts_ativo", "disparado_em"),
+        Index("ux_price_alerts_setup", "setup_id", unique=True),
         CheckConstraint("direcao IN ('acima', 'abaixo')", name="ck_price_alerts_direcao"),
         CheckConstraint("preco > 0", name="ck_price_alerts_preco_positivo"),
     )
@@ -182,6 +183,13 @@ class PriceAlert(Base):
     # De qual fornecedor veio a cotacao que disparou. Quando um alerta parecer
     # errado, a primeira pergunta e "que dado o sistema viu?".
     fonte_disparo: Mapped[str | None] = mapped_column(Text)
+    # Ultimo pregao em que o alerta vale (nulo = sem validade, o caso manual).
+    # O alerta do setup so vale no pregao seguinte ao candle.
+    expira_em: Mapped[date | None] = mapped_column(Date)
+    # O setup que criou o alerta; nulo nos alertas manuais.
+    setup_id: Mapped[int | None] = mapped_column(
+        BigInteger, ForeignKey(f"{SCHEMA}.setups.id", ondelete="CASCADE")
+    )
 
 
 class Trade(Base):

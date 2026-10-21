@@ -410,7 +410,7 @@ Os intervalos de 95% ainda cruzam o zero: é sinal consistente, não garantia. E
 
 ### Fases
 
-1. Motor e dados: `scanner.gatilhos`, migration 0013 (`setups`, `niveis`), etapa 6/8 do `scanner daily`.
-2. Alerta automático de rompimento na máxima de cada armado; bloco no resumo diário do Telegram.
+1. Motor e dados: `scanner.gatilhos`, migration 0013 (`setups`, `niveis`), etapa 6/8 do `scanner daily`. Feita (PR #87).
+2. Alerta automático de rompimento um centavo acima da máxima de cada armado, válido só no pregão seguinte (migration 0014: `price_alerts.expira_em` e `setup_id`); mensagem própria quando dispara; bloco "Setups armados" no resumo diário do Telegram.
 3. Site: aba Setups (só logado) e linhas de suporte/resistência com as setas na ficha.
 

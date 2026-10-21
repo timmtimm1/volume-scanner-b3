@@ -8,6 +8,7 @@ import {
   desdeAEntrada,
   nomeDosPadroes,
   resumoDoHistorico,
+  nomeDaMedia,
   separar,
   situacaoDoAlerta,
 } from "./setups-tela.ts";
@@ -29,6 +30,7 @@ function setup(campos) {
     maxima: 40,
     minima: 38.46,
     suporte: 38.5,
+    suporteTipo: "nivel",
     resistencia: 45.13,
     espacoR: 3.3,
     riscoPct: 3.85,
@@ -129,5 +131,32 @@ describe("situacaoDoAlerta", () => {
 
   it("sem alerta, nada", () => {
     assert.equal(situacaoDoAlerta(setup({}), "2026-10-21"), null);
+  });
+});
+
+describe("na media", () => {
+  it("secao propria, fora dos armados e da conferencia da regra principal", () => {
+    const lista = [
+      setup({ id: 1, estado: "armado" }),
+      setup({ id: 2, categoria: "media", suporteTipo: "mme9", estado: "armado" }),
+      setup({ id: 3, categoria: "media", suporteTipo: "mma20", estado: "confirmado", confirmadoEm: "2026-10-10" }),
+    ];
+    const s = separar(lista, false);
+    assert.deepEqual(s.armados.map((x) => x.id), [1]);
+    assert.deepEqual(s.media.map((x) => x.id), [2, 3]); // armado antes do em andamento
+    assert.deepEqual(s.emAndamento, []);
+  });
+
+  it("resumo por categoria, sem misturar", () => {
+    const fim = { estado: "stop", confirmadoEm: "2026-10-02", r: { 5: 0, 10: 0, 20: 0.02 }, m: { 5: 0, 10: 0, 20: 0 } };
+    const lista = [setup({ ...fim }), setup({ ...fim, categoria: "media", r: { 5: 0, 10: 0, 20: -0.04 } })];
+    assert.ok(Math.abs(resumoDoHistorico(lista).media20 - 0.02) < 1e-12);
+    assert.ok(Math.abs(resumoDoHistorico(lista, "media").media20 + 0.04) < 1e-12);
+  });
+
+  it("nome da media", () => {
+    assert.equal(nomeDaMedia("nivel"), null);
+    assert.equal(nomeDaMedia("mme9"), "MME 9");
+    assert.equal(nomeDaMedia("mme9,mma20"), "MME 9 e MMA 20");
   });
 });

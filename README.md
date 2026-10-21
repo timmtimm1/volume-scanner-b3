@@ -1364,6 +1364,22 @@ nível antigo longe do preço achataria os candles. Para quem está logado, as
 setas dos setups aparecem embaixo do candle (M martelo, L libélula, E engolfo,
 P piercing, ★ estrela, F força; maior no destaque).
 
+### Na média
+
+Pedido de 21/10/2026: em tendência, o recuo costuma parar na média móvel, não
+num fundo antigo. O candle de reversão que encosta na MME 9 ou na MMA 20 (as do
+gráfico) entra numa seção própria, "Na média", quando a média está subindo, o
+preço vinha fechando acima dela e o candle fecha acima. Os filtros de volume,
+contexto e espaço são os mesmos, e há alerta de confirmação. Na ficha, a seta
+desses setups toma a cor da média (rosa para a MME 9, amarelo para a MMA 20).
+
+O estudo mediu antes (`scripts/gatilhos_estudo.py medias`): no trade de
+referência confirmado, +0,24 R em 1995–2015 e +0,12 R em 2016–2026; contra o
+mercado em 20 pregões, +0,28% e −0,34%. A MME 9 sozinha foi positiva nas duas
+medidas; a MMA 20 enfraqueceu no período novo. Somar a média à regra principal
+piorou a regra, e por isso ela fica separada — com o histórico próprio, para a
+conferência ao vivo dizer se vale a pena.
+
 ### O alerta de confirmação e o resumo
 
 Cada setup armado ganha, na mesma noite, um alerta de rompimento um centavo

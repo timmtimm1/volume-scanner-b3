@@ -65,7 +65,14 @@ export type NivelDoGrafico = {
 };
 
 /** Seta de setup no candle (so logado): o dia, as letras dos padroes e o destaque. */
-export type MarcaDeSetup = { data: string; letras: string; destaque: boolean; forca: boolean };
+export type MarcaDeSetup = {
+  data: string;
+  letras: string;
+  destaque: boolean;
+  forca: boolean;
+  /** `nivel` ou as medias tocadas (`mme9`, `mma20`): a seta toma a cor da media. */
+  suporte: string;
+};
 
 export type Barra = {
   tradeDate: string;

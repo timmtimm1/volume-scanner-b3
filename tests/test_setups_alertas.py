@@ -230,3 +230,29 @@ def test_links_do_setup_centram_no_candle_e_nao_no_evento() -> None:
     for texto in (confirmado, resumo):
         assert f"{BASE}/papel/SAPR11?foco=2026-10-20" in texto
         assert "?data=" not in texto
+
+
+def test_setup_na_media_no_resumo_e_na_confirmacao() -> None:
+    media = {**SETUP, "id": 10, "ticker": "VBBR3", "categoria": "media", "suporte_tipo": "mme9"}
+    texto = _resumo_com(pd.DataFrame([media]))
+    assert "<b>Na média</b> (tendência de alta)" in texto
+    assert "martelo na MME 9" in texto
+    assert "Setups armados" not in texto  # nao se mistura com a regra principal
+    confirmado = format_rompimento(_disparo(media), BASE)
+    assert "máxima do martelo na MME 9 de 20/10" in confirmado
+
+
+@pytest.mark.db
+@pytest.mark.usefixtures("limpo")
+def test_setup_na_media_ganha_alerta_e_categoria_nova_grava_o_passado(engine: Engine) -> None:
+    from scanner.storage.models import PriceAlert, Setup
+    from tests.gatilhos_sinteticos import alta_com_martelo_na_media
+
+    noite = alta_com_martelo_na_media()
+    dia = noite["trade_date"].iloc[-1]
+    rel = run_setups(engine, ScannerConfig(), dia, bars=noite)
+    assert rel.media == ["BBBB3"] and rel.alertas == 1
+    with engine.connect() as conn:
+        linha = conn.execute(select(Setup)).one()._mapping
+        assert conn.execute(select(PriceAlert).where(PriceAlert.setup_id == linha["id"])).one()
+    assert linha["categoria"] == "media" and "mma20" in linha["suporte_tipo"]

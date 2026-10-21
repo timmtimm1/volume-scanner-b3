@@ -36,11 +36,14 @@ export function useSetupsDoPapel(ticker: string, autenticado: boolean | null): M
   return marcas;
 }
 
-export function paraMarca(s: Pick<Setup, "tradeDate" | "padroes" | "destaque" | "categoria">): MarcaDeSetup {
+export function paraMarca(
+  s: Pick<Setup, "tradeDate" | "padroes" | "destaque" | "categoria" | "suporteTipo">,
+): MarcaDeSetup {
   return {
     data: s.tradeDate,
     letras: s.padroes.map((p) => LETRA_DO_PADRAO[p] ?? "?").join(""),
     destaque: s.destaque,
     forca: s.categoria === "forca",
+    suporte: s.suporteTipo,
   };
 }

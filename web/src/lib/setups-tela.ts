@@ -23,7 +23,8 @@ export type Setup = {
   id: number;
   ticker: string;
   tradeDate: string;
-  categoria: "reversao" | "forca";
+  /** reversao: no suporte horizontal; media: na media movel em alta; forca: a parte. */
+  categoria: "reversao" | "media" | "forca";
   padroes: string[];
   toques: number;
   virou: boolean;
@@ -35,6 +36,8 @@ export type Setup = {
   maxima: number;
   minima: number;
   suporte: number;
+  /** `nivel` (suporte horizontal) ou as medias tocadas: `mme9`, `mma20`, `mme9,mma20`. */
+  suporteTipo: string;
   resistencia: number | null;
   espacoR: number | null;
   riscoPct: number;
@@ -92,6 +95,16 @@ export function linkDaFicha(s: Pick<Setup, "ticker" | "tradeDate">): string {
   return `/papel/${s.ticker}?foco=${s.tradeDate}`;
 }
 
+/** "MME 9", "MMA 20", "MME 9 e MMA 20"; null no suporte horizontal. */
+export function nomeDaMedia(tipo: string): string | null {
+  if (tipo === "nivel") return null;
+  return tipo
+    .split(",")
+    .filter(Boolean)
+    .map((t) => `${t.slice(0, 3).toUpperCase()} ${t.slice(3)}`)
+    .join(" e ");
+}
+
 export function nomeDosPadroes(s: Pick<Setup, "padroes">): string {
   return s.padroes.map((p) => NOME_DO_PADRAO[p] ?? p).join(" + ");
 }
@@ -133,6 +146,8 @@ export function rotuloDoEstado(estado: EstadoDoSetup): string {
 export type Secoes = {
   armados: Setup[];
   emAndamento: Setup[];
+  /** Na media movel em alta: armados e em andamento juntos, secao propria. */
+  media: Setup[];
   forca: Setup[];
   historico: Setup[];
 };
@@ -153,6 +168,9 @@ export function separar(setups: Setup[], comRetroativos: boolean): Secoes {
     emAndamento: reversao
       .filter((s) => s.estado === "confirmado")
       .sort((a, b) => (b.confirmadoEm ?? "").localeCompare(a.confirmadoEm ?? "")),
+    media: setups
+      .filter((s) => s.categoria === "media" && ABERTO.has(s.estado))
+      .sort((a, b) => (a.estado === b.estado ? b.rvol - a.rvol : a.estado === "armado" ? -1 : 1)),
     forca: setups.filter((s) => s.categoria === "forca" && ABERTO.has(s.estado)).sort(porVolume),
     historico: setups
       .filter((s) => !ABERTO.has(s.estado) && (comRetroativos || s.aoVivo))
@@ -168,9 +186,15 @@ export type ResumoDoHistorico = {
   comResultado: number;
 };
 
-/** Os numeros da conferencia: so candle de reversao, que e a regra da aba. */
-export function resumoDoHistorico(lista: Setup[]): ResumoDoHistorico {
-  const reversao = lista.filter((s) => s.categoria === "reversao");
+/**
+ * Os numeros da conferencia de uma categoria (padrao: a regra principal). As
+ * categorias nao se misturam: cada uma passou -- ou nao -- por um criterio.
+ */
+export function resumoDoHistorico(
+  lista: Setup[],
+  categoria: Setup["categoria"] = "reversao",
+): ResumoDoHistorico {
+  const reversao = lista.filter((s) => s.categoria === categoria);
   const resultados = reversao
     .map((s) => contraOMercado(s, 20))
     .filter((x): x is number => x !== null);

@@ -10,6 +10,7 @@ import {
   HORIZONTES,
   linkDaFicha,
   NOME_DO_CONTEXTO,
+  nomeDaMedia,
   nomeDosPadroes,
   resumoDoHistorico,
   rotuloDoEstado,
@@ -32,6 +33,10 @@ export function ListaDeSetups({ setups, hoje }: Props) {
   const aoVivo = useMemo(() => resumoDoHistorico(separar(setups, false).historico), [setups]);
   const retroativos = useMemo(
     () => resumoDoHistorico(separar(setups, true).historico.filter((s) => !s.aoVivo)),
+    [setups],
+  );
+  const mediaAoVivo = useMemo(
+    () => resumoDoHistorico(separar(setups, false).historico, "media"),
     [setups],
   );
   const ultimoPregao = setups.find((s) => s.ultimoPregao)?.ultimoPregao ?? null;
@@ -60,6 +65,20 @@ export function ListaDeSetups({ setups, hoje }: Props) {
         {secoes.emAndamento.map((s) => (
           <CartaoEmAndamento key={s.id} s={s} hoje={hoje} />
         ))}
+      </Secao>
+
+      <Secao
+        titulo="Na média"
+        subtitulo="Tendência de alta: o candle encostou na MME 9 ou na MMA 20 subindo, com o preço vindo de cima. Seção própria: no estudo, foi bem no trade de referência nos dois períodos, mas perdeu para o mercado em 2016–2026."
+        vazio="Nenhum setup na média armado ou em andamento."
+      >
+        {secoes.media.map((s) =>
+          s.estado === "armado" ? (
+            <CartaoArmado key={s.id} s={s} hoje={hoje} />
+          ) : (
+            <CartaoEmAndamento key={s.id} s={s} hoje={hoje} />
+          ),
+        )}
       </Secao>
 
       {secoes.forca.length > 0 && (
@@ -104,9 +123,10 @@ export function ListaDeSetups({ setups, hoje }: Props) {
           </button>
         </div>
 
-        <div className="grid gap-2 md:grid-cols-2">
-          <Resumo rotulo="Ao vivo, desde a estreia" r={aoVivo} />
-          <Resumo rotulo="Retroativos (calculados na estreia)" r={retroativos} />
+        <div className="grid gap-2 md:grid-cols-3">
+          <Resumo rotulo="No suporte, ao vivo" r={aoVivo} />
+          <Resumo rotulo="Na média, ao vivo" r={mediaAoVivo} />
+          <Resumo rotulo="No suporte, retroativos" r={retroativos} />
         </div>
 
         {secoes.historico.length === 0 ? (
@@ -164,7 +184,10 @@ function Cabecalho({ s }: { s: Setup }) {
       >
         {s.ticker}
       </Link>
-      <span className="text-[13px] font-bold text-tinta-2">{nomeDosPadroes(s)}</span>
+      <span className="text-[13px] font-bold text-tinta-2">
+        {nomeDosPadroes(s)}
+        {s.categoria === "media" && ` na ${nomeDaMedia(s.suporteTipo)}`}
+      </span>
       <span className="num text-[12px] font-semibold text-tinta-3">{diaCurto(s.tradeDate)}</span>
       <span className="flex-1" />
       <span
@@ -193,9 +216,10 @@ function Suporte({ s }: { s: Setup }) {
   const extra = [s.virou ? "era resistência" : null, s.furou ? "furou e voltou" : null]
     .filter(Boolean)
     .join(" · ");
+  const media = nomeDaMedia(s.suporteTipo);
   return (
-    <Linha rotulo="Suporte">
-      {reais(s.suporte)} · {s.toques} toques
+    <Linha rotulo={media ? "Suporte na média" : "Suporte"}>
+      {reais(s.suporte)} · {media ?? `${s.toques} toques`}
       {extra && <span className="block text-[11px] font-semibold text-tinta-3">{extra}</span>}
     </Linha>
   );
@@ -385,6 +409,9 @@ function Historico({ lista }: { lista: Setup[] }) {
             <span className="text-[13px] font-semibold text-tinta-2">
               {nomeDosPadroes(s)}
               {s.categoria === "forca" && <span className="text-tinta-3"> · à parte</span>}
+              {s.categoria === "media" && (
+                <span className="text-tinta-3"> · na {nomeDaMedia(s.suporteTipo)}</span>
+              )}
             </span>
             <span className="num text-[13px] font-bold md:text-right">
               {s.destaque ? "★ " : ""}

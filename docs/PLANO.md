@@ -389,6 +389,8 @@ Exceção escrita ao escopo da seção 12, pedida pelo usuário: o volume anôma
 
 O candle de força (verde largo saindo do suporte ou rompendo resistência, mesmos filtros) aparece numa seção à parte, com aviso: passou em 1995–2015 e falhou em 2016–2026.
 
+**Na média** (categoria `media`, decidida em 21/10/2026): o mesmo candle de reversão, fora de suporte horizontal, encostando na MME 9 ou na MMA 20 (as médias do gráfico) com a média subindo (acima de 10 pregões atrás), o preço vindo de cima (4 dos 5 fechamentos anteriores acima dela) e o fechamento do candle acima dela. Mesmos filtros de volume, contexto e espaço; seção própria, com alerta de confirmação. No estudo, retorno contra o mercado em 20 pregões de +0,28% em 1995–2015 e −0,34% em 2016–2026 (as duas médias juntas), e trade de referência confirmado de +0,24 R e +0,12 R. A MME 9 sozinha foi positiva nas duas medidas e nos dois períodos; a MMA 20 enfraqueceu em 2016–2026. Juntar a média à regra principal piorou a regra (+0,69% → −0,17% em 2016–2026): por isso a seção é separada.
+
 ### O ciclo
 
 1. **Armado** na noite do candle: "confirma acima da máxima".

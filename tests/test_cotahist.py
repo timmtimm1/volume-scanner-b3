@@ -29,6 +29,15 @@ from scanner.storage.repository import count_bars, upsert_bars
 
 FIXTURE = Path(__file__).parent / "fixtures" / "cotahist_sample.txt"
 
+# O registro do FR0T5L no COTAHIST_D22102026, copiado byte a byte do arquivo da
+# B3: o nome "FROTA OCEANI" com o A circunflexo em UTF-8 (C3 82), 246 bytes
+# mais CRLF. Foi ele que derrubou o pregao de 22/10/2026 inteiro.
+REGISTRO_UTF8 = (
+    (Path(__file__).parent / "fixtures" / "cotahist_registro_utf8.txt")
+    .read_bytes()
+    .removesuffix(b"\r\n")
+)
+
 # Registros do fixture, com CODBDI=02 e TPMERC=010, dos 100 totais.
 REGISTROS_QUE_PASSAM = 82
 
@@ -169,6 +178,125 @@ def test_largura_de_registro_errada_falha_alto(tmp_path: Path) -> None:
     alvo = tmp_path / "curto.txt"
     alvo.write_bytes(b"01" + b"x" * 100 + b"\r\n")
     with pytest.raises(LayoutError):
+        parse_file(alvo, CONFIG)
+
+
+def gravar(destino: Path, registros: list[bytes], quebra: bytes = b"\n") -> Path:
+    """Grava `registros` em `destino`, com a quebra de linha pedida."""
+    destino.write_bytes(quebra.join(registros) + quebra)
+    return destino
+
+
+def registros_do_fixture() -> list[bytes]:
+    return FIXTURE.read_bytes().splitlines()
+
+
+def test_fixture_do_registro_utf8_e_o_caso_real() -> None:
+    # Guarda: se o fixture for regravado em outra codificacao, os testes abaixo
+    # passariam sem reproduzir o que a B3 mandou.
+    assert len(REGISTRO_UTF8) == RECORD_LENGTH + 1
+    assert b"OCE\xc3\x82NI" in REGISTRO_UTF8
+    assert REGISTRO_UTF8[12:24].strip() == b"FR0T5L"
+
+
+def test_arquivo_normal_nao_regrava_nada() -> None:
+    _, report = parse_file(FIXTURE, CONFIG)
+    assert report.recoded_records == 0
+    assert "acento" not in report.summary()
+
+
+@pytest.mark.parametrize("quebra", [b"\n", b"\r\n"], ids=["LF", "CRLF"])
+def test_registro_com_acento_em_utf8_nao_derruba_o_arquivo(
+    tmp_path: Path, barras: pd.DataFrame, quebra: bytes
+) -> None:
+    # 22/10/2026: um registro de leilao com acento em UTF-8 tinha 1 byte a mais
+    # e o parser recusou o arquivo inteiro. O FR0T5L e descartado pelos filtros,
+    # entao as barras tem de sair identicas as do arquivo sem ele.
+    registros = registros_do_fixture()
+    registros.insert(10, REGISTRO_UTF8)
+    alvo = gravar(tmp_path / "com_acento.txt", registros, quebra)
+
+    frame, report = parse_file(alvo, CONFIG)
+
+    pd.testing.assert_frame_equal(frame, barras)
+    assert report.total_records == 101
+    assert report.recoded_records == 1
+    assert "1 com acento em UTF-8" in report.summary()
+
+
+def test_acento_em_papel_que_passa_nos_filtros_le_os_campos_certos(tmp_path: Path) -> None:
+    # Se o acento cair num papel do universo, o registro regravado tem de ler
+    # os mesmos numeros. LEVE3 com o nome (NOMRES, posicoes 28 a 39) trocado
+    # por 12 caracteres que ocupam 13 bytes em UTF-8.
+    registros = registros_do_fixture()
+    i = next(n for n, r in enumerate(registros) if r[12:24].strip() == b"LEVE3")
+    nome = "METAL LEVE Ã".encode()
+    assert len(nome) == 13, "o nome tem de ter 1 byte a mais, senao o teste nao testa nada"
+    registros[i] = registros[i][:27] + nome + registros[i][39:]
+    alvo = gravar(tmp_path / "leve3_com_acento.txt", registros)
+
+    frame, report = parse_file(alvo, CONFIG)
+
+    r = linha(frame, "LEVE3")
+    assert r["open"] == pytest.approx(34.17)
+    assert r["close"] == pytest.approx(33.50)
+    assert r["volume_shares"] == 320_100
+    assert r["volume_financial"] == pytest.approx(10_746_164.00)
+    assert r["trades_count"] == 1954
+    assert len(frame) == REGISTROS_QUE_PASSAM
+    assert report.recoded_records == 1
+    assert report.failure_rate == 0.0
+
+
+@pytest.mark.parametrize("bloco", [1, 7, 1_000])
+def test_registro_mais_largo_nao_desalinha_os_blocos_seguintes(
+    tmp_path: Path, barras: pd.DataFrame, bloco: int
+) -> None:
+    # O arquivo anual e lido em blocos. Com 1 byte a mais no comeco, o corte
+    # de cada bloco seguinte cairia no meio de uma linha. O parser completa a
+    # linha cortada e o resultado tem de ser o mesmo de ler tudo de uma vez.
+    registros = registros_do_fixture()
+    registros.insert(3, REGISTRO_UTF8)
+    alvo = gravar(tmp_path / "blocos.txt", registros, b"\r\n")
+
+    frame, report = parse_file(alvo, CONFIG, chunk_records=bloco)
+
+    pd.testing.assert_frame_equal(frame, barras)
+    assert report.recoded_records == 1
+
+
+def test_registro_curto_no_meio_do_arquivo_falha_alto(tmp_path: Path) -> None:
+    # Registro cortado nao e problema de acento: nao ha o que regravar, e a
+    # carga tem de parar.
+    registros = registros_do_fixture()
+    registros[50] = registros[50][:-1]
+    alvo = gravar(tmp_path / "cortado.txt", registros)
+
+    with pytest.raises(LayoutError, match="largura irregular"):
+        parse_file(alvo, CONFIG)
+
+
+def test_byte_a_mais_que_nao_e_acento_falha_alto(tmp_path: Path) -> None:
+    # 1 byte ASCII a mais continua com 246 depois de regravado: e corrupcao.
+    registros = registros_do_fixture()
+    registros[50] = registros[50] + b" "
+    alvo = gravar(tmp_path / "byte_a_mais.txt", registros)
+
+    with pytest.raises(LayoutError, match="largura irregular"):
+        parse_file(alvo, CONFIG)
+
+
+def test_dois_registros_que_se_compensam_falham_alto(tmp_path: Path) -> None:
+    # Um registro com 1 byte a mais e outro com 1 a menos somam um bloco de
+    # tamanho certo. Conferir so o tamanho deixaria passar tudo entre os dois
+    # lido fora de posicao; a quebra de linha fora do lugar entrega.
+    registros = registros_do_fixture()
+    registros[20] = registros[20] + b" "
+    registros[60] = registros[60][:-1]
+    alvo = gravar(tmp_path / "compensados.txt", registros)
+    assert len(alvo.read_bytes()) % (RECORD_LENGTH + 1) == 0, "o bloco tem de fechar a conta"
+
+    with pytest.raises(LayoutError, match="largura irregular"):
         parse_file(alvo, CONFIG)
 
 

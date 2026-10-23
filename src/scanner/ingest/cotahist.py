@@ -94,6 +94,8 @@ class IngestReport:
     price_checked: int
     price_failures: int
     censored_trades: int
+    # Registros que vieram com acento em UTF-8 e foram regravados em 245 bytes.
+    recoded_records: int = 0
 
     @property
     def failure_rate(self) -> float:
@@ -102,11 +104,14 @@ class IngestReport:
 
     def summary(self) -> str:
         """Uma linha para log e CLI."""
-        return (
+        line = (
             f"{self.source}: {self.total_records:,} registros, {self.kept:,} apos filtros, "
             f"validacao de preco {1 - self.failure_rate:.3%} ok "
             f"({self.price_failures:,} falhas), {self.censored_trades:,} com TOTNEG censurado"
         )
+        if self.recoded_records:
+            line += f", {self.recoded_records:,} com acento em UTF-8 regravado(s) em 245 bytes"
+        return line
 
 
 @contextmanager
@@ -150,17 +155,88 @@ def _as_int(column: npt.NDArray[np.bytes_]) -> npt.NDArray[np.int64]:
     return column.astype(np.int64)
 
 
-def _read_matrix(handle: IO[bytes], stride: int, records: int) -> npt.NDArray[np.uint8] | None:
-    """Le um bloco e devolve a matriz (linhas x stride), ou None no fim do arquivo."""
+def _newline(stride: int) -> bytes:
+    """A quebra de linha do arquivo: LF ou CRLF, conforme `detect_stride`."""
+    return b"\r\n"[-(stride - RECORD_LENGTH) :]
+
+
+def _aligned(buffer: bytes, stride: int) -> bool:
+    """True se toda linha do bloco tem exatamente `stride` bytes.
+
+    Conferir so o tamanho do bloco nao basta: um registro com 1 byte a mais e
+    outro com 1 a menos somam um bloco de tamanho certo, com tudo entre os dois
+    lido fora de posicao. Por isso a quebra de linha tem de estar no fim de
+    cada linha da matriz. Vetorizado, custa uma comparacao por linha.
+    """
+    if len(buffer) % stride:
+        return False
+    matrix = np.frombuffer(buffer, dtype=np.uint8).reshape(-1, stride)
+    newline = np.frombuffer(_newline(stride), dtype=np.uint8)
+    return bool((matrix[:, RECORD_LENGTH:] == newline).all())
+
+
+def _one_byte_per_char(record: bytes, number: int) -> bytes:
+    """O registro regravado com 1 byte por caractere, ou LayoutError.
+
+    Decodifica como UTF-8 e regrava em Latin-1. Caractere que o Latin-1 nao tem
+    vira "?", tambem com 1 byte, entao a largura sempre fecha se o problema era
+    so de codificacao. Se ainda assim nao der 245, o registro esta cortado ou
+    corrompido, e ler o arquivo seria pior do que parar.
+    """
+    try:
+        recoded = record.decode("utf-8").encode("latin-1", errors="replace")
+    except UnicodeDecodeError:
+        recoded = record
+    if len(recoded) != RECORD_LENGTH:
+        raise LayoutError(
+            f"registro de {len(record)} bytes na linha {number} do bloco ({record[:24]!r}), "
+            f"esperado {RECORD_LENGTH}: o arquivo tem registro de largura irregular"
+        )
+    return recoded
+
+
+def _realign(buffer: bytes, stride: int) -> tuple[bytes, int]:
+    """O bloco com os registros fora da largura regravados, e quantos eram.
+
+    O layout da B3 e de 1 byte por caractere, e ate 21/10/2026 nenhum arquivo
+    tinha um byte sequer fora do ASCII. Em 22/10/2026 o arquivo diario trouxe o
+    registro do FR0T5L (leilao, que os filtros descartam) com o nome "FROTA
+    OCEANI" e o A circunflexo gravado em UTF-8: 2 bytes onde o layout preve 1.
+    A linha ficou com 246 bytes e a leitura por posicao recusou o arquivo
+    inteiro, o pregao de todos os papeis.
+
+    O loop por linha so roda neste caminho de excecao; arquivo normal nunca
+    chega aqui.
+    """
+    newline = _newline(stride)
+    records = buffer.split(newline)
+    if records[-1] == b"":
+        records.pop()
+    recoded = 0
+    for number, record in enumerate(records, start=1):
+        if len(record) != RECORD_LENGTH:
+            records[number - 1] = _one_byte_per_char(record, number)
+            recoded += 1
+    return newline.join(records) + newline, recoded
+
+
+def _read_matrix(
+    handle: IO[bytes], stride: int, records: int
+) -> tuple[npt.NDArray[np.uint8], int] | None:
+    """Le um bloco e devolve a matriz (linhas x stride) e quantos registros
+    precisaram ser regravados, ou None no fim do arquivo."""
     buffer = handle.read(stride * records)
     if not buffer:
         return None
-    if len(buffer) % stride:
-        raise LayoutError(
-            f"bloco de {len(buffer)} bytes nao e multiplo da linha de {stride}: "
-            "o arquivo tem registro de largura irregular"
-        )
-    return np.frombuffer(buffer, dtype=np.uint8).reshape(-1, stride)
+    if not buffer.endswith(b"\n"):
+        # Um registro mais largo num bloco anterior desloca o corte deste para
+        # o meio de uma linha. Completar a linha faz o proximo bloco comecar no
+        # inicio de um registro.
+        buffer += handle.readline()
+    recoded = 0
+    if not _aligned(buffer, stride):
+        buffer, recoded = _realign(buffer, stride)
+    return np.frombuffer(buffer, dtype=np.uint8).reshape(-1, stride), recoded
 
 
 def _rows_from_matrix(
@@ -237,13 +313,15 @@ def parse_file(
         raise CotahistError(f"arquivo nao encontrado: {path}")
 
     blocks: list[pd.DataFrame] = []
-    total = checked = failures = 0
+    total = checked = failures = recoded = 0
 
     with open_records(path) as handle:
         stride = detect_stride(handle.read(RECORD_LENGTH + 2))
         handle.seek(0)
 
-        while (matrix := _read_matrix(handle, stride, chunk_records)) is not None:
+        while (read := _read_matrix(handle, stride, chunk_records)) is not None:
+            matrix, block_recoded = read
+            recoded += block_recoded
             total += int((_field(matrix, "TIPREG") == config.tipreg.encode()).sum())
             block, quantum = _rows_from_matrix(matrix, config)
             if block.empty:
@@ -263,6 +341,7 @@ def parse_file(
         price_checked=checked,
         price_failures=failures,
         censored_trades=int(frame["trades_censored"].sum()) if len(frame) else 0,
+        recoded_records=recoded,
     )
 
     if report.failure_rate > config.price_check_max_failure:

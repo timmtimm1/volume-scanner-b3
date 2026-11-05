@@ -15,7 +15,12 @@ from scanner.digest import Resumo, payload_do_resumo
 from scanner.notify.telegram import ConsoleNotifier, format_resumo, format_rompimento
 from scanner.rompimentos import Alerta, Disparo, checar_rompimentos, payload_do_disparo
 from scanner.setups import run_setups
-from scanner.storage.repository import alertas_ativos, apagar_alerta, criar_alerta
+from scanner.storage.repository import (
+    alertas_ativos,
+    apagar_alerta,
+    criar_alerta,
+    gravar_preferencia,
+)
 from tests.gatilhos_sinteticos import barras, dia_do_martelo
 
 BASE = "https://scanner.exemplo"
@@ -70,7 +75,7 @@ def test_alerta_manual_continua_com_a_mensagem_de_sempre() -> None:
     assert "setup" not in texto
 
 
-def _resumo_com(setups: pd.DataFrame) -> str:
+def _resumo_com(setups: pd.DataFrame, ligados: list[str] | None = None) -> str:
     resumo = Resumo(
         CANDLE,
         pd.DataFrame(
@@ -87,7 +92,7 @@ def _resumo_com(setups: pd.DataFrame) -> str:
         6.0,
         None,
     )
-    return format_resumo(payload_do_resumo(resumo, None, setups), BASE)
+    return format_resumo(payload_do_resumo(resumo, None, setups, ligados), BASE)
 
 
 def test_resumo_ganha_o_bloco_de_setups_armados() -> None:
@@ -105,7 +110,8 @@ def test_resumo_ganha_o_bloco_de_setups_armados() -> None:
     assert "<b>Setups armados</b>" in texto
     assert "SAPR11</a></b> martelo" in texto
     assert "acima de R$ 40,00" in texto
-    assert "Candle de força (não passou na conferência)" in texto and "CYRE4" in texto
+    # forca ficou firme no backtest de 05/11/2026: alerta ligado, entra na lista
+    assert "CYRE4</a></b> candle de força" in texto
     assert "Confirmados hoje:" in texto and "VBBR3" in texto and "R$ 36,98" in texto
     assert texto.count("<pre>") == 1  # so a tabela de sempre; o bloco novo e lista
     assert f'<a href="{BASE}/setups/">abrir setups</a>' in texto
@@ -123,12 +129,13 @@ def test_destaque_tem_marca_propria() -> None:
 
 @pytest.fixture
 def limpo(engine: Engine) -> None:
-    from scanner.storage.models import Nivel, PriceAlert, Setup
+    from scanner.storage.models import Nivel, PriceAlert, Setup, SetupPreferencia
 
     with engine.begin() as conn:
         conn.execute(delete(PriceAlert).where(PriceAlert.setup_id.is_not(None)))
         conn.execute(delete(Setup))
         conn.execute(delete(Nivel))
+        conn.execute(delete(SetupPreferencia))
 
 
 @pytest.mark.db
@@ -145,7 +152,7 @@ def test_armado_ao_vivo_ganha_alerta_que_vale_um_pregao(engine: Engine) -> None:
         alerta = (
             conn.execute(select(PriceAlert).where(PriceAlert.setup_id.is_not(None))).one()._mapping
         )
-        setup_id = conn.execute(select(Setup.id)).scalar_one()
+        setup_id = conn.execute(select(Setup.id).where(Setup.categoria == "reversao")).scalar_one()
     assert alerta["setup_id"] == setup_id
     assert alerta["preco"] == Decimal("10.49")  # um centavo acima da maxima (10,48)
     assert alerta["direcao"] == "acima"
@@ -168,7 +175,12 @@ def test_setup_retroativo_nao_ganha_alerta(engine: Engine) -> None:
     noite = barras(extra=[(10.40, 10.45, 10.20, 10.30)])
     hoje = noite["trade_date"].iloc[-1]
     rel = run_setups(engine, ScannerConfig(), hoje, bars=noite)
-    assert rel.gravados == 1 and rel.alertas == 0
+    assert rel.gravados >= 1 and rel.alertas == 0
+    from scanner.storage.models import Setup
+
+    with engine.connect() as conn:
+        linha = conn.execute(select(Setup).where(Setup.categoria == "reversao")).one()._mapping
+    assert not linha["ao_vivo"]
 
 
 @pytest.mark.db
@@ -234,12 +246,51 @@ def test_links_do_setup_centram_no_candle_e_nao_no_evento() -> None:
 
 def test_setup_na_media_no_resumo_e_na_confirmacao() -> None:
     media = {**SETUP, "id": 10, "ticker": "VBBR3", "categoria": "media", "suporte_tipo": "mme9"}
+    # Na media falhou no backtest: alerta desligado de inicio, vai so na contagem
     texto = _resumo_com(pd.DataFrame([media]))
-    assert "<b>Na média</b> (tendência de alta)" in texto
-    assert "martelo na MME 9" in texto
-    assert "Setups armados" not in texto  # nao se mistura com a regra principal
+    assert "Outros armados hoje, sem alerta:</i> Na média 1" in texto
+    assert "VBBR3" not in texto
+    # ligado no app, entra na lista com o padrao e a media
+    texto = _resumo_com(pd.DataFrame([media]), ligados=["media"])
+    assert "VBBR3</a></b> martelo na MME 9" in texto
     confirmado = format_rompimento(_disparo(media), BASE)
     assert "máxima do martelo na MME 9 de 20/10" in confirmado
+
+
+def test_classico_no_resumo_com_a_etiqueta_e_a_contagem_dos_outros() -> None:
+    noventa_e_quatro = {
+        **SETUP,
+        "id": 11,
+        "ticker": "WEGE3",
+        "categoria": "9.4",
+        "padroes": [],
+        "suporte_tipo": "mme9",
+        "alta": True,
+    }
+    outros = [
+        {**SETUP, "id": 12 + i, "ticker": f"XX{i:02d}3", "categoria": c, "padroes": []}
+        for i, c in enumerate(["123", "123", "9.1"])
+    ]
+    texto = _resumo_com(pd.DataFrame([noventa_e_quatro, *outros]))
+    assert "WEGE3</a></b> 9.4 · volume 2,3×" in texto
+    assert "em alta" in texto
+    assert "resistência" not in texto.split("WEGE3")[1].split("\n")[0]  # classico: sem espaco
+    assert "Outros armados hoje, sem alerta:</i> 9.1 1 · 123 2" in texto
+
+
+def test_confirmacao_do_classico_diz_o_setup_e_a_saida() -> None:
+    noventa_e_quatro = {
+        **SETUP,
+        "categoria": "9.4",
+        "padroes": [],
+        "suporte_tipo": "mme9",
+        "saida_regra": "mme9",
+    }
+    texto = format_rompimento(_disparo(noventa_e_quatro), BASE)
+    assert "passou da máxima do candle do 9.4 de 20/10" in texto
+    assert "saída: quando a MME 9 virar para baixo" in texto
+    alvo = format_rompimento(_disparo({**SETUP, "saida_regra": "alvo3"}), BASE)
+    assert "saída: alvo de 3R" in alvo
 
 
 @pytest.mark.db
@@ -250,9 +301,20 @@ def test_setup_na_media_ganha_alerta_e_categoria_nova_grava_o_passado(engine: En
 
     noite = alta_com_martelo_na_media()
     dia = noite["trade_date"].iloc[-1]
+    # Na media falhou no backtest de 05/11/2026: o alerta comeca desligado
     rel = run_setups(engine, ScannerConfig(), dia, bars=noite)
-    assert rel.media == ["BBBB3"] and rel.alertas == 1
+    assert rel.media == ["BBBB3"] and rel.alertas == 0
+    na_media = select(Setup).where(Setup.categoria == "media")
     with engine.connect() as conn:
-        linha = conn.execute(select(Setup)).one()._mapping
+        linha = conn.execute(na_media).one()._mapping
+    assert "mma20" in linha["suporte_tipo"]
+
+    # ligado no app, a noite seguinte (aqui: a mesma, do zero) ganha o alerta
+    with engine.begin() as conn:
+        conn.execute(delete(Setup))
+    gravar_preferencia(engine, "media", alerta=True, saida="alvo3")
+    rel = run_setups(engine, ScannerConfig(), dia, bars=noite)
+    assert rel.alertas == 1 and "media" in rel.ligados
+    with engine.connect() as conn:
+        linha = conn.execute(na_media).one()._mapping
         assert conn.execute(select(PriceAlert).where(PriceAlert.setup_id == linha["id"])).one()
-    assert linha["categoria"] == "media" and "mma20" in linha["suporte_tipo"]

@@ -431,6 +431,49 @@ NOME_DO_PADRAO = {
 }
 
 
+# Nome de cada setup na mensagem (categoria da tabela `setups` -> texto).
+NOME_DO_SETUP = {
+    "reversao": "Suporte",
+    "media": "Na média",
+    "forca": "Força",
+    "9.1": "9.1",
+    "9.2": "9.2",
+    "9.3": "9.3",
+    "9.4": "9.4",
+    "123": "123",
+    "pfr": "PFR",
+    "mma20": "MMA 20",
+    "pullback": "Pullback",
+}
+# Setups classicos (secao 14): sem padrao de candle, o nome do setup diz tudo.
+CLASSICOS = frozenset({"9.1", "9.2", "9.3", "9.4", "123", "pfr", "mma20", "pullback"})
+SAIDA_EM_TEXTO = {
+    "alvo1": "alvo de 1R",
+    "alvo2": "alvo de 2R",
+    "alvo3": "alvo de 3R",
+    "minimas": "stop móvel nas mínimas dos 2 últimos candles",
+    "mme9": "quando a MME 9 virar para baixo",
+}
+
+
+def _classico(setup: Mapping[str, Any]) -> bool:
+    return str(setup.get("categoria") or "") in CLASSICOS
+
+
+def _o_que(setup: Mapping[str, Any]) -> str:
+    """'martelo na MME 9' num candle; '9.4' num setup classico."""
+    if _classico(setup):
+        return NOME_DO_SETUP[str(setup["categoria"])]
+    return f"{_padroes(setup)}{_onde(setup)}"
+
+
+def _tendencia(setup: Mapping[str, Any]) -> str:
+    alta = setup.get("alta")
+    if alta is None or (isinstance(alta, float) and alta != alta):
+        return ""
+    return " · em alta" if bool(alta) else " · contra a tendência"
+
+
 def nome_da_media(tipo: str) -> str:
     """mme9 -> MME 9; mme9,mma20 -> MME 9 e MMA 20."""
     nomes = [f"{t[:3].upper()} {t[3:]}" for t in tipo.split(",") if t]
@@ -475,15 +518,18 @@ def format_setup_confirmado(payload: Mapping[str, Any], base_url: str | None = N
     dia = f" de {candle.strftime('%d/%m')}" if isinstance(candle, date) else ""
     volume = _numero(setup.get("rvol"))
     destaque = " · destaque" if setup.get("destaque") else ""
+    candle_de = f"candle do {_o_que(setup)}" if _classico(setup) else _o_que(setup)
     linhas = [
         f"🎯 <b>{ticker} confirmou o setup</b>",
-        f"passou da máxima do {_padroes(setup)}{_onde(setup)}{dia}"
-        f" ({money_simples(_numero(setup.get('maxima')))})",
+        f"passou da máxima do {candle_de}{dia} ({money_simples(_numero(setup.get('maxima')))})",
         f"{money_simples(payload.get('preco'))}{quando} · {payload.get('fonte', '-')}",
         f"mínima do padrão {money_simples(_numero(setup.get('minima')))}"
         f" · risco {br(_numero(setup.get('risco_pct')) or 0, 1)}%",
         f"{_espaco(setup)} · volume do candle {br(volume or 0, 1)}×{destaque}",
     ]
+    regra = SAIDA_EM_TEXTO.get(str(setup.get("saida_regra") or ""))
+    if regra:
+        linhas.append(f"saída: {regra}")
     if base_url:
         alvo = (
             chart_url(base_url, ticker, candle, foco=True)
@@ -497,16 +543,15 @@ def format_setup_confirmado(payload: Mapping[str, Any], base_url: str | None = N
 def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[str]:
     """Bloco "Setups armados" do resumo diario. Lista, sem <pre>.
 
-    Armados: candles de reversao deste pregao, que confirmam se o proximo
-    pregao passar da maxima. O candle de forca vem numa linha a parte, com o
-    aviso de que nao passou na conferencia do estudo. Confirmados: setups de
+    So os setups com alerta ligado (decisao de 05/11/2026): os classicos armam
+    mais de 100 por pregao, e a lista inteira mora na aba. Dos outros, uma linha
+    com quantos armaram de cada. Confirmados: setups com alerta ligado de
     candles anteriores que passaram da maxima hoje.
     """
     armados = list(setups.get("armados") or [])
-    media = list(setups.get("media") or [])
-    forca = list(setups.get("forca") or [])
+    outros = dict(setups.get("outros") or {})
     confirmados = list(setups.get("confirmados") or [])
-    if not (armados or media or forca or confirmados):
+    if not (armados or outros or confirmados):
         return []
 
     def papel(linha: Mapping[str, Any]) -> str:
@@ -518,27 +563,30 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
 
     def item(s: Mapping[str, Any]) -> str:
         marca = "★" if s.get("destaque") else "▲"
+        volume = f" · volume {br(_numero(s.get('rvol')) or 0, 1)}×"
+        acima = f" · acima de {money_simples(_numero(s.get('maxima')))}"
+        risco = f" ({br(_numero(s.get('risco_pct')) or 0, 1)}%)"
+        if _classico(s):
+            return (
+                f"{marca} <b>{papel(s)}</b> {_o_que(s)}{volume}{acima}"
+                f" · mínima {money_simples(_numero(s.get('minima')))}{risco}{_tendencia(s)}"
+            )
         return (
-            f"{marca} <b>{papel(s)}</b> {_padroes(s)}{_onde(s)}"
-            f" · volume {br(_numero(s.get('rvol')) or 0, 1)}×"
-            f" · acima de {money_simples(_numero(s.get('maxima')))}"
-            f" · mínima {money_simples(_numero(s.get('minima')))}"
-            f" ({br(_numero(s.get('risco_pct')) or 0, 1)}%) · {_espaco(s)}"
+            f"{marca} <b>{papel(s)}</b> {_o_que(s)}{volume}{acima}"
+            f" · mínima {money_simples(_numero(s.get('minima')))}{risco} · {_espaco(s)}"
         )
 
     partes = [""]
     if armados:
         partes.append("<b>Setups armados</b> · confirmam se o próximo pregão passar da máxima")
         partes += [item(s) for s in armados]
-    if media:
-        partes.append("<b>Na média</b> (tendência de alta) · mesma confirmação")
-        partes += [item(s) for s in media]
-    if forca:
-        nomes = ", ".join(papel(s) for s in forca)
-        partes.append(f"<i>Candle de força (não passou na conferência):</i> {nomes}")
+    if outros:
+        contagem = " · ".join(f"{NOME_DO_SETUP.get(c, c)} {n}" for c, n in outros.items())
+        partes.append(f"<i>Outros armados hoje, sem alerta:</i> {contagem}")
     if confirmados:
         nomes = ", ".join(
-            f"{papel(s)} ({money_simples(_numero(s.get('entrada')))})" for s in confirmados
+            f"{papel(s)} {_o_que(s)} ({money_simples(_numero(s.get('entrada')))})"
+            for s in confirmados
         )
         partes.append(f"<b>Confirmados hoje:</b> {nomes}")
     if base_url:

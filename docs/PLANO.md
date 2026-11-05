@@ -473,7 +473,7 @@ Leitura: só a Força tem intervalo acima de zero, e com poucos trades (404) e r
 
 ### Fases
 
-1. Motor dos setups clássicos, suíte de backtest local, testes, este plano e o CLAUDE.md. (Esta.)
-2. Resultado no banco e a página Backtest no app: escolher setup e variação; números, curva, ano a ano e lista de trades.
+1. Motor dos setups clássicos, suíte de backtest local, testes, este plano e o CLAUDE.md. Feita (PR #95).
+2. Resultado no banco e a página Backtest no app (`/setups/backtest`, só logado): escolher setup e variação; números, curva, ano a ano e lista de trades. Migration 0016: uma rodada por envio (`scripts/backtest_setups.py enviar`), com a grade, a escolha e o nível de cada setup, o ano a ano, a curva mensal e os 200 trades mais recentes de cada setup e saída; ficam as duas últimas rodadas (uns 13 MB cada).
 3. Setups no pregão diário: o site abre nos Setups, etiquetas de tendência e volume, alerta liga/desliga por setup (ligado de início só nos firmes e fracos), Telegram, entrada/stop/alvo no gráfico da ficha.
 4. Calculadora de lote (capital salvo na conta, risco padrão de 1%, ação inteira no fracionário) e diário ligado ao setup (botão "Entrei" no setup confirmado e campos setup e stop no formulário; resultado em R).

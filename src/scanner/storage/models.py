@@ -16,6 +16,7 @@ from sqlalchemy import (
     CheckConstraint,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     ForeignKeyConstraint,
     Index,
@@ -780,3 +781,174 @@ class Nivel(Base):
     calculado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+# --- Suite de backtest (secao 14 do plano, migration 0016) -------------------
+
+_SAIDAS = "saida IN ('alvo1', 'alvo2', 'alvo3', 'minimas', 'mme9')"
+_GRUPOS = "grupo IN ('todos', 'alta', 'contra')"
+
+
+def _rodada_fk() -> Mapped[int]:
+    return mapped_column(
+        BigInteger,
+        ForeignKey(f"{SCHEMA}.backtest_rodadas.id", ondelete="CASCADE"),
+        primary_key=True,
+    )
+
+
+class BacktestRodada(Base):
+    """Uma rodada da suite, rodada na maquina e enviada para o banco.
+
+    O site mostra a mais recente. Apagar a rodada apaga tudo dela (cascade).
+    """
+
+    __tablename__ = "backtest_rodadas"
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    criada_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    dados_de: Mapped[date] = mapped_column(Date, nullable=False)
+    dados_ate: Mapped[date] = mapped_column(Date, nullable=False)
+    custo: Mapped[float] = mapped_column(Float, nullable=False)
+    teto: Mapped[int] = mapped_column(Integer, nullable=False)
+    trades: Mapped[int] = mapped_column(Integer, nullable=False)
+    papeis: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class BacktestResultado(Base):
+    """A grade: setup x saida x grupo (tendencia) x periodo."""
+
+    __tablename__ = "backtest_resultados"
+    __table_args__ = (
+        CheckConstraint(_SAIDAS, name="ck_backtest_resultados_saida"),
+        CheckConstraint(_GRUPOS, name="ck_backtest_resultados_grupo"),
+        CheckConstraint(
+            "periodo IN ('1995-2015', '2016-2026', 'tudo')", name="ck_backtest_resultados_periodo"
+        ),
+    )
+
+    rodada_id: Mapped[int] = _rodada_fk()
+    setup: Mapped[str] = mapped_column(Text, primary_key=True)
+    saida: Mapped[str] = mapped_column(Text, primary_key=True)
+    grupo: Mapped[str] = mapped_column(Text, primary_key=True)
+    periodo: Mapped[str] = mapped_column(Text, primary_key=True)
+    n: Mapped[int] = mapped_column(Integer, nullable=False)
+    acerto: Mapped[float | None] = mapped_column(Float)
+    ganho_medio: Mapped[float | None] = mapped_column(Float)
+    perda_media: Mapped[float | None] = mapped_column(Float)
+    payoff: Mapped[float | None] = mapped_column(Float)
+    expectativa: Mapped[float | None] = mapped_column(Float)
+    ic_baixo: Mapped[float | None] = mapped_column(Float)
+    ic_alto: Mapped[float | None] = mapped_column(Float)
+    fator_lucro: Mapped[float | None] = mapped_column(Float)
+    dias_medio: Mapped[float | None] = mapped_column(Float)
+    r_por_dia: Mapped[float | None] = mapped_column(Float)
+    controle: Mapped[float | None] = mapped_column(Float)
+    diferenca: Mapped[float | None] = mapped_column(Float)
+    dif_ic_baixo: Mapped[float | None] = mapped_column(Float)
+    dif_ic_alto: Mapped[float | None] = mapped_column(Float)
+    pct_stop: Mapped[float | None] = mapped_column(Float)
+    pct_movel: Mapped[float | None] = mapped_column(Float)
+    pct_alvo: Mapped[float | None] = mapped_column(Float)
+    pct_mme9: Mapped[float | None] = mapped_column(Float)
+    pct_teto: Mapped[float | None] = mapped_column(Float)
+
+
+class BacktestEscolha(Base):
+    """Por setup: a combinacao escolhida em 1995-2015 e o nivel em 2016-2026."""
+
+    __tablename__ = "backtest_escolhas"
+    __table_args__ = (
+        CheckConstraint("nivel IN ('firme', 'fraco', 'falhou')", name="ck_backtest_escolhas_nivel"),
+    )
+
+    rodada_id: Mapped[int] = _rodada_fk()
+    setup: Mapped[str] = mapped_column(Text, primary_key=True)
+    nivel: Mapped[str] = mapped_column(Text, nullable=False)
+    saida: Mapped[str | None] = mapped_column(Text)
+    grupo: Mapped[str | None] = mapped_column(Text)
+    combinacoes: Mapped[int] = mapped_column(Integer, nullable=False)
+    n_escolha: Mapped[int | None] = mapped_column(Integer)
+    n_conferencia: Mapped[int | None] = mapped_column(Integer)
+    exp_escolha: Mapped[float | None] = mapped_column(Float)
+    dif_escolha: Mapped[float | None] = mapped_column(Float)
+    exp_conferencia: Mapped[float | None] = mapped_column(Float)
+    ic_conf_baixo: Mapped[float | None] = mapped_column(Float)
+    ic_conf_alto: Mapped[float | None] = mapped_column(Float)
+    dif_conferencia: Mapped[float | None] = mapped_column(Float)
+
+
+class BacktestAno(Base):
+    """Ano a ano de cada combinacao."""
+
+    __tablename__ = "backtest_anos"
+
+    rodada_id: Mapped[int] = _rodada_fk()
+    setup: Mapped[str] = mapped_column(Text, primary_key=True)
+    saida: Mapped[str] = mapped_column(Text, primary_key=True)
+    grupo: Mapped[str] = mapped_column(Text, primary_key=True)
+    ano: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    n: Mapped[int] = mapped_column(Integer, nullable=False)
+    expectativa: Mapped[float | None] = mapped_column(Float)
+    soma_r: Mapped[float | None] = mapped_column(Float)
+    controle: Mapped[float | None] = mapped_column(Float)
+
+
+class BacktestCurva(Base):
+    """R acumulado por mes de saida, do setup e do controle."""
+
+    __tablename__ = "backtest_curvas"
+
+    rodada_id: Mapped[int] = _rodada_fk()
+    setup: Mapped[str] = mapped_column(Text, primary_key=True)
+    saida: Mapped[str] = mapped_column(Text, primary_key=True)
+    grupo: Mapped[str] = mapped_column(Text, primary_key=True)
+    mes: Mapped[date] = mapped_column(Date, primary_key=True)
+    n: Mapped[int] = mapped_column(Integer, nullable=False)
+    r: Mapped[float | None] = mapped_column(Float)
+    controle: Mapped[float | None] = mapped_column(Float)
+    acumulado: Mapped[float | None] = mapped_column(Float)
+    controle_acumulado: Mapped[float | None] = mapped_column(Float)
+    recuo: Mapped[float | None] = mapped_column(Float)
+
+
+class BacktestTrade(Base):
+    """Amostra de trades: os mais recentes de cada setup e saida, para a lista do app.
+
+    Precos na escala do dia da entrada (a do grafico). `motivo` 'aberto' e o
+    trade que ainda nao tinha saido no fim dos dados.
+    """
+
+    __tablename__ = "backtest_trades"
+    __table_args__ = (
+        CheckConstraint(_SAIDAS, name="ck_backtest_trades_saida"),
+        CheckConstraint(
+            "motivo IN ('aberto', 'stop', 'movel', 'alvo', 'mme9', 'teto')",
+            name="ck_backtest_trades_motivo",
+        ),
+        Index("ix_backtest_trades_lista", "rodada_id", "setup", "saida", "data_entrada"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    rodada_id: Mapped[int] = mapped_column(
+        BigInteger,
+        ForeignKey(f"{SCHEMA}.backtest_rodadas.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    setup: Mapped[str] = mapped_column(Text, nullable=False)
+    saida: Mapped[str] = mapped_column(Text, nullable=False)
+    ticker: Mapped[str] = mapped_column(Text, nullable=False)
+    data_sinal: Mapped[date] = mapped_column(Date, nullable=False)
+    data_entrada: Mapped[date] = mapped_column(Date, nullable=False)
+    data_saida: Mapped[date | None] = mapped_column(Date)
+    entrada: Mapped[float] = mapped_column(Float, nullable=False)
+    stop: Mapped[float] = mapped_column(Float, nullable=False)
+    preco_saida: Mapped[float | None] = mapped_column(Float)
+    motivo: Mapped[str] = mapped_column(Text, nullable=False)
+    dias: Mapped[int | None] = mapped_column(SmallInteger)
+    r: Mapped[float | None] = mapped_column(Float)
+    r_controle: Mapped[float | None] = mapped_column(Float)
+    alta: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    rvol: Mapped[float | None] = mapped_column(Float)

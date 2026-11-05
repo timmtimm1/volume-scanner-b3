@@ -1,4 +1,5 @@
 import { ehDono, signIn, signOut } from "@/auth";
+import Link from "next/link";
 import { ListaDeSetups } from "@/components/ListaDeSetups";
 import { listarSetups } from "@/lib/setups";
 import { hojeNaB3 } from "@/lib/validade";
@@ -54,6 +55,12 @@ export default async function Setups() {
           </p>
         </div>
         <div className="flex-1" />
+        <Link
+          href="/setups/backtest"
+          className="toque inline-flex h-10 items-center rounded-full border border-linha-2 px-4 text-[13px] font-bold text-tinta-2 transition-colors hover:text-tinta"
+        >
+          Backtest
+        </Link>
         <form
           action={async () => {
             "use server";

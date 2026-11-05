@@ -49,6 +49,11 @@ def test_nomes_das_tabelas() -> None:
     # `setups` e `niveis` (migration 0013) sao a aba Setups: o ciclo de vida de
     # cada candle de reversao filtrado, e os segmentos de suporte/resistencia
     # que a ficha desenha (derivada, trocada a cada pregao).
+    # `backtest_rodadas`, `backtest_resultados`, `backtest_escolhas`,
+    # `backtest_anos`, `backtest_curvas` e `backtest_trades` (migration 0016) sao
+    # o resultado da suite de backtest, que roda na maquina do usuario sobre 30
+    # anos de COTAHIST: so o resultado sobe, numa rodada, e o site le a mais
+    # recente. Nao alimentam nada do pipeline.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -72,6 +77,12 @@ def test_nomes_das_tabelas() -> None:
         "arranjos",
         "setups",
         "niveis",
+        "backtest_rodadas",
+        "backtest_resultados",
+        "backtest_escolhas",
+        "backtest_anos",
+        "backtest_curvas",
+        "backtest_trades",
     }
 
 

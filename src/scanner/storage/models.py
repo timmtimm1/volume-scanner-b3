@@ -213,6 +213,12 @@ class Trade(Base):
             unique=True,
             postgresql_where=text("encerrado_em IS NULL"),
         ),
+        CheckConstraint(
+            "categoria_setup IS NULL OR categoria_setup IN ('reversao', 'forca', 'media', "
+            "'9.1', '9.2', '9.3', '9.4', '123', 'pfr', 'mma20', 'pullback')",
+            name="ck_trades_categoria_setup",
+        ),
+        CheckConstraint("stop IS NULL OR stop > 0", name="ck_trades_stop_positivo"),
     )
 
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
@@ -222,6 +228,15 @@ class Trade(Base):
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    # Diario ligado ao setup (migration 0018): o setup que originou o trade
+    # (botao "Entrei"), a familia dele (ou a escolhida no formulario, para
+    # trade feito fora do site) e o stop, que faz o resultado virar R.
+    setup_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(f"{SCHEMA}.setups.id", ondelete="SET NULL", name="fk_trades_setup"),
+    )
+    categoria_setup: Mapped[str | None] = mapped_column(Text)
+    stop: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
 
 
 class TradeOperacao(Base):
@@ -997,3 +1012,26 @@ class BacktestTrade(Base):
     r_controle: Mapped[float | None] = mapped_column(Float)
     alta: Mapped[bool] = mapped_column(Boolean, nullable=False)
     rvol: Mapped[float | None] = mapped_column(Float)
+
+
+class PerfilDeRisco(Base):
+    """Capital e risco por trade do usuario, para a calculadora de lote (0018).
+
+    Uma linha so (id = 1). So o site escreve.
+    """
+
+    __tablename__ = "perfil_de_risco"
+    __table_args__ = (
+        CheckConstraint("id = 1", name="ck_perfil_de_risco_uma_linha"),
+        CheckConstraint("capital > 0", name="ck_perfil_de_risco_capital"),
+        CheckConstraint("risco_pct > 0 AND risco_pct <= 10", name="ck_perfil_de_risco_risco"),
+    )
+
+    id: Mapped[int] = mapped_column(SmallInteger, primary_key=True, server_default=text("1"))
+    capital: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
+    risco_pct: Mapped[Decimal] = mapped_column(
+        Numeric(5, 2), nullable=False, server_default=text("1.0")
+    )
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

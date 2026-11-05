@@ -56,6 +56,8 @@ def test_nomes_das_tabelas() -> None:
     # recente. Nao alimentam nada do pipeline.
     # `setup_preferencias` (migration 0017) guarda a escolha do usuario no app
     # para cada setup: alerta ligado ou nao e a saida depois de confirmado.
+    # `perfil_de_risco` (migration 0018) e o capital e o risco por trade do
+    # usuario, para a calculadora de lote dos setups.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -86,6 +88,7 @@ def test_nomes_das_tabelas() -> None:
         "backtest_curvas",
         "backtest_trades",
         "setup_preferencias",
+        "perfil_de_risco",
     }
 
 

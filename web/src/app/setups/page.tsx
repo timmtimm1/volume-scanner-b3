@@ -1,11 +1,14 @@
 import { ehDono, signIn, signOut } from "@/auth";
 import Link from "next/link";
 import { ListaDeSetups } from "@/components/ListaDeSetups";
+import { PerfilDeRisco } from "@/components/PerfilDeRisco";
 import { escolhasDa, rodadaAtual } from "@/lib/backtest";
 import type { Nivel } from "@/lib/backtest-tela";
 import { CATEGORIAS_DE_SETUP } from "@/lib/config";
+import { lerPerfil } from "@/lib/perfil";
 import { conferenciaAoVivo, listarSetups, preferenciasDosSetups } from "@/lib/setups";
 import { type CategoriaDoSetup, type Conferencia, categoriaDaChave } from "@/lib/setups-tela";
+import { tradesDosSetups } from "@/lib/trades";
 import { hojeNaB3 } from "@/lib/validade";
 
 /**
@@ -47,11 +50,13 @@ export default async function Setups() {
     );
   }
 
-  const [setups, preferencias, rodada, aoVivo] = await Promise.all([
+  const [setups, preferencias, rodada, aoVivo, perfil, trades] = await Promise.all([
     listarSetups(),
     preferenciasDosSetups(),
     rodadaAtual(),
     conferenciaAoVivo(),
+    lerPerfil(),
+    tradesDosSetups(),
   ]);
   // O selo de cada bloco e o nivel da rodada mais recente; sem rodada, sem selo.
   // A conferencia junta o ao vivo (desde a estreia) com o numero do backtest.
@@ -103,12 +108,15 @@ export default async function Setups() {
         </form>
       </section>
 
+      <PerfilDeRisco inicial={perfil} />
+
       <ListaDeSetups
         setups={setups}
         preferencias={preferencias}
         niveis={niveis}
         conferencias={conferencias}
         hoje={hojeNaB3()}
+        diario={{ perfil, tradePorSetup: trades.porSetup, abertoPorTicker: trades.abertoPorTicker }}
       />
     </div>
   );

@@ -5,6 +5,7 @@ import type { Nivel } from "@/lib/backtest-tela";
 import {
   agruparPorCategoria,
   type CategoriaDoSetup,
+  type ContextoDoDiario,
   type Conferencia,
   type Preferencias,
   type Setup,
@@ -19,13 +20,15 @@ type Props = {
   /** O ao vivo de cada setup contra o backtest. */
   conferencias: Partial<Record<CategoriaDoSetup, Conferencia>>;
   hoje: string;
+  /** Perfil de risco e os setups que ja viraram trade: o lote e o "Entrei". */
+  diario: ContextoDoDiario;
 };
 
 /**
  * A aba Setups: no topo os setups com alerta ligado, embaixo os outros, cada
  * um num bloco fechado. A ordem e fixa (a do Backtest), nunca por resultado.
  */
-export function ListaDeSetups({ setups, preferencias, niveis, conferencias, hoje }: Props) {
+export function ListaDeSetups({ setups, preferencias, niveis, conferencias, hoje, diario }: Props) {
   const { ligados, outros } = useMemo(
     () => agruparPorCategoria(setups, preferencias),
     [setups, preferencias],
@@ -49,6 +52,7 @@ export function ListaDeSetups({ setups, preferencias, niveis, conferencias, hoje
               conferencia={conferencias[b.categoria]}
               hoje={hoje}
               ultimoPregao={ultimoPregao}
+              diario={diario}
             />
           ))
         )}
@@ -65,6 +69,7 @@ export function ListaDeSetups({ setups, preferencias, niveis, conferencias, hoje
               conferencia={conferencias[b.categoria]}
               hoje={hoje}
               ultimoPregao={ultimoPregao}
+              diario={diario}
             />
           ))}
         </section>

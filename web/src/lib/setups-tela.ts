@@ -11,6 +11,7 @@
 // So tipos: os testes rodam este arquivo no Node, que nao resolve import de
 // valor sem extensao.
 import type { CategoriaDoSetup, SaidaDoSetup } from "./config";
+import type { Perfil } from "./lote";
 import type { LinhaDeSetup } from "./types";
 
 export type { CategoriaDoSetup, SaidaDoSetup };
@@ -382,6 +383,18 @@ export function categoriaDaChave(chave: string): CategoriaDoSetup | null {
     ? (categoria as CategoriaDoSetup)
     : null;
 }
+
+/**
+ * O que a aba precisa do diario para o lote e o botao "Entrei": o perfil de
+ * risco (null = capital nao definido) e quais setups ja viraram trade.
+ */
+export type ContextoDoDiario = {
+  perfil: Perfil | null;
+  /** `setups.id` -> id do trade que nasceu dele. */
+  tradePorSetup: Record<number, number>;
+  /** Papel -> id do trade aberto dele. */
+  abertoPorTicker: Record<string, number>;
+};
 
 export type Preferencia = { alerta: boolean; saida: SaidaDoSetup };
 export type Preferencias = Record<CategoriaDoSetup, Preferencia>;

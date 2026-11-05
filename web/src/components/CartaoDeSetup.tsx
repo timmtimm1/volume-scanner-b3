@@ -18,10 +18,13 @@ import {
   resultadoEmR,
   rotuloDoEstado,
   SAIDA_EM_TEXTO,
+  type ContextoDoDiario,
   type Setup,
   situacaoDoAlerta,
   stopDoSetup,
 } from "@/lib/setups-tela";
+import { BotaoEntrei } from "./FormularioEntrei";
+import { LoteDoSetup } from "./LoteDoSetup";
 
 /** O que o cartao chama o setup: o nome, ou os padroes quando ha. */
 function titulo(s: Setup): string {
@@ -149,7 +152,15 @@ function Rodape({ s, hoje }: { s: Setup; hoje: string }) {
   );
 }
 
-export function CartaoArmado({ s, hoje }: { s: Setup; hoje: string }) {
+export function CartaoArmado({
+  s,
+  hoje,
+  diario,
+}: {
+  s: Setup;
+  hoje: string;
+  diario: ContextoDoDiario;
+}) {
   const classico = ehClassico(s.categoria);
   return (
     <article className="flex min-w-0 flex-col gap-3 rounded-2xl bg-painel-2 p-4">
@@ -176,6 +187,7 @@ export function CartaoArmado({ s, hoje }: { s: Setup; hoje: string }) {
         )}
         <Linha rotulo="Fechamento do candle">{reais(s.fechamento)}</Linha>
       </div>
+      <LoteDoSetup perfil={diario.perfil} entrada={gatilho(s)} stop={stopDoSetup(s)} />
       <Rodape s={s} hoje={hoje} />
     </article>
   );
@@ -191,33 +203,41 @@ function ResultadoEmR({ r }: { r: number | null }) {
  * resultado ate agora e as etiquetas. Em lista, nao em cartao: um setup com
  * saida pela MME 9 chega a ter duas dezenas abertas ao mesmo tempo.
  */
-export function LinhaEmAndamento({ s }: { s: Setup }) {
+export function LinhaEmAndamento({ s, diario }: { s: Setup; diario: ContextoDoDiario }) {
   const alvo = alvoDoSetup(s);
+  // Duas linhas: em cima o que se le de relance (papel, quando, R, Entrei);
+  // embaixo os precos e as etiquetas. Numa linha so, com o botao, os precos
+  // viravam uma coluna de cinco linhas no celular.
   return (
-    <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
-      <Link
-        href={linkDaFicha(s)}
-        className="w-16 text-[14px] font-extrabold transition-colors hover:text-acento"
-      >
-        {s.ticker}
-      </Link>
-      <span className="num w-20 text-[12px] font-semibold text-tinta-3">
-        entrou {s.confirmadoEm ? diaCurto(s.confirmadoEm) : "—"}
-      </span>
-      <span className="num min-w-0 flex-1 text-[12px] font-semibold text-tinta-2">
-        {reais(s.entrada)} · stop {reais(stopDoSetup(s))}
-        {alvo !== null && <> · alvo {reais(alvo)}</>}
-      </span>
-      <span className="num text-right text-[13px] font-bold">
-        <ResultadoEmR r={resultadoEmR(s)} />
-      </span>
-      <span className="flex basis-full flex-wrap gap-1.5 pl-0 text-[11px] font-semibold text-tinta-3 sm:basis-auto">
-        {etiquetasDoSetup(s).map((e) => (
-          <span key={e.texto} className="rounded-md bg-painel px-2 py-0.5 text-tinta-2">
-            {e.texto}
-          </span>
-        ))}
-      </span>
+    <li className="flex flex-col gap-1.5 py-2.5">
+      <div className="flex items-center gap-3">
+        <Link
+          href={linkDaFicha(s)}
+          className="w-16 text-[14px] font-extrabold transition-colors hover:text-acento"
+        >
+          {s.ticker}
+        </Link>
+        <span className="num text-[12px] font-semibold text-tinta-3">
+          entrou {s.confirmadoEm ? diaCurto(s.confirmadoEm) : "—"}
+        </span>
+        <span className="num ml-auto text-right text-[13px] font-bold">
+          <ResultadoEmR r={resultadoEmR(s)} />
+        </span>
+        <BotaoEntrei s={s} diario={diario} />
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <span className="num text-[12px] font-semibold text-tinta-2">
+          entrada {reais(s.entrada)} · stop {reais(stopDoSetup(s))}
+          {alvo !== null && <> · alvo {reais(alvo)}</>}
+        </span>
+        <span className="flex flex-wrap gap-1.5 text-[11px] font-semibold text-tinta-3">
+          {etiquetasDoSetup(s).map((e) => (
+            <span key={e.texto} className="rounded-md bg-painel px-2 py-0.5 text-tinta-2">
+              {e.texto}
+            </span>
+          ))}
+        </span>
+      </div>
     </li>
   );
 }

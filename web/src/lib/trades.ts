@@ -18,6 +18,9 @@
 import type { PoolClient } from "pg";
 import { conexaoDeAlertas } from "./db";
 import { diaNaB3 } from "./candle-de-hoje";
+import { CATEGORIAS_DE_SETUP, type CategoriaDoSetup } from "./config";
+import { DiarioInvalido, validarCamposDoDiario } from "./diario";
+import { faltaAMigration } from "./perfil";
 import {
   OperacaoInvalida,
   aplicarOperacoes,
@@ -69,6 +72,12 @@ export type TradeResumo = {
   /** O snapshot mais recente gravado, ou null se nenhum pregao ainda marcou. */
   ultimoSnapshot: SnapshotDoTrade | null;
   operacoes: OperacaoDoTrade[];
+  /** O setup (linha de `setups`) de onde o trade nasceu, pelo botao "Entrei". */
+  setupId: number | null;
+  /** A familia do setup; null = sem setup. */
+  categoriaSetup: CategoriaDoSetup | null;
+  /** O stop do trade, para o resultado em R; null = sem stop. */
+  stop: number | null;
 };
 
 export type TradeDetalhe = TradeResumo & {
@@ -120,6 +129,10 @@ type LinhaTrade = {
   ticker: string;
   aberto_em: Date | string;
   encerrado_em: Date | string | null;
+  // Ausentes antes da migration 0018 (as consultas usam `SELECT *`): valem null.
+  setup_id?: string | number | null;
+  categoria_setup?: string | null;
+  stop?: string | number | null;
 };
 
 type LinhaOperacao = {
@@ -200,6 +213,11 @@ function montarResumo(
     realizado: ultimaOp?.realizadoApos ?? 0,
     ultimoSnapshot,
     operacoes,
+    setupId: r.setup_id === null || r.setup_id === undefined ? null : Number(r.setup_id),
+    categoriaSetup: (CATEGORIAS_DE_SETUP as readonly string[]).includes(r.categoria_setup ?? "")
+      ? (r.categoria_setup as CategoriaDoSetup)
+      : null,
+    stop: r.stop === null || r.stop === undefined ? null : Number(r.stop),
   };
 }
 
@@ -208,7 +226,7 @@ export async function listarTrades(ticker?: string): Promise<TradeResumo[]> {
   const pool = conexaoDeAlertas();
   const filtro = ticker ? "WHERE ticker = $1" : "";
   const { rows: tradeRows } = await pool.query<LinhaTrade>(
-    `SELECT id, ticker, aberto_em, encerrado_em
+    `SELECT *
        FROM volume_scanner.trades
        ${filtro}
       ORDER BY (encerrado_em IS NULL) DESC, COALESCE(encerrado_em, aberto_em) DESC, id DESC`,
@@ -256,7 +274,7 @@ export async function listarTrades(ticker?: string): Promise<TradeResumo[]> {
 export async function detalharTrade(id: number): Promise<TradeDetalhe | null> {
   const pool = conexaoDeAlertas();
   const { rows } = await pool.query<LinhaTrade>(
-    `SELECT id, ticker, aberto_em, encerrado_em FROM volume_scanner.trades WHERE id = $1`,
+    `SELECT * FROM volume_scanner.trades WHERE id = $1`,
     [id],
   );
   if (rows.length === 0) return null;
@@ -468,9 +486,48 @@ async function garantirPregao(client: PoolClient, data: string): Promise<void> {
   }
 }
 
+/** `validarCamposDoDiario` com o erro na classe que as rotas ja tratam como 400. */
+function validarDiario(campos: Record<string, unknown>) {
+  try {
+    return validarCamposDoDiario(campos, CATEGORIAS_DE_SETUP);
+  } catch (erro) {
+    if (erro instanceof DiarioInvalido) throw new OperacaoInvalida(erro.message);
+    throw erro;
+  }
+}
+
+const SEM_MIGRATION_DO_DIARIO = "o diário com setup e stop ainda não está disponível neste banco";
+
+/**
+ * Confere o setup que o trade novo declara: existe, e do mesmo papel, e a
+ * categoria (se veio) e a dele. Devolve a categoria a gravar.
+ */
+async function conferirSetup(
+  client: PoolClient,
+  setupId: number,
+  ticker: string,
+  categoria: string | null,
+): Promise<string> {
+  const { rows } = await client.query<{ ticker: string; categoria: string }>(
+    `SELECT ticker, categoria FROM volume_scanner.setups WHERE id = $1`,
+    [setupId],
+  );
+  if (rows.length === 0) throw new OperacaoInvalida("setup nao encontrado");
+  if (rows[0].ticker !== ticker) throw new OperacaoInvalida("esse setup e de outro papel");
+  if (categoria !== null && categoria !== rows[0].categoria) {
+    throw new OperacaoInvalida("a categoria nao bate com a do setup");
+  }
+  return rows[0].categoria;
+}
+
 /**
  * Registra uma compra ou venda. Compra sem trade aberto do papel abre um;
  * venda sem trade aberto e erro -- nao ha posicao para vender.
+ *
+ * `setupId`, `categoriaSetup` e `stop` (opcionais) sao do TRADE, nao da
+ * operacao: so sao gravados quando esta compra abre o trade. Numa compra que
+ * cai num trade ja aberto eles nao mudam nada -- para isso existe
+ * `editarTrade`.
  */
 export async function registrarOperacao(entrada: unknown): Promise<TradeDetalhe> {
   const e = comoObjeto(entrada);
@@ -490,6 +547,7 @@ export async function registrarOperacao(entrada: unknown): Promise<TradeDetalhe>
   }
 
   const { tipo, data, quantidade, preco } = validarCampos(e as EntradaDeOperacao);
+  const diario = validarDiario(e);
 
   const tradeId = await comTransacao(async (client) => {
     await garantirPregao(client, data);
@@ -507,16 +565,31 @@ export async function registrarOperacao(entrada: unknown): Promise<TradeDetalhe>
       if (tipo === "venda") {
         throw new OperacaoInvalida(`nao ha trade aberto de ${ticker} para vender`);
       }
+      const temDiario =
+        diario.setupId !== null || diario.categoriaSetup !== null || diario.stop !== null;
+      let categoria = diario.categoriaSetup;
+      if (diario.setupId !== null) {
+        categoria = await conferirSetup(client, diario.setupId, ticker, categoria);
+      }
       try {
-        const { rows: novoRows } = await client.query<{ id: string }>(
-          `INSERT INTO volume_scanner.trades (ticker, aberto_em) VALUES ($1, $2) RETURNING id`,
-          [ticker, data],
-        );
+        // Sem campo do diario, o INSERT antigo: segue valendo num banco que
+        // ainda nao tem as colunas da migration 0018.
+        const { rows: novoRows } = temDiario
+          ? await client.query<{ id: string }>(
+              `INSERT INTO volume_scanner.trades (ticker, aberto_em, setup_id, categoria_setup, stop)
+               VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+              [ticker, data, diario.setupId, categoria, diario.stop],
+            )
+          : await client.query<{ id: string }>(
+              `INSERT INTO volume_scanner.trades (ticker, aberto_em) VALUES ($1, $2) RETURNING id`,
+              [ticker, data],
+            );
         id = Number(novoRows[0].id);
       } catch (erro) {
         if (ehViolacaoDeUnicidade(erro)) {
           throw new OperacaoInvalida(`ja existe um trade aberto de ${ticker}`);
         }
+        if (faltaAMigration(erro)) throw new OperacaoInvalida(SEM_MIGRATION_DO_DIARIO);
         throw erro;
       }
     }
@@ -612,4 +685,68 @@ export async function apagarOperacao(
   // Se o trade foi apagado junto (ficou sem operacao), `detalharTrade` acha
   // nada e devolve null -- o mesmo caminho serve os dois casos.
   return { apagado: true, trade: await detalharTrade(tradeId) };
+}
+
+/**
+ * Edita o setup e o stop de um trade (o diario). So os campos que vieram:
+ * ausente mantem, `null` ou "" limpa. Mudar a categoria para uma diferente da
+ * do setup de origem desliga o trade desse setup (o "Voce entrou" dele some):
+ * o trade deixou de ser aquele setup.
+ */
+export async function editarTrade(id: number, campos: unknown): Promise<TradeDetalhe | null> {
+  const c = comoObjeto(campos);
+  const temCategoria = "categoriaSetup" in c;
+  const temStop = "stop" in c;
+  if (!temCategoria && !temStop) throw new OperacaoInvalida("nada para alterar");
+  const diario = validarDiario({ categoriaSetup: c.categoriaSetup, stop: c.stop });
+
+  try {
+    const { rowCount } = await conexaoDeAlertas().query(
+      `UPDATE volume_scanner.trades t
+          SET categoria_setup = CASE WHEN $3 THEN $1::text ELSE t.categoria_setup END,
+              stop = CASE WHEN $4 THEN $2::numeric ELSE t.stop END,
+              setup_id = CASE
+                WHEN $3 AND t.setup_id IS NOT NULL
+                     AND $1::text IS DISTINCT FROM
+                         (SELECT s.categoria FROM volume_scanner.setups s WHERE s.id = t.setup_id)
+                THEN NULL ELSE t.setup_id END
+        WHERE t.id = $5`,
+      [diario.categoriaSetup, diario.stop, temCategoria, temStop, id],
+    );
+    if (!rowCount) return null;
+  } catch (erro) {
+    if (faltaAMigration(erro)) throw new OperacaoInvalida(SEM_MIGRATION_DO_DIARIO);
+    throw erro;
+  }
+  return detalharTrade(id);
+}
+
+export type TradesDosSetups = {
+  /** `setups.id` -> `trades.id` do trade que nasceu dele (o mais recente, se houver mais de um). */
+  porSetup: Record<number, number>;
+  /** Papel -> `trades.id` do trade aberto dele. */
+  abertoPorTicker: Record<string, number>;
+};
+
+/**
+ * Para a aba Setups: quais setups ja viraram trade (botao "Entrei" vira "Voce
+ * entrou") e quais papeis ja tem trade aberto. Banco sem a migration 0018: ninguem entrou.
+ */
+export async function tradesDosSetups(): Promise<TradesDosSetups> {
+  const pool = conexaoDeAlertas();
+  const porSetup: Record<number, number> = {};
+  const abertoPorTicker: Record<string, number> = {};
+  const { rows: abertos } = await pool.query<{ id: string | number; ticker: string }>(
+    `SELECT id, ticker FROM volume_scanner.trades WHERE encerrado_em IS NULL`,
+  );
+  for (const r of abertos) abertoPorTicker[r.ticker] = Number(r.id);
+  try {
+    const { rows } = await pool.query<{ id: string | number; setup_id: string | number }>(
+      `SELECT id, setup_id FROM volume_scanner.trades WHERE setup_id IS NOT NULL ORDER BY id`,
+    );
+    for (const r of rows) porSetup[Number(r.setup_id)] = Number(r.id);
+  } catch (erro) {
+    if (!faltaAMigration(erro)) throw erro;
+  }
+  return { porSetup, abertoPorTicker };
 }

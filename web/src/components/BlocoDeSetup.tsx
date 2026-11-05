@@ -7,6 +7,7 @@ import {
   type Bloco,
   type Conferencia,
   chaveDoBacktest,
+  type ContextoDoDiario,
   MAXIMO_DE_ENCERRADOS,
   NOME_DO_SETUP,
   textoAoVivo,
@@ -21,6 +22,7 @@ type Props = {
   conferencia?: Conferencia;
   hoje: string;
   ultimoPregao: string | null;
+  diario: ContextoDoDiario;
 };
 
 /** "3 armados hoje · 2 em andamento", com o singular certo. */
@@ -84,7 +86,13 @@ function LinhaDeConferencia({ conferencia }: { conferencia: Conferencia | undefi
 }
 
 /** O miolo de um bloco: preferencias, armados, em andamento, encerrados e o link do Backtest. */
-export function CorpoDoBloco({ bloco, conferencia, hoje, ultimoPregao }: Omit<Props, "nivel">) {
+export function CorpoDoBloco({
+  bloco,
+  conferencia,
+  hoje,
+  ultimoPregao,
+  diario,
+}: Omit<Props, "nivel">) {
   return (
     <div className="flex flex-col gap-4">
       <PreferenciaDoSetup
@@ -107,7 +115,7 @@ export function CorpoDoBloco({ bloco, conferencia, hoje, ultimoPregao }: Omit<Pr
             </p>
             <div className={GRADE}>
               {bloco.armados.map((s) => (
-                <CartaoArmado key={s.id} s={s} hoje={hoje} />
+                <CartaoArmado key={s.id} s={s} hoje={hoje} diario={diario} />
               ))}
             </div>
           </>
@@ -121,7 +129,7 @@ export function CorpoDoBloco({ bloco, conferencia, hoje, ultimoPregao }: Omit<Pr
           <>
             <ul className="flex flex-col divide-y divide-linha">
               {bloco.emAndamento.map((s) => (
-                <LinhaEmAndamento key={s.id} s={s} />
+                <LinhaEmAndamento key={s.id} s={s} diario={diario} />
               ))}
             </ul>
             <p className="text-[12px] font-semibold text-tinta-3">
@@ -169,6 +177,7 @@ export function BlocoLigado(props: Props) {
         conferencia={props.conferencia}
         hoje={props.hoje}
         ultimoPregao={props.ultimoPregao}
+        diario={props.diario}
       />
     </section>
   );
@@ -193,6 +202,7 @@ export function BlocoFechado(props: Props) {
           conferencia={props.conferencia}
           hoje={props.hoje}
           ultimoPregao={props.ultimoPregao}
+          diario={props.diario}
         />
       </div>
     </details>

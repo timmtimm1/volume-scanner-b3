@@ -2,10 +2,13 @@
 
 import Link from "next/link";
 import { useEffect, useState } from "react";
+import { fmtR } from "@/lib/backtest-tela";
 import type { CandleDeHoje } from "@/lib/candle-de-hoje";
+import { resultadoEmRDoTrade } from "@/lib/diario";
 import { data as fmtData, numero, percentual, reais } from "@/lib/formato";
 import { marcarAgora } from "@/lib/posicao";
 import { precoDeAgora } from "@/lib/preco-de-agora";
+import { NOME_DO_SETUP } from "@/lib/setups-tela";
 import type { TradeResumo } from "@/lib/trades";
 import { ArranjoDaPagina, GradeDeCaixas } from "./OrganizarCaixas";
 
@@ -17,6 +20,30 @@ import { ArranjoDaPagina, GradeDeCaixas } from "./OrganizarCaixas";
  * so existe no navegador e a cotacao de agora de cada trade aberto, com o
  * mesmo cache de 5 minutos que a ficha do papel usa.
  */
+/** O R de um trade em texto colorido; "—" sem stop, com a dica onde ha espaco. */
+function EmR({ r }: { r: number | null }) {
+  if (r === null) {
+    return (
+      <span className="num text-[12px] font-semibold text-tinta-3" title="Defina o stop no trade para ver em R">
+        — em R
+      </span>
+    );
+  }
+  return (
+    <span className={`num text-[12px] font-bold ${r >= 0 ? "text-alta" : "text-baixa"}`}>{fmtR(r)}</span>
+  );
+}
+
+/** O setup do trade como etiqueta; nada quando nao tem. */
+function EtiquetaDoSetup({ trade }: { trade: TradeResumo }) {
+  if (!trade.categoriaSetup) return null;
+  return (
+    <span className="rounded-md bg-painel px-2 py-0.5 text-[11px] font-bold text-tinta-2">
+      {NOME_DO_SETUP[trade.categoriaSetup]}
+    </span>
+  );
+}
+
 export function ListaDeTrades({ iniciais }: { iniciais: TradeResumo[] }) {
   const abertos = iniciais.filter((t) => t.encerradoEm === null);
   const encerrados = iniciais.filter((t) => t.encerradoEm !== null);
@@ -92,16 +119,20 @@ export function ListaDeTrades({ iniciais }: { iniciais: TradeResumo[] }) {
             >
               {trade.ticker}
             </Link>
+            <EtiquetaDoSetup trade={trade} />
             <span className="num text-[12px] font-semibold text-tinta-3">
               {numero(trade.quantidade, 0)} ações
             </span>
             <span
-              className={`num ml-auto text-[14px] font-extrabold ${
+              className={`num ml-auto text-right text-[14px] font-extrabold ${
                 marca.resultado >= 0 ? "text-alta" : "text-baixa"
               }`}
             >
               {reais(marca.resultado)}{" "}
               <span className="text-[12px] font-bold">{percentual(marca.resultadoPct)}</span>
+              <span className="block">
+                <EmR r={resultadoEmRDoTrade(trade, info?.preco ?? null)} />
+              </span>
             </span>
 
             <span className="num w-full text-[11px] font-semibold text-tinta-3">
@@ -134,17 +165,21 @@ export function ListaDeTrades({ iniciais }: { iniciais: TradeResumo[] }) {
             >
               {t.ticker}
             </Link>
+            <EtiquetaDoSetup trade={t} />
             <span className="num text-[11px] font-semibold text-tinta-3">
               {fmtData(t.abertoEm)} – {t.encerradoEm && fmtData(t.encerradoEm)}
             </span>
             <span
-              className={`num ml-auto text-[14px] font-extrabold ${
+              className={`num ml-auto text-right text-[14px] font-extrabold ${
                 t.realizado >= 0 ? "text-alta" : "text-baixa"
               }`}
             >
               {reais(t.realizado)}{" "}
               <span className="text-[12px] font-bold">
                 {percentual(t.custoComprado > 0 ? t.realizado / t.custoComprado : null)}
+              </span>
+              <span className="block">
+                <EmR r={resultadoEmRDoTrade(t, null)} />
               </span>
             </span>
           </li>

@@ -3,9 +3,13 @@
 import Link from "next/link";
 import { useId, useState } from "react";
 import { diaNaB3, type CandleDeHoje } from "@/lib/candle-de-hoje";
+import { resultadoEmRDoTrade } from "@/lib/diario";
+import { fmtR } from "@/lib/backtest-tela";
 import { data as fmtData, numero, percentual, reais } from "@/lib/formato";
+import { numeroDoTexto } from "@/lib/lote";
 import { marcarAgora } from "@/lib/posicao";
 import { precoDeAgora } from "@/lib/preco-de-agora";
+import { NOME_DO_SETUP, ORDEM_DAS_CATEGORIAS } from "@/lib/setups-tela";
 import type { EstadoDosTrades } from "@/lib/useTradesDoPapel";
 
 type Props = {
@@ -31,26 +35,42 @@ export function PainelDeTrade({ estado, hoje }: Props) {
   const [dataForm, setDataForm] = useState(() => diaNaB3(new Date()));
   const [quantidadeForm, setQuantidadeForm] = useState("");
   const [precoForm, setPrecoForm] = useState("");
+  // So na compra que abre o trade: ele e do trade, nao da operacao.
+  const [setupForm, setSetupForm] = useState("");
+  const [stopForm, setStopForm] = useState("");
 
   if (autenticado !== true) return null;
 
   const precoInfo = tradeAberto ? precoDeAgora(hoje, tradeAberto.ultimoSnapshot) : null;
   const marca = tradeAberto ? marcarAgora(tradeAberto, precoInfo?.preco ?? null) : null;
   const emAberto = marca && tradeAberto ? marca.resultado - tradeAberto.realizado : null;
+  const emR = tradeAberto ? resultadoEmRDoTrade(tradeAberto, precoInfo?.preco ?? null) : null;
+  const abreTrade = formAberto === "compra" && !tradeAberto;
 
   function abrirForm(tipo: "compra" | "venda") {
     setFormAberto(tipo);
     setDataForm(diaNaB3(new Date()));
     setQuantidadeForm("");
     setPrecoForm(precoInfo ? precoInfo.preco.toFixed(2) : "");
+    setSetupForm("");
+    setStopForm("");
   }
 
   async function enviar() {
     if (!formAberto) return;
     const quantidade = Number(quantidadeForm);
     const preco = Number(precoForm.replace(",", "."));
+    // Texto que nao e numero segue como esta: o servidor recusa com a mensagem certa.
+    const stop = numeroDoTexto(stopForm) ?? stopForm.trim();
     try {
-      await registrar({ tipo: formAberto, data: dataForm, quantidade, preco });
+      await registrar({
+        tipo: formAberto,
+        data: dataForm,
+        quantidade,
+        preco,
+        ...(abreTrade && setupForm !== "" ? { categoriaSetup: setupForm } : {}),
+        ...(abreTrade && stop !== "" ? { stop } : {}),
+      });
       setFormAberto(null);
     } catch {
       // erro ja fica em `estado.erro` e aparece abaixo do formulario.
@@ -107,6 +127,17 @@ export function PainelDeTrade({ estado, hoje }: Props) {
                   {reais(marca.resultado)}{" "}
                   <span className="text-[13px] font-bold">{percentual(marca.resultadoPct)}</span>
                 </span>
+              </div>
+              <div className="flex items-center justify-between text-[12px] font-semibold text-tinta-3">
+                <span>
+                  em R{" "}
+                  {emR === null ? (
+                    <strong className="num text-tinta-2">—</strong>
+                  ) : (
+                    <strong className={`num ${emR >= 0 ? "text-alta" : "text-baixa"}`}>{fmtR(emR)}</strong>
+                  )}
+                </span>
+                {emR === null && <span>defina o stop no trade para ver em R</span>}
               </div>
               <div className="flex items-center justify-between text-[12px] font-semibold text-tinta-3">
                 <span>
@@ -192,6 +223,38 @@ export function PainelDeTrade({ estado, hoje }: Props) {
                 className="num toque h-10 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento"
               />
             </label>
+            {abreTrade && (
+              <>
+                <label className="flex min-w-0 flex-col gap-1" htmlFor={`${id}-setup`}>
+                  <span className="rotulo">Setup (opcional)</span>
+                  <select
+                    id={`${id}-setup`}
+                    value={setupForm}
+                    onChange={(e) => setSetupForm(e.target.value)}
+                    className="toque h-10 w-full min-w-0 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento"
+                  >
+                    <option value="">Sem setup</option>
+                    {ORDEM_DAS_CATEGORIAS.map((c) => (
+                      <option key={c} value={c}>
+                        {NOME_DO_SETUP[c]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex min-w-0 flex-col gap-1" htmlFor={`${id}-stop`}>
+                  <span className="rotulo">Stop (opcional)</span>
+                  <input
+                    id={`${id}-stop`}
+                    type="text"
+                    inputMode="decimal"
+                    value={stopForm}
+                    onChange={(e) => setStopForm(e.target.value)}
+                    placeholder="0,00"
+                    className="num toque h-10 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento"
+                  />
+                </label>
+              </>
+            )}
           </div>
           <div className="flex gap-2">
             <button

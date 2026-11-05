@@ -11,6 +11,9 @@ export type EntradaDeRegistro = {
   data: string;
   quantidade: number;
   preco: number;
+  /** Do trade, nao da operacao: so valem na compra que abre um trade novo. */
+  categoriaSetup?: string;
+  stop?: number | string;
 };
 
 /**

@@ -1,11 +1,16 @@
 import { ehDono, signIn, signOut } from "@/auth";
 import Link from "next/link";
 import { ListaDeSetups } from "@/components/ListaDeSetups";
-import { listarSetups } from "@/lib/setups";
+import { escolhasDa, rodadaAtual } from "@/lib/backtest";
+import type { Nivel } from "@/lib/backtest-tela";
+import { CATEGORIAS_DE_SETUP } from "@/lib/config";
+import { conferenciaAoVivo, listarSetups, preferenciasDosSetups } from "@/lib/setups";
+import { type CategoriaDoSetup, type Conferencia, categoriaDaChave } from "@/lib/setups-tela";
 import { hojeNaB3 } from "@/lib/validade";
 
 /**
- * Setups: candle de reversao no suporte, filtrado (secao 13 do plano).
+ * Setups: os de alerta ligado em cima, os outros fechados embaixo (secoes 13 e
+ * 14 do plano).
  *
  * Mesma estrutura de `/trades`: le a sessao, entao roda no servidor a cada
  * visita, e quem nao esta logado so ve o que a aba e. Decisao de 21/10/2026:
@@ -19,8 +24,8 @@ export default async function Setups() {
       <section className="cartao mx-auto flex max-w-[560px] flex-col gap-4 p-6 md:mt-8 md:p-8">
         <h1 className="text-[22px] font-extrabold tracking-tight">Setups</h1>
         <p className="text-[14px] leading-relaxed text-tinta-2">
-          Candles de reversão em suporte, filtrados por volume, contexto e espaço até a
-          resistência, com o alerta de confirmação e o histórico de cada um.
+          Os setups do dia: o que armou, o que está em andamento e o que já terminou, com o
+          alerta e a saída que você escolhe para cada um.
         </p>
         <form
           action={async () => {
@@ -42,7 +47,30 @@ export default async function Setups() {
     );
   }
 
-  const setups = await listarSetups();
+  const [setups, preferencias, rodada, aoVivo] = await Promise.all([
+    listarSetups(),
+    preferenciasDosSetups(),
+    rodadaAtual(),
+    conferenciaAoVivo(),
+  ]);
+  // O selo de cada bloco e o nivel da rodada mais recente; sem rodada, sem selo.
+  // A conferencia junta o ao vivo (desde a estreia) com o numero do backtest.
+  const niveis: Partial<Record<CategoriaDoSetup, Nivel>> = {};
+  const conferencias: Partial<Record<CategoriaDoSetup, Conferencia>> = {};
+  for (const c of CATEGORIAS_DE_SETUP) {
+    conferencias[c] = { aoVivo: aoVivo[c] ?? null, backtest: null };
+  }
+  if (rodada) {
+    for (const e of await escolhasDa(rodada.id)) {
+      const categoria = categoriaDaChave(e.setup);
+      if (!categoria) continue;
+      niveis[categoria] = e.nivel;
+      conferencias[categoria] = {
+        aoVivo: aoVivo[categoria] ?? null,
+        backtest: { r: e.expConferencia, saida: e.saida },
+      };
+    }
+  }
 
   return (
     <div className="flex flex-col gap-4">
@@ -50,8 +78,7 @@ export default async function Setups() {
         <div className="flex min-w-0 flex-col gap-0.5">
           <h1 className="text-[22px] font-extrabold tracking-tight">Setups</h1>
           <p className="text-[13px] font-semibold text-tinta-3">
-            Candle de reversão em suporte de 3+ toques · volume de 1,5× ou mais · fora de queda
-            e de tendência de baixa · resistência a 2× o risco ou mais
+            Cada setup tem o seu bloco. Ligue o alerta nos que quiser acompanhar.
           </p>
         </div>
         <div className="flex-1" />
@@ -76,7 +103,13 @@ export default async function Setups() {
         </form>
       </section>
 
-      <ListaDeSetups setups={setups} hoje={hojeNaB3()} />
+      <ListaDeSetups
+        setups={setups}
+        preferencias={preferencias}
+        niveis={niveis}
+        conferencias={conferencias}
+        hoje={hojeNaB3()}
+      />
     </div>
   );
 }

@@ -25,7 +25,7 @@ const COR_DO_NIVEL: Record<Nivel, string> = {
   falhou: "bg-painel text-tinta-2 border border-linha-2",
 };
 
-function Selo({ nivel }: { nivel: Nivel }) {
+export function Selo({ nivel }: { nivel: Nivel }) {
   return (
     <span
       title={NIVEIS[nivel].explicacao}

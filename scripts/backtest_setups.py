@@ -10,6 +10,11 @@ em 1995-2015 e a conferencia em 2016-2026; ano a ano e curva.
 
     python scripts/backtest_setups.py relatorio <pasta>
 
+Etapa 3 (`enviar`): grava o resultado no banco de SCANNER_DATABASE_URL, numa
+rodada nova (o site mostra a mais recente; ficam as duas ultimas).
+
+    python scripts/backtest_setups.py enviar <pasta>
+
 `barras.pkl` sai de `scripts/gatilhos_carregar.py`. Lote de papeis pela variavel
 BACKTEST_LOTE (padrao 150): o motor de suporte e resistencia e o que mais pesa
 na memoria.
@@ -26,8 +31,10 @@ from pathlib import Path
 import numpy as np
 import pandas as pd
 
+from scanner.backtest.envio import amostra_de_trades, enviar, resumo_da_rodada
 from scanner.backtest.metricas import curva, escolher, grade, por_ano
-from scanner.backtest.suite import liquidez_historica, rodar_lote
+from scanner.backtest.simulador import TETO
+from scanner.backtest.suite import CUSTO, liquidez_historica, rodar_lote
 from scanner.config import load_config
 from scanner.gatilhos.classicos import NOMES
 
@@ -111,12 +118,38 @@ def relatorio(pasta: Path) -> None:
         )
 
 
+def enviar_rodada(pasta: Path) -> None:
+    from scanner.storage.engine import build_engine
+    from scanner.storage.migracao import migrar_se_preciso
+
+    t0 = time.time()
+    trades = pd.read_pickle(pasta / "trades.pkl")
+    engine = build_engine()
+    migrar_se_preciso(engine)
+    rodada = resumo_da_rodada(trades, CUSTO, TETO)
+    rodada_id = enviar(
+        engine,
+        rodada=rodada,
+        grade=pd.read_pickle(pasta / "grade.pkl"),
+        escolha=pd.read_pickle(pasta / "escolha.pkl"),
+        anos=pd.read_pickle(pasta / "por_ano.pkl"),
+        curva=pd.read_pickle(pasta / "curva.pkl"),
+        amostra=amostra_de_trades(trades),
+    )
+    print(
+        f"rodada {rodada_id} gravada: dados de {rodada['dados_de']:%d/%m/%Y} a"
+        f" {rodada['dados_ate']:%d/%m/%Y}, {rodada['trades']} trades ({time.time() - t0:.0f}s)"
+    )
+
+
 def main() -> None:
     etapa = sys.argv[1]
     if etapa == "processar":
         processar(Path(sys.argv[2]), Path(sys.argv[3]))
     elif etapa == "relatorio":
         relatorio(Path(sys.argv[2]))
+    elif etapa == "enviar":
+        enviar_rodada(Path(sys.argv[2]))
     else:
         raise SystemExit(__doc__)
 

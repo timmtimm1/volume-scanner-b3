@@ -2,11 +2,13 @@
 
 ## O que é este projeto
 
-Detector de volume financeiro anômalo na B3. Todo pregão, calcula o z-score do volume de cada papel contra seu próprio histórico recente (janelas de 30, 45 e 60 pregões) e avisa por Telegram todo papel que cruzar o limiar configurado.
+A plataforma pessoal de trades do usuário na B3 (virada decidida por ele em 05/11/2026). O centro são os **setups de compra no diário**: Larry Williams 9.1 a 9.4, 123 de compra, PFR, toque na MMA 20, pullback de rompimento e os candles de reversão em suporte e na média. Para cada setup, a plataforma mostra os armados do dia, avisa quando confirma, mede o resultado em 30 anos de COTAHIST (a suíte de backtest), calcula o lote pelo risco e guarda o diário dos trades dele em R.
 
-A interpretação dos eventos é manual, feita pelo usuário no gráfico. O sistema detecta e apresenta; não julga, não filtra por mérito, não prevê.
+O **detector de volume anômalo** continua rodando igual, em segundo plano: todo pregão calcula o z-score do volume de cada papel contra seu próprio histórico recente (janelas de 30, 45 e 60 pregões) e avisa por Telegram todo papel que cruzar o limiar. O volume também entra como item do checklist de cada setup — apoia, não é o foco.
 
-**A especificação completa está em `docs/PLANO.md`. Leia antes de escrever qualquer código.**
+A decisão de entrar é sempre do usuário, no gráfico. O sistema detecta, mede e apresenta; não recomenda e não prevê.
+
+**A especificação completa está em `docs/PLANO.md`. Leia antes de escrever qualquer código.** A plataforma de setups está na seção 14.
 
 ## Regras de trabalho
 
@@ -33,14 +35,16 @@ Todo evento acima do limiar entra na lista. O único filtro é o piso absoluto d
 
 Se você achar que uma dessas coisas melhoraria o sistema, sugira em texto. Não implemente.
 
-## A exceção escrita: aba Setups
+## As exceções escritas: Setups e backtest
 
-Decidida pelo usuário em 21/10/2026, com estudo de 30 anos de COTAHIST antes (`scripts/gatilhos_estudo.py`). É a **única** exceção à lista acima, e não muda nada no alerta:
+A lista acima vale para o alerta de 6σ. Os setups e a suíte de backtest são exceções pedidas pelo usuário, com regras próprias, e não mudam nada no alerta:
 
-- A aba Setups classifica candle de reversão (martelo, doji libélula, engolfo, piercing, estrela da manhã) em suporte de 3+ toques e filtra por volume, contexto e espaço até a resistência. Numa seção própria ("Na média"), o mesmo candle encostando na MME 9 ou na MMA 20 em tendência de alta — decisão do usuário de 21/10/2026, sabendo que no estudo essa categoria foi positiva no trade de referência nos dois períodos, mas negativa contra o mercado em 2016–2026. Por isso ela não se mistura com a regra principal. As regras estão em `scanner/gatilhos/regra.py` e na seção `setups` do `config.yaml`; a seção 13 do plano tem a especificação.
-- É lente separada: não alimenta, não altera e não suprime o alerta de 6σ. A regra mecânica da seção 1 e a lista de "não fazer" continuam valendo para todo o resto.
-- Mudar um corte da regra exige refazer o estudo: escolher com 1995–2015 e conferir em 2016–2026, que não pode ser usado para escolher.
-- Nada de "probabilidade", "chance de subir" ou "recomendação" no texto: a aba mostra uma leitura, não uma promessa. Só para quem está logado.
+- **Setups** (21/10/2026 e 05/11/2026): cada setup é uma regra mecânica com nome (`scanner/gatilhos/regra.py` para os candles em suporte e na média, `scanner/gatilhos/classicos.py` para 9.1 a 9.4, 123, PFR, MMA 20 e pullback). Seções 13 e 14 do plano.
+- **Backtest** (05/11/2026): `scanner/backtest/` roda na máquina do usuário, sobre o COTAHIST desde 1995 (`scripts/backtest_setups.py`); só o resultado vai para o banco. Todo trade tem um trade de controle (papel sorteado no mesmo dia, mesma saída) — o número que importa é o setup contra o controle, não contra zero.
+- Mudar uma regra ou um corte exige refazer a suíte: escolher com 1995–2015 e conferir em 2016–2026, que não pode ser usado para escolher. Setup que falha na conferência continua visível, à parte e com aviso — não some.
+- Tendência é etiqueta ("em alta" ou "contra a tendência"), não filtro: os dois grupos aparecem.
+- É lente separada: não alimenta, não altera e não suprime o alerta de 6σ. A regra mecânica da seção 1 continua valendo para o alerta.
+- Nada de "probabilidade", "chance de subir" ou "recomendação" no texto: a plataforma mostra uma leitura e o que ela fez no passado, não uma promessa. Setups, backtest, lote e diário só para quem está logado.
 - O site usa só os 400 pregões do banco. Os 30 anos ficam na máquina do usuário.
 
 ## Padrões de código

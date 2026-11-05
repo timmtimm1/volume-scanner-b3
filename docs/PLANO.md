@@ -416,3 +416,63 @@ Os intervalos de 95% ainda cruzam o zero: é sinal consistente, não garantia. E
 2. Feita (PR #89). Alerta automático de rompimento um centavo acima da máxima de cada armado, válido só no pregão seguinte (migration 0014: `price_alerts.expira_em` e `setup_id`); mensagem própria quando dispara; bloco "Setups armados" no resumo diário do Telegram.
 3. Site: aba Setups (só logado: armados, em andamento, candle de força à parte, histórico com resultado contra o mercado, ao vivo separado dos retroativos), linhas de suporte e resistência na ficha de todo papel (públicas, com botão para esconder) e setas dos setups (só logado). Item Setups no menu.
 
+
+## 14. Plataforma de setups e suíte de backtest (decidida em 05/11/2026)
+
+O usuário transformou o projeto na plataforma pessoal de trades dele. O foco passa a ser os setups de compra no diário; o alerta de 6σ continua igual, em segundo plano, e o volume vira item do checklist de cada setup. Decisões tomadas em quatro rodadas de perguntas, depois de uma pesquisa sobre as regras e a evidência publicada de cada setup (nenhum tem teste rigoroso publicado na B3; os números que circulam são amostras pequenas, sem custo).
+
+### Os setups
+
+Todos armam no fechamento de `t` e compram R$ 0,01 acima da máxima de `t`, só no pregão seguinte. Stop inicial R$ 0,01 abaixo da mínima do padrão. Código em `scanner/gatilhos/classicos.py`.
+
+| Setup | Regra |
+|---|---|
+| 9.1 | MME 9 vinha caindo e vira para cima no dia |
+| 9.2 | MME 9 subindo e fechamento abaixo da mínima do candle anterior |
+| 9.3 | MME 9 subindo e dois fechamentos abaixo do fechamento de `t-2` |
+| 9.4 | MME 9 subia, virou para baixo em `t-1` e volta a subir em `t` sem perder a mínima de `t-1`; stop na mínima de `t-1` |
+| 123 | o candle do meio tem a mínima mais baixa dos três (estrito); stop na mínima dele |
+| PFR | mínima abaixo das dos dois candles anteriores e fechamento acima do anterior |
+| MMA 20 | MMA 20 subindo (acima de 10 pregões atrás), fechamento acima da MMA 200, mínima até 1% da MMA 20 e fechamento acima dela |
+| Pullback | resistência de 3+ toques rompida no fechamento (vira suporte); a volta até ela em até 20 pregões, com o fechamento segurando o nível |
+| Suporte, Na média, Força | as regras da seção 13, inalteradas |
+
+Versões dos 9.x: as do Palex/TradingView, as mais documentadas. Tendência é etiqueta: "em alta" = fechamento acima da MMA 200 e MMA 200 acima de 20 pregões atrás.
+
+### A suíte de backtest
+
+Roda na máquina (`scripts/backtest_setups.py processar` e `relatorio`), sobre o COTAHIST de 1995 a hoje, preços ajustados por desdobramento (não por provento). Universo de cada dia sem olhar o futuro: mediana do volume dos 60 pregões anteriores acima de R$ 500 mil em dinheiro de hoje (escalado pelo tamanho do mercado de cada época).
+
+- **Entrada:** no gatilho, ou na abertura se abriu acima; se o pregão seguinte não chega ao gatilho, não houve trade.
+- **Saídas** (escolha do usuário): alvo de 1, 2 ou 3 R; stop móvel na menor mínima dos 2 últimos candles; saída na abertura seguinte ao fechamento que vira a MME 9 para baixo. Teto de 60 pregões em todas.
+- **Conservador onde a ordem dos preços no dia é desconhecida:** mínima no stop no dia da entrada conta como stop; stop e alvo no mesmo dia contam como stop; gap abaixo do stop sai na abertura.
+- **Custo:** 0,08% por lado (0,03% de taxas da B3 + 0,05% de derrapagem).
+- **Um trade por vez** por papel e setup.
+- **Controle:** para cada trade, um papel sorteado entre os líquidos do mesmo dia, comprado na abertura seguinte, com stop à mesma distância e a mesma saída. O setup só vale alguma coisa se ganhar do controle.
+- **Números:** expectativa em R líquida, intervalo de 95% por bootstrap por mês, acerto, payoff, fator de lucro, dias, % por motivo de saída, ano a ano e curva de R acumulado.
+- **Protocolo:** para cada setup, a melhor combinação de saída e tendência é escolhida só com 1995–2015 (mínimo de 100 trades) e conferida uma vez em 2016–2026. Passa quem, na conferência, tem expectativa positiva **e** ganha do controle.
+
+### Resultado da primeira rodada (COTAHIST até 09/10/2026, 1,41 milhão de trades)
+
+| Setup | Escolhida em 1995–2015 | 1995–2015 | 2016–2026 [IC 95%] | Contra o controle em 2016–2026 | |
+|---|---|---|---|---|---|
+| Força | MME 9, em alta | +0,21 R | +0,31 R [+0,09; +0,54] | +0,32 R | passou |
+| 9.4 | MME 9, em alta | +0,21 R | +0,04 R [−0,06; +0,12] | +0,02 R | passou |
+| Suporte | alvo 3R, em alta | +0,06 R | +0,03 R [−0,22; +0,28] | +0,01 R | passou |
+| 9.1 | MME 9, em alta | +0,09 R | +0,01 R [−0,08; +0,10] | −0,04 R | falhou |
+| 123 | alvo 3R, em alta | +0,11 R | +0,03 R [−0,08; +0,12] | −0,04 R | falhou |
+| 9.2 | MME 9, em alta | +0,41 R | −0,05 R [−0,20; +0,09] | −0,19 R | falhou |
+| 9.3 | MME 9, em alta | +0,03 R | +0,06 R [−0,07; +0,18] | −0,05 R | falhou |
+| PFR | alvo 3R, em alta | +0,05 R | +0,00 R [−0,10; +0,10] | −0,05 R | falhou |
+| MMA 20 | alvo 3R, em alta | +0,05 R | −0,00 R [−0,11; +0,09] | −0,06 R | falhou |
+| Na média | alvo 3R, contra | +0,51 R | −0,13 R [−0,44; +0,20] | −0,36 R | falhou |
+| Pullback | MME 9, contra | −0,03 R | −0,06 R [−0,19; +0,08] | −0,15 R | falhou |
+
+Leitura: só a Força tem intervalo acima de zero, e com poucos trades (404) e resultado puxado por poucos ganhos grandes (mediana −0,27 R; média sem os 5% de cada ponta +0,06 R). Os setups clássicos ficam perto de zero depois do custo e, em 2016–2026, quase todos perdem do controle: o que parecia ganho era o mercado subindo. A saída pela MME 9 (deixar o lucro correr) é a melhor em quase todo setup; alvo fixo de 1 ou 2 R fica negativo na maioria.
+
+### Fases
+
+1. Motor dos setups clássicos, suíte de backtest local, testes, este plano e o CLAUDE.md. (Esta.)
+2. Resultado no banco e a página Backtest no app: escolher setup e variação; números, curva, ano a ano e lista de trades.
+3. Setups no pregão diário: o site abre nos Setups, etiquetas de tendência e volume, alerta liga/desliga por setup (ligado de início só nos que passaram), Telegram, entrada/stop/alvo no gráfico da ficha.
+4. Calculadora de lote (capital salvo na conta, risco padrão de 1%, ação inteira no fracionário) e diário ligado ao setup (botão "Entrei" no setup confirmado e campos setup e stop no formulário; resultado em R).

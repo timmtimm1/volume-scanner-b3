@@ -37,6 +37,7 @@ O sistema **detecta e apresenta**.
 - [Notícias na ficha](#notícias-na-ficha)
 - [Resumo da semana](#resumo-da-semana)
 - [Setups](#setups)
+- [Backtest dos setups](#backtest-dos-setups)
 - [Desempenho](#desempenho)
 - [Segredos](#segredos)
 
@@ -1430,6 +1431,37 @@ que nunca foi usado para escolher. Os intervalos de 95% ainda cruzam o zero:
 é sinal consistente, não garantia. Conferir no olho foi parte do estudo, e
 pegou dois erros antes dos números: engolfo que "engolia" um candle sem corpo,
 e nível fraco que, rompido, continuava vivo somando toques dos dois lados.
+
+## Backtest dos setups
+
+Pedido em 05/11/2026, quando o projeto virou a plataforma pessoal de trades: medir
+cada setup em 30 anos de COTAHIST antes de construir o resto. Roda na máquina, não
+no site (o banco do site só tem 400 pregões). Regras, protocolo e o resultado da
+primeira rodada estão na seção 14 do `docs/PLANO.md`.
+
+```bash
+# 1. barras de 1995 em diante num pickle (uns 3 minutos)
+python scripts/gatilhos_carregar.py data/raw data/raw data/backtest_setups/barras.pkl
+# 2. todos os setups x todas as saídas, em lotes de papéis (uns 5 minutos)
+BACKTEST_LOTE=100 python scripts/backtest_setups.py processar data/backtest_setups/barras.pkl data/backtest_setups/v1
+# 3. números, escolha em 1995-2015 e conferência em 2016-2026
+python scripts/backtest_setups.py relatorio data/backtest_setups/v1
+```
+
+O que cada parte faz:
+
+- `scanner/gatilhos/classicos.py`: 9.1 a 9.4, 123, PFR, toque na MMA 20 e pullback
+  de rompimento, cada um como regra mecânica (pregão × papel, sem olhar o futuro).
+- `scanner/backtest/simulador.py`: o trade, pregão a pregão. Entra no pregão seguinte
+  acima da máxima; sai por alvo de 1/2/3 R, stop móvel pelas mínimas ou MME 9
+  virando para baixo. Onde a ordem dos preços no dia é desconhecida, conta o pior.
+- `scanner/backtest/suite.py`: todos os setups × todas as saídas num lote, e um
+  trade de **controle** para cada trade (papel sorteado no mesmo dia, mesma saída).
+- `scanner/backtest/metricas.py`: expectativa em R com intervalo por bootstrap por
+  mês, contra o controle, ano a ano, curva, e o protocolo de escolha.
+
+O número que importa é o setup **contra o controle**: em 2016–2026 o controle ganhou
+uns +0,05 R por trade só por estar comprado num mercado que subiu.
 
 ## Desempenho
 

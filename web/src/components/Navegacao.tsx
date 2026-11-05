@@ -27,6 +27,17 @@ const traco = {
 
 const ITENS: Item[] = [
   {
+    href: "/setups",
+    nome: "Setups",
+    icone: (
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+        <path d="M7 2.5v3M7 13.5v4" />
+        <rect x="5" y="5.5" width="4" height="8" rx="1" />
+        <path d="M12 11.5l2.5-3 2.5 3M14.5 8.5v8" />
+      </svg>
+    ),
+  },
+  {
     href: "/",
     nome: "Scanner",
     icone: (
@@ -53,17 +64,6 @@ const ITENS: Item[] = [
         <rect x="3" y="4" width="14" height="13" rx="2" />
         <path d="M3 8h14M7 2.5v3M13 2.5v3" />
         <path d="M6 14.5l2.5-2.5 2 1.5 3.5-3.5" />
-      </svg>
-    ),
-  },
-  {
-    href: "/setups",
-    nome: "Setups",
-    icone: (
-      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
-        <path d="M7 2.5v3M7 13.5v4" />
-        <rect x="5" y="5.5" width="4" height="8" rx="1" />
-        <path d="M12 11.5l2.5-3 2.5 3M14.5 8.5v8" />
       </svg>
     ),
   },

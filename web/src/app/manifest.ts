@@ -17,7 +17,8 @@ export default function manifest(): MetadataRoute.Manifest {
     short_name: "vol-scanner",
     description:
       "Detector de volume financeiro anômalo na B3. Detecta e apresenta; a leitura é sua.",
-    start_url: "/",
+    // O icone do app abre nos Setups; a pagina inicial `/` continua sendo o scanner.
+    start_url: "/setups/",
     display: "standalone",
     orientation: "portrait",
     background_color: "#eef0f6",

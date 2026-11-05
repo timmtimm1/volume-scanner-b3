@@ -54,6 +54,8 @@ def test_nomes_das_tabelas() -> None:
     # o resultado da suite de backtest, que roda na maquina do usuario sobre 30
     # anos de COTAHIST: so o resultado sobe, numa rodada, e o site le a mais
     # recente. Nao alimentam nada do pipeline.
+    # `setup_preferencias` (migration 0017) guarda a escolha do usuario no app
+    # para cada setup: alerta ligado ou nao e a saida depois de confirmado.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -83,6 +85,7 @@ def test_nomes_das_tabelas() -> None:
         "backtest_anos",
         "backtest_curvas",
         "backtest_trades",
+        "setup_preferencias",
     }
 
 

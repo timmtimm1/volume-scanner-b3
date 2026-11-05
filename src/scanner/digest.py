@@ -15,6 +15,7 @@ no resumo pela mesma razao que nao interessa no alerta.
 
 from __future__ import annotations
 
+from collections.abc import Collection
 from dataclasses import dataclass, replace
 from datetime import date
 from typing import Any
@@ -22,7 +23,7 @@ from typing import Any
 import pandas as pd
 from sqlalchemy import Engine
 
-from scanner.config import ScannerConfig
+from scanner.config import CATEGORIAS_DE_SETUP, ScannerConfig, SetupsConfig
 from scanner.recompute import Contexto, carregar_contexto
 
 RESUMO_COLUMNS = (
@@ -130,7 +131,10 @@ def montar_resumo(
 
 
 def payload_do_resumo(
-    resumo: Resumo, trades: pd.DataFrame | None = None, setups: pd.DataFrame | None = None
+    resumo: Resumo,
+    trades: pd.DataFrame | None = None,
+    setups: pd.DataFrame | None = None,
+    ligados: Collection[str] | None = None,
 ) -> dict[str, Any]:
     """Converte o resumo no formato que a mensagem espera.
 
@@ -141,6 +145,10 @@ def payload_do_resumo(
     `trades_do_pregao` (a maioria dos testes) continua recebendo exatamente o
     payload de antes, sem a chave `trades`. `setups` (o que `setups_do_resumo`
     devolve) segue a mesma ideia: sem nada a mostrar, nao ha chave.
+
+    `ligados`: os setups com alerta ligado (no app, ou o padrao do config). So
+    eles entram na lista; dos outros vai a contagem por setup. Sem `ligados`,
+    vale o padrao do `config.yaml`.
     """
 
     def valor(bruto: Any) -> float | None:
@@ -180,18 +188,36 @@ def payload_do_resumo(
         payload["trades"] = linhas_trades
 
     if setups is not None and not setups.empty:
-        armados = setups[
-            (setups["trade_date"] == resumo.trade_date) & (setups["estado"] == "armado")
-        ]
-        confirmados = setups[setups["confirmado_em"] == resumo.trade_date]
-        payload["setups"] = {
-            "armados": armados[armados["categoria"] == "reversao"].to_dict("records"),
-            "media": armados[armados["categoria"] == "media"].to_dict("records"),
-            "forca": armados[armados["categoria"] == "forca"].to_dict("records"),
-            "confirmados": confirmados.to_dict("records"),
+        if ligados is None:
+            ligados = [c for c, p in SetupsConfig().padroes.items() if p.alerta]
+        ordem = {c: i for i, c in enumerate(CATEGORIAS_DE_SETUP)}
+        com_alerta = setups["categoria"].isin(list(ligados))
+        hoje = (setups["trade_date"] == resumo.trade_date) & (setups["estado"] == "armado")
+        armados = setups[hoje & com_alerta]
+        armados = armados.assign(_ordem=armados["categoria"].map(ordem)).sort_values(
+            ["_ordem", "rvol"], ascending=[True, False], kind="stable"
+        )
+        sem_alerta = setups[hoje & ~com_alerta]["categoria"].value_counts()
+        outros = {
+            str(c): int(sem_alerta[c])
+            for c in sorted(sem_alerta.index, key=lambda c: ordem.get(str(c), 99))
         }
+        confirmados = setups[(setups["confirmado_em"] == resumo.trade_date) & com_alerta]
+        if not armados.empty or outros or not confirmados.empty:
+            payload["setups"] = {
+                "armados": armados.drop(columns="_ordem").to_dict("records"),
+                "outros": outros,
+                "confirmados": confirmados.to_dict("records"),
+            }
 
     return payload
+
+
+def _ligados(engine: Engine, config: ScannerConfig) -> list[str]:
+    """Setups com alerta ligado: o que o usuario escolheu no app sobre o padrao."""
+    from scanner.setups import preferencias
+
+    return [c for c, p in preferencias(engine, config.setups).items() if p.alerta]
 
 
 def run_resumo(
@@ -250,7 +276,7 @@ def run_resumo(
     if dry_run:
         trades = trades_do_pregao(engine, trade_date)
         setups = setups_do_resumo(engine, trade_date)
-        notifier.send_resumo(payload_do_resumo(resumo, trades, setups))
+        notifier.send_resumo(payload_do_resumo(resumo, trades, setups, _ligados(engine, config)))
         return resumo
 
     if digest_enviado(engine, trade_date):
@@ -258,6 +284,6 @@ def run_resumo(
 
     trades = trades_do_pregao(engine, trade_date)
     setups = setups_do_resumo(engine, trade_date)
-    if notifier.send_resumo(payload_do_resumo(resumo, trades, setups)):
+    if notifier.send_resumo(payload_do_resumo(resumo, trades, setups, _ligados(engine, config))):
         marcar_digest_enviado(engine, trade_date)
     return resumo

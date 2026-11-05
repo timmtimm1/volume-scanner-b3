@@ -474,6 +474,12 @@ Leitura: só a Força tem intervalo acima de zero, e com poucos trades (404) e r
 ### Fases
 
 1. Motor dos setups clássicos, suíte de backtest local, testes, este plano e o CLAUDE.md. Feita (PR #95).
-2. Resultado no banco e a página Backtest no app (`/setups/backtest`, só logado): escolher setup e variação; números, curva, ano a ano e lista de trades. Migration 0016: uma rodada por envio (`scripts/backtest_setups.py enviar`), com a grade, a escolha e o nível de cada setup, o ano a ano, a curva mensal e os 200 trades mais recentes de cada setup e saída; ficam as duas últimas rodadas (uns 13 MB cada).
-3. Setups no pregão diário: o site abre nos Setups, etiquetas de tendência e volume, alerta liga/desliga por setup (ligado de início só nos firmes e fracos), Telegram, entrada/stop/alvo no gráfico da ficha.
+2. Feita (PR #96). Resultado no banco e a página Backtest no app (`/setups/backtest`, só logado): escolher setup e variação; números, curva, ano a ano e lista de trades. Migration 0016: uma rodada por envio (`scripts/backtest_setups.py enviar`), com a grade, a escolha e o nível de cada setup, o ano a ano, a curva mensal e os 200 trades mais recentes de cada setup e saída; ficam as duas últimas rodadas (uns 13 MB cada).
+3. Setups no pregão diário. Decisões de 05/11/2026, depois de medir que os clássicos armam mais de 100 por pregão (123 ~35, 9.1 ~25, PFR ~18, 9.4 ~6):
+   - pipeline: os clássicos gravados todo dia na tabela `setups`, com a etiqueta de tendência; migration 0017 (`saida_regra`, `alta`, estados `alvo`/`movel`/`mme9`, tabela `setup_preferencias`);
+   - saída do "em andamento": escolhida por setup no app (padrão: a do backtest), gravada na linha quando o setup arma; o estado é a conta do `simulador` do backtest;
+   - alerta liga/desliga por setup no app; padrão `setups.padroes` do `config.yaml` (ligado em Força, 9.4 e Suporte);
+   - passado de 400 pregões só para setup com alerta ligado (os outros começam na estreia; o passado deles está no Backtest);
+   - Telegram: lista só os setups com alerta ligado e uma linha com a contagem dos outros;
+   - site: na aba, os setups com alerta ligado em cima e "Outros setups" em blocos fechados com o nível do backtest; alerta e saída escolhidos ali; etiquetas de tendência e volume; Setups é o 1º item do menu e o atalho do celular abre nela (a inicial pública continua o scanner); setas e linhas de entrada/stop/alvo na ficha só dos setups com alerta ligado.
 4. Calculadora de lote (capital salvo na conta, risco padrão de 1%, ação inteira no fracionário) e diário ligado ao setup (botão "Entrei" no setup confirmado e campos setup e stop no formulário; resultado em R).

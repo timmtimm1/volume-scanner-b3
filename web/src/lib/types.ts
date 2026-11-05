@@ -70,8 +70,17 @@ export type MarcaDeSetup = {
   letras: string;
   destaque: boolean;
   forca: boolean;
+  /** Setup classico (9.1 a 9.4, 1-2-3, PFR, MMA 20, pullback): cor propria, nome no texto. */
+  classico: boolean;
   /** `nivel` ou as medias tocadas (`mme9`, `mma20`): a seta toma a cor da media. */
   suporte: string;
+};
+
+/** Linha de preco do setup em aberto (entrada, stop, alvo) no grafico da ficha. */
+export type LinhaDeSetup = {
+  preco: number;
+  titulo: string;
+  tipo: "entrada" | "stop" | "alvo";
 };
 
 export type Barra = {

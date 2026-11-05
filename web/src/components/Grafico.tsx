@@ -47,7 +47,7 @@ import {
 import { medirMovimento, type PontoDaRegua, type TradeDaRegua } from "@/lib/regua";
 import { useTema } from "@/lib/tema";
 import { trechosDosNiveis } from "@/lib/niveis-grafico";
-import type { Barra, Evento, MarcaDeSetup, NivelDoGrafico } from "@/lib/types";
+import type { Barra, Evento, LinhaDeSetup, MarcaDeSetup, NivelDoGrafico } from "@/lib/types";
 import { useMedias } from "@/lib/useMedias";
 import { CamadaDeAlertas } from "./CamadaDeAlertas";
 import { PainelDaRegua } from "./PainelDaRegua";
@@ -81,12 +81,16 @@ const SERIE = {
   suporte: "#0891B2",
   resistencia: "#EA580C",
   setup: COR_DO_SETUP,
-  // Candle de forca: fora da regra conferida, entao a seta e cinza.
+  // Candle de forca: seta cinza desde 21/10/2026 (o nivel do backtest, hoje
+  // firme, fica na aba Setups, nao na cor).
   setupForca: "#8C8EAD",
   // Setup na media movel: a seta toma a cor da media tocada, a mesma das linhas
   // padrao do grafico (lib/medias.ts): MME 9 rosa, MMA 20 amarelo.
   setupMme9: "#EC4899",
   setupMma20: "#EAB308",
+  // Setups classicos (9.1 a 9.4, 1-2-3, PFR, MMA 20, pullback): violeta, fora
+  // das cores acima. Verde nao: no grafico verde e alta (e compra e azul).
+  setupClassico: "#7C3AED",
 };
 
 /** Tamanho do rotulo da regua, em pixels -- para ele nao sair da area do grafico. */
@@ -128,6 +132,8 @@ type Props = {
   niveis?: NivelDoGrafico[];
   /** Setas dos setups do papel (so logado). */
   setups?: MarcaDeSetup[];
+  /** Entrada, stop e alvo do setup em aberto do papel (so logado). */
+  linhasDeSetup?: LinhaDeSetup[];
   /**
    * O trade aberto do papel, ja marcado a mercado, para a linha tracejada do
    * preco medio. Null sem trade aberto -- sem ela, nao ha linha.
@@ -222,6 +228,7 @@ export function Grafico({
   publicacoes = [],
   niveis = [],
   setups = [],
+  linhasDeSetup = [],
   posicao = null,
   regua,
   edicaoDeAlertas,
@@ -272,6 +279,7 @@ export function Grafico({
   const linhasDeAlerta = useRef(new Map<number, IPriceLine>());
   const linhasDeMedia = useRef(new Map<string, ISeriesApi<"Line">>());
   const linhaDoParcial = useRef<IPriceLine | null>(null);
+  const linhasDoSetup = useRef<IPriceLine[]>([]);
   const marcadoresDeTrade = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const marcadoresDeBalanco = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
   const marcadoresDeSetup = useRef<ISeriesMarkersPluginApi<Time> | null>(null);
@@ -594,7 +602,9 @@ export function Grafico({
         time: m.data as Time,
         position: "belowBar",
         shape: "arrowUp",
-        color: m.forca
+        color: m.classico
+          ? SERIE.setupClassico
+          : m.forca
           ? SERIE.setupForca
           : m.suporte.startsWith("mme9")
             ? SERIE.setupMme9
@@ -606,6 +616,27 @@ export function Grafico({
       }));
     marcadoresDeSetup.current = createSeriesMarkers(s, marcas);
   }, [setups, barras, eventos, destaque]);
+
+  /**
+   * Entrada, stop e alvo do setup em aberto, como linhas de preco. Efeito
+   * proprio, como o dos alertas: a serie e recriada quando `eventos` ou
+   * `destaque` mudam, e a linha precisa ser reatada na serie nova.
+   */
+  useEffect(() => {
+    const s = serie.current;
+    if (!s) return;
+    for (const linha of linhasDoSetup.current) s.removePriceLine(linha);
+    linhasDoSetup.current = linhasDeSetup.map((l) =>
+      s.createPriceLine({
+        price: l.preco,
+        color: l.tipo === "stop" ? SERIE.baixa : l.tipo === "alvo" ? SERIE.alta : SERIE.setupClassico,
+        lineWidth: 1,
+        lineStyle: LineStyle.Dashed,
+        axisLabelVisible: true,
+        title: l.titulo,
+      }),
+    );
+  }, [linhasDeSetup, barras, eventos, destaque]);
 
   /**
    * As medias moveis, sincronizadas com a lista escolhida.

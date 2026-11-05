@@ -674,6 +674,14 @@ class Arranjo(Base):
     )
 
 
+# Categorias de setup (migration 0017): os candles da secao 13 e os classicos
+# da secao 14 do plano.
+_CATEGORIAS_DE_SETUP = (
+    "'reversao', 'forca', 'media', '9.1', '9.2', '9.3', '9.4', '123', 'pfr', 'mma20', 'pullback'"
+)
+_SAIDAS_DE_SETUP = "'alvo1', 'alvo2', 'alvo3', 'minimas', 'mme9'"
+
+
 class Setup(Base):
     """Um setup: candle de reversao no suporte que passou nos filtros da aba.
 
@@ -693,10 +701,15 @@ class Setup(Base):
     __tablename__ = "setups"
     __table_args__ = (
         UniqueConstraint("ticker", "trade_date", "categoria", name="uq_setups_papel_dia"),
-        CheckConstraint("categoria IN ('reversao', 'forca', 'media')", name="ck_setups_categoria"),
+        CheckConstraint(f"categoria IN ({_CATEGORIAS_DE_SETUP})", name="ck_setups_categoria"),
         CheckConstraint(
-            "estado IN ('armado', 'confirmado', 'nao_confirmou', 'stop', 'prazo')",
+            "estado IN ('armado', 'confirmado', 'nao_confirmou', 'stop', 'prazo', "
+            "'alvo', 'movel', 'mme9')",
             name="ck_setups_estado",
+        ),
+        CheckConstraint(
+            f"saida_regra IS NULL OR saida_regra IN ({_SAIDAS_DE_SETUP})",
+            name="ck_setups_saida_regra",
         ),
         CheckConstraint(
             "(estado IN ('armado', 'nao_confirmou')) = (confirmado_em IS NULL)",
@@ -745,6 +758,38 @@ class Setup(Base):
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    # Etiqueta de tendencia (acima da MMA 200 subindo); NULL antes da 0017.
+    alta: Mapped[bool | None] = mapped_column(Boolean)
+    # A saida que o setup segue depois de confirmado, congelada na noite em que
+    # arma. NULL = regra antiga (fecha abaixo da minima ou 20 pregoes).
+    saida_regra: Mapped[str | None] = mapped_column(Text)
+    # Resultado em R, liquido do custo do backtest, na escala ajustada (um
+    # grupamento no meio do trade nao estraga a conta). Encerrado: o final; em
+    # andamento: ate o ultimo fechamento. NULL antes da 0017.
+    resultado_r: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+
+
+class SetupPreferencia(Base):
+    """O que o usuario escolheu no app para cada setup: alerta e saida.
+
+    Sem linha, vale o padrao do `config.yaml` (secao `setups.padroes`). So o
+    site escreve aqui; o pipeline so le.
+    """
+
+    __tablename__ = "setup_preferencias"
+    __table_args__ = (
+        CheckConstraint(
+            f"categoria IN ({_CATEGORIAS_DE_SETUP})", name="ck_setup_preferencias_categoria"
+        ),
+        CheckConstraint(f"saida IN ({_SAIDAS_DE_SETUP})", name="ck_setup_preferencias_saida"),
+    )
+
+    categoria: Mapped[str] = mapped_column(Text, primary_key=True)
+    alerta: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    saida: Mapped[str] = mapped_column(Text, nullable=False)
     atualizado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )

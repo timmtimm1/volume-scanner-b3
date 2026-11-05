@@ -93,10 +93,23 @@ setups:
   toques_gatilho: 3
   toques_nivel: 2         # nivel existe (e e desenhado) a partir de 2 toques
   prazo_pregoes: 20       # em andamento ate 20 pregoes depois de confirmar
-  alerta: true            # alerta automatico acima da maxima, valido no pregao seguinte
-  alerta_forca: false     # candle de forca nao passou na conferencia: sem alerta
+  alerta: true            # alerta automatico acima da maxima, valido no pregao seguinte (chave geral)
   # Media movel como suporte em tendencia de alta (secao propria "Na media"):
   # as do grafico do site. Media subindo, preco vindo de cima, candle encosta e
   # fecha acima. Mesmos filtros de volume, contexto e espaco.
   medias: [[MME, 9], [MMA, 20]]
-  alerta_media: true
+  # Alerta e saida de cada setup ate voce mudar no app (secao 14 do plano). Vem
+  # da rodada do backtest de 05/11/2026: alerta ligado nos firmes e fracos;
+  # saida = a escolhida em 1995-2015. Saidas: alvo1, alvo2, alvo3, minimas, mme9.
+  padroes:
+    reversao: {alerta: true, saida: alvo3}    # fraco
+    media: {alerta: false, saida: alvo3}      # falhou
+    forca: {alerta: true, saida: mme9}        # firme
+    "9.1": {alerta: false, saida: mme9}
+    "9.2": {alerta: false, saida: mme9}
+    "9.3": {alerta: false, saida: mme9}
+    "9.4": {alerta: true, saida: mme9}        # fraco
+    "123": {alerta: false, saida: alvo3}
+    pfr: {alerta: false, saida: alvo3}
+    mma20: {alerta: false, saida: alvo3}
+    pullback: {alerta: false, saida: mme9}

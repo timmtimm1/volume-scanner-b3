@@ -133,9 +133,12 @@ def test_noite_a_noite_contra_o_banco(engine: Engine) -> None:
     rel = run_setups(engine, config, dia1, bars=noite1)
     assert rel.estreia
     assert rel.armados == [("AAAA3", False)]
+    # a serra sintetica tambem arma setups classicos (123, PFR...): o teste olha o martelo
+    so_reversao = select(Setup).where(Setup.categoria == "reversao")
     with engine.connect() as conn:
-        linha = conn.execute(select(Setup)).one()._mapping
+        linha = conn.execute(so_reversao).one()._mapping
         n_niveis = conn.execute(select(func.count()).select_from(Nivel)).scalar_one()
+        n_setups = conn.execute(select(func.count()).select_from(Setup)).scalar_one()
     assert linha["ao_vivo"] and linha["estado"] == "armado"
     assert float(linha["maxima"]) == pytest.approx(10.48)
     assert n_niveis > 0
@@ -144,16 +147,16 @@ def test_noite_a_noite_contra_o_banco(engine: Engine) -> None:
     rel = run_setups(engine, config, dia1, bars=noite1)
     assert not rel.estreia and rel.gravados == 0
     with engine.connect() as conn:
-        assert conn.execute(select(func.count()).select_from(Setup)).scalar_one() == 1
+        assert conn.execute(select(func.count()).select_from(Setup)).scalar_one() == n_setups
         assert conn.execute(select(func.count()).select_from(Nivel)).scalar_one() == n_niveis
 
     # a noite seguinte confirma
     noite2 = barras(extra=[CONFIRMA])
     dia2 = noite2["trade_date"].iloc[-1]
     rel = run_setups(engine, config, dia2, bars=noite2)
-    assert rel.confirmados == ["AAAA3"]
+    assert "AAAA3" in rel.confirmados  # o martelo e, no mesmo papel, algum classico
     with engine.connect() as conn:
-        linha = conn.execute(select(Setup)).one()._mapping
+        linha = conn.execute(so_reversao).one()._mapping
     assert linha["estado"] == "confirmado"
     assert linha["confirmado_em"] == dia2
     assert float(linha["entrada"]) == pytest.approx(10.50)

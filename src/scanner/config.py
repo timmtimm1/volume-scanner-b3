@@ -104,6 +104,51 @@ TipoDeMedia = Literal["MMA", "MME"]
 MEDIAS_PADRAO: tuple[tuple[TipoDeMedia, int], ...] = (("MME", 9), ("MMA", 20))
 
 
+# Setups do pregao diario (secoes 13 e 14 do plano): os candles de 21/10/2026
+# e os classicos de 05/11/2026. O nome e a `categoria` da tabela `setups`.
+CATEGORIAS_DE_SETUP: tuple[str, ...] = (
+    "reversao",
+    "media",
+    "forca",
+    "9.1",
+    "9.2",
+    "9.3",
+    "9.4",
+    "123",
+    "pfr",
+    "mma20",
+    "pullback",
+)
+SaidaDeSetup = Literal["alvo1", "alvo2", "alvo3", "minimas", "mme9"]
+
+
+class PadraoDoSetup(BaseModel):
+    """O padrao de um setup antes de o usuario mexer no app."""
+
+    alerta: bool
+    saida: SaidaDeSetup
+
+
+def _padroes_iniciais() -> dict[str, PadraoDoSetup]:
+    """Rodada do backtest de 05/11/2026: alerta ligado nos firmes e fracos
+    (forca, 9.4 e reversao no suporte); saida = a escolhida em 1995-2015."""
+    saida: dict[str, SaidaDeSetup] = {
+        "reversao": "alvo3",
+        "media": "alvo3",
+        "forca": "mme9",
+        "9.1": "mme9",
+        "9.2": "mme9",
+        "9.3": "mme9",
+        "9.4": "mme9",
+        "123": "alvo3",
+        "pfr": "alvo3",
+        "mma20": "alvo3",
+        "pullback": "mme9",
+    }
+    ligados = {"reversao", "forca", "9.4"}
+    return {c: PadraoDoSetup(alerta=c in ligados, saida=s) for c, s in saida.items()}
+
+
 class SetupsConfig(BaseModel):
     """Aba Setups: candle de reversao no suporte, filtrado (decisoes de 21/10/2026).
 
@@ -125,19 +170,26 @@ class SetupsConfig(BaseModel):
     # gatilho). E o valor do estudo: com 3, nivel de 2 toques rompido morreria
     # em vez de virar, e os niveis seriam outros.
     toques_nivel: int = 2
-    # Depois de confirmado, o setup fica em andamento ate N pregoes.
+    # Regra antiga do "em andamento" (setups gravados antes da migration 0017,
+    # sem `saida_regra`): ate fechar abaixo da minima ou N pregoes.
     prazo_pregoes: int = 20
     # Alerta automatico de rompimento acima da maxima do candle, valido no
-    # pregao seguinte (o da confirmacao). O candle de forca fica sem alerta: nao
-    # passou na conferencia do estudo, e alerta e convite para agir.
+    # pregao seguinte (o da confirmacao). Chave geral: cada setup liga ou
+    # desliga o seu no app (`setup_preferencias`), com o padrao de `padroes`.
     alerta: bool = True
-    alerta_forca: bool = False
     # Media movel como suporte em tendencia de alta (decisao de 21/10/2026):
-    # as do grafico do site. Secao propria na aba, com alerta. No estudo,
-    # positiva no trade de referencia nos dois periodos, mas negativa contra o
-    # mercado em 2016-2026 -- por isso nao se mistura com a regra principal.
+    # as do grafico do site. Secao propria na aba, separada da regra principal.
     medias: list[tuple[TipoDeMedia, int]] = Field(default_factory=lambda: list(MEDIAS_PADRAO))
-    alerta_media: bool = True
+    # Alerta e saida de cada setup ate o usuario mudar no app (05/11/2026).
+    padroes: dict[str, PadraoDoSetup] = Field(default_factory=_padroes_iniciais)
+
+    @field_validator("padroes")
+    @classmethod
+    def _padroes_conhecidos(cls, value: dict[str, PadraoDoSetup]) -> dict[str, PadraoDoSetup]:
+        desconhecidos = set(value) - set(CATEGORIAS_DE_SETUP)
+        if desconhecidos:
+            raise ValueError(f"setups.padroes com setup desconhecido: {sorted(desconhecidos)}")
+        return _padroes_iniciais() | value
 
     @field_validator("volume_destaque")
     @classmethod

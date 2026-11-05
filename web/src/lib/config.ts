@@ -25,3 +25,42 @@ export const UNIVERSO = {
  * o filtro de z ter faixa abaixo do limiar do alerta onde passear.
  */
 export const Z_MINIMO_DO_SITE = 3.0;
+
+/** Categorias de setup (a coluna `categoria` da tabela `setups`), na ordem do plano. */
+export const CATEGORIAS_DE_SETUP = [
+  "reversao",
+  "media",
+  "forca",
+  "9.1",
+  "9.2",
+  "9.3",
+  "9.4",
+  "123",
+  "pfr",
+  "mma20",
+  "pullback",
+] as const;
+export type CategoriaDoSetup = (typeof CATEGORIAS_DE_SETUP)[number];
+export type SaidaDoSetup = "alvo1" | "alvo2" | "alvo3" | "minimas" | "mme9";
+
+/**
+ * `setups.padroes`: alerta e saida de cada setup ate o usuario mudar no app
+ * (tabela `setup_preferencias`). Uma linha por setup, no formato que
+ * `tests/test_config_web.py` le.
+ */
+export const PADROES_DOS_SETUPS: Record<
+  CategoriaDoSetup,
+  { alerta: boolean; saida: SaidaDoSetup }
+> = {
+  reversao: { alerta: true, saida: "alvo3" },
+  media: { alerta: false, saida: "alvo3" },
+  forca: { alerta: true, saida: "mme9" },
+  "9.1": { alerta: false, saida: "mme9" },
+  "9.2": { alerta: false, saida: "mme9" },
+  "9.3": { alerta: false, saida: "mme9" },
+  "9.4": { alerta: true, saida: "mme9" },
+  "123": { alerta: false, saida: "alvo3" },
+  pfr: { alerta: false, saida: "alvo3" },
+  mma20: { alerta: false, saida: "alvo3" },
+  pullback: { alerta: false, saida: "mme9" },
+};

@@ -1,5 +1,8 @@
 import { ehDono, signIn, signOut } from "@/auth";
 import { ListaDeTrades } from "@/components/ListaDeTrades";
+import { PerfilDeRisco } from "@/components/PerfilDeRisco";
+import { ResultadoPorSetup } from "@/components/ResultadoPorSetup";
+import { lerPerfil } from "@/lib/perfil";
 import { listarTrades } from "@/lib/trades";
 
 /**
@@ -41,7 +44,7 @@ export default async function Trades() {
     );
   }
 
-  const trades = await listarTrades();
+  const [trades, perfil] = await Promise.all([listarTrades(), lerPerfil()]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -67,6 +70,10 @@ export default async function Trades() {
           </button>
         </form>
       </section>
+
+      <PerfilDeRisco inicial={perfil} />
+
+      <ResultadoPorSetup trades={trades} />
 
       <ListaDeTrades iniciais={trades} />
     </div>

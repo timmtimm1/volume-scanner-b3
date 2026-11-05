@@ -10,10 +10,14 @@ import {
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
+import { fmtR } from "@/lib/backtest-tela";
 import { diaNaB3 } from "@/lib/candle-de-hoje";
+import { resultadoEmRDoTrade, riscoEmReais } from "@/lib/diario";
 import { data as fmtData, numero, percentual, reais } from "@/lib/formato";
+import { numeroDoTexto } from "@/lib/lote";
 import { marcarAgora, type TipoDeOperacao } from "@/lib/posicao";
 import { precoDeAgora } from "@/lib/preco-de-agora";
+import { NOME_DO_SETUP, ORDEM_DAS_CATEGORIAS } from "@/lib/setups-tela";
 import { useTema } from "@/lib/tema";
 import type { OperacaoDoTrade, SnapshotDoTrade, TradeDetalhe } from "@/lib/trades";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
@@ -137,6 +141,46 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
   const precoInfo = aberto ? precoDeAgora(hoje, trade.ultimoSnapshot) : null;
   const marca = marcarAgora(trade, aberto ? (precoInfo?.preco ?? null) : null);
   const emAberto = marca.resultado - trade.realizado;
+  const emR = resultadoEmRDoTrade(trade, aberto ? (precoInfo?.preco ?? null) : null);
+  const risco = riscoEmReais(trade);
+
+  const [editandoDiario, setEditandoDiario] = useState(false);
+  const [setupForm, setSetupForm] = useState("");
+  const [stopForm, setStopForm] = useState("");
+  const [salvandoDiario, setSalvandoDiario] = useState(false);
+  const [erroDiario, setErroDiario] = useState<string | null>(null);
+
+  function abrirDiario() {
+    setSetupForm(trade.categoriaSetup ?? "");
+    setStopForm(trade.stop === null ? "" : String(trade.stop).replace(".", ","));
+    setErroDiario(null);
+    setEditandoDiario(true);
+  }
+
+  async function salvarDiario() {
+    setSalvandoDiario(true);
+    setErroDiario(null);
+    try {
+      const texto = stopForm.trim();
+      const r = await fetch(`/api/trades/${trade.id}/`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          categoriaSetup: setupForm === "" ? null : setupForm,
+          // Texto que nao e numero segue como esta: o servidor recusa com a mensagem certa.
+          stop: texto === "" ? null : (numeroDoTexto(texto) ?? texto),
+        }),
+      });
+      const corpo = (await r.json().catch(() => null)) as { trade?: TradeDetalhe; erro?: string } | null;
+      if (!r.ok || !corpo?.trade) throw new Error(corpo?.erro ?? "não foi possível salvar");
+      setTrade(corpo.trade);
+      setEditandoDiario(false);
+    } catch (e) {
+      setErroDiario(e instanceof Error ? e.message : "algo deu errado");
+    } finally {
+      setSalvandoDiario(false);
+    }
+  }
 
   function abrirNova() {
     setNovaAberta(true);
@@ -533,6 +577,13 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
             >
               {percentual(marca.resultadoPct)}
             </span>
+            <span
+              className={`num text-[13px] font-bold ${
+                emR === null ? "text-tinta-3" : emR >= 0 ? "text-alta" : "text-baixa"
+              }`}
+            >
+              {emR === null ? "— em R" : fmtR(emR)}
+            </span>
           </div>
         </div>
 
@@ -564,6 +615,101 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
           <span>
             em aberto <strong className="num text-tinta-2">{reais(emAberto)}</strong>
           </span>
+        </div>
+
+        <div className="flex flex-col gap-2.5 rounded-2xl bg-painel-2 p-3.5">
+          {editandoDiario ? (
+            <>
+              <div className="grid grid-cols-2 gap-2.5">
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="rotulo">Setup</span>
+                  <select
+                    value={setupForm}
+                    onChange={(e) => setSetupForm(e.target.value)}
+                    className="toque h-10 w-full min-w-0 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento"
+                  >
+                    <option value="">Sem setup</option>
+                    {ORDEM_DAS_CATEGORIAS.map((c) => (
+                      <option key={c} value={c}>
+                        {NOME_DO_SETUP[c]}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <label className="flex min-w-0 flex-col gap-1">
+                  <span className="rotulo">Stop</span>
+                  <input
+                    type="text"
+                    inputMode="decimal"
+                    value={stopForm}
+                    onChange={(e) => setStopForm(e.target.value)}
+                    placeholder="0,00"
+                    className={campoInput}
+                  />
+                </label>
+              </div>
+              <div className="flex gap-2">
+                <button
+                  type="button"
+                  onClick={salvarDiario}
+                  disabled={salvandoDiario}
+                  className="toque h-10 flex-1 rounded-full bg-primario text-[13px] font-bold text-primario-tinta disabled:opacity-40"
+                >
+                  {salvandoDiario ? "Salvando…" : "Salvar"}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setEditandoDiario(false)}
+                  className="toque h-10 rounded-full px-4 text-[13px] font-bold text-tinta-3 hover:text-tinta"
+                >
+                  Cancelar
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5 text-[12px] font-semibold text-tinta-3">
+                <span>
+                  setup{" "}
+                  <strong className="text-[13px] text-tinta">
+                    {trade.categoriaSetup ? NOME_DO_SETUP[trade.categoriaSetup] : "sem setup"}
+                  </strong>
+                </span>
+                <span>
+                  stop{" "}
+                  <strong className="num text-[13px] text-tinta">
+                    {trade.stop === null ? "—" : reais(trade.stop)}
+                  </strong>
+                </span>
+                <span>
+                  risco{" "}
+                  <strong className="num text-[13px] text-tinta">
+                    {risco === null ? "—" : reais(risco)}
+                  </strong>
+                </span>
+                <button
+                  type="button"
+                  onClick={abrirDiario}
+                  className="toque ml-auto flex h-8 items-center rounded-full px-3 text-[11px] font-bold text-tinta-2 transition-colors hover:bg-linha hover:text-tinta"
+                >
+                  Editar
+                </button>
+              </div>
+              {emR === null && (
+                <p className="text-[12px] font-semibold text-tinta-3">
+                  {trade.stop === null
+                    ? "Defina o stop para ver o resultado em R."
+                    : "Com esse stop o R não fecha: ele precisa ficar abaixo do preço de todas as compras."}
+                </p>
+              )}
+              {emR !== null && (
+                <p className="text-[12px] font-semibold text-tinta-3">
+                  R é o resultado dividido pelo risco: +1 R é ganhar o que se arriscava, −1 R é perder.
+                </p>
+              )}
+            </>
+          )}
+          {erroDiario && <p className="text-[12px] font-semibold text-baixa">{erroDiario}</p>}
         </div>
       </section>
 

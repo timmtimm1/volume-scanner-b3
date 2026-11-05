@@ -1394,14 +1394,32 @@ passar sem romper, ele vence: some da checagem e aparece como "venceu" no site.
 Religar um alerta vencido tira a validade, e ele vira um alerta manual comum.
 
 Setup que entra atrasado (a estreia, ou uma noite que falhou) não ganha alerta:
-o pregão da confirmação já passou. O candle de força também não, porque não
-passou na conferência do estudo (`alerta_forca: false` no `config.yaml`).
+o pregão da confirmação já passou.
 
-O resumo diário ganha o bloco "Setups armados" (com link para a aba) quando há o que mostrar: cada
-papel com o padrão, o volume, o preço que confirma, a mínima do padrão e a
-resistência; o candle de força numa linha à parte, com o aviso; e os setups que
-confirmaram no pregão. Lista, sem `<pre>`: no iPhone o bloco de código cobre os
-números.
+Desde 05/11/2026 cada setup tem o seu alerta ligado ou desligado, escolhido na
+aba (tabela `setup_preferencias`). Sem escolha, vale `setups.padroes` do
+`config.yaml`, tirado da rodada do backtest: ligado nos firmes e fracos (Força,
+9.4, Suporte). Os setups clássicos armam mais de 100 por pregão; com os padrões,
+saem uns 6 alertas por noite.
+
+O resumo diário ganha o bloco "Setups armados" (com link para a aba) quando há o
+que mostrar: os armados dos setups com alerta ligado (padrão, ou o nome do setup
+clássico, volume, o preço que confirma, a mínima e a tendência), uma linha com
+quantos armaram de cada setup sem alerta, e os que confirmaram no pregão. Lista,
+sem `<pre>`: no iPhone o bloco de código cobre os números.
+
+### Setups clássicos e a saída de cada um
+
+Pedido de 05/11/2026 (seção 14 do plano). Todo pregão a etapa de setups também
+procura 9.1 a 9.4, 123, PFR, toque na MMA 20 e pullback de rompimento
+(`scanner/gatilhos/regra.py`, `setups_classicos`), com a etiqueta de tendência
+(`alta`) em todo setup. Depois de confirmado, cada setup segue a saída escolhida
+para ele na aba (alvo de 1/2/3 R, stop móvel nas mínimas ou MME 9 virando),
+gravada na linha na noite em que arma (`saida_regra`). O estado é a mesma conta
+do backtest (`scanner.backtest.simulador`): a conferência ao vivo mede o mesmo
+que os 30 anos mediram. O passado (400 pregões) só é gravado para setup com
+alerta ligado; os outros começam a ser gravados na noite da estreia — o passado
+deles está na página Backtest.
 
 ### O estudo de 30 anos
 

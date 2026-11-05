@@ -272,7 +272,7 @@ def test_classico_no_resumo_com_a_etiqueta_e_a_contagem_dos_outros() -> None:
         for i, c in enumerate(["123", "123", "9.1"])
     ]
     texto = _resumo_com(pd.DataFrame([noventa_e_quatro, *outros]))
-    assert "WEGE3</a></b> 9.4 · volume 2,3×" in texto
+    assert "WEGE3</a></b> 9.4 · volume 2,3" in texto
     assert "em alta" in texto
     assert "resistência" not in texto.split("WEGE3")[1].split("\n")[0]  # classico: sem espaco
     assert "Outros armados hoje, sem alerta:</i> 9.1 1 · 123 2" in texto

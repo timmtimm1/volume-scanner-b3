@@ -7,9 +7,12 @@ daria um intervalo estreito demais.
 
 Protocolo de escolha (o mesmo do estudo dos Setups, decidido em 05/11/2026):
 para cada setup, a melhor combinacao de saida e tendencia e escolhida SO com
-1995-2015; em 2016-2026 ela e conferida uma vez. Passa quem, em 2016-2026, tem
-expectativa positiva E ganha do controle. O intervalo vai junto, para mostrar
-quanto disso e firme.
+1995-2015; em 2016-2026 ela e conferida uma vez. Tres niveis (decisao de
+05/11/2026), sempre pela conferencia:
+
+- `firme`: intervalo de 95% da expectativa acima de zero e ganha do controle;
+- `fraco`: expectativa positiva e ganha do controle, mas o intervalo cruza o zero;
+- `falhou`: o resto.
 """
 
 from __future__ import annotations
@@ -32,6 +35,7 @@ PERIODOS: dict[str, tuple[int, int]] = {
     "tudo": (ESCOLHA[0], CONFERENCIA[1]),
 }
 GRUPOS = ("todos", "alta", "contra")
+FIRME, FRACO, FALHOU = "firme", "fraco", "falhou"
 # Combinacao com menos trades que isso no periodo de escolha nao pode ser escolhida.
 MINIMO_PARA_ESCOLHER = 100
 REPETICOES = 1000
@@ -130,6 +134,13 @@ def grade(trades: pd.DataFrame) -> pd.DataFrame:
     return pd.DataFrame(linhas)
 
 
+def nivel_da_conferencia(expectativa: float, ic_baixo: float, diferenca: float) -> str:
+    """Firme, fraco ou falhou, pelos numeros de 2016-2026 da combinacao escolhida."""
+    if not (expectativa > 0 and diferenca > 0):
+        return FALHOU
+    return FIRME if ic_baixo > 0 else FRACO
+
+
 def escolher(g: pd.DataFrame) -> pd.DataFrame:
     """Por setup: a combinacao escolhida em 1995-2015 e como ela foi em 2016-2026."""
     linhas: list[dict[str, object]] = []
@@ -142,13 +153,17 @@ def escolher(g: pd.DataFrame) -> pd.DataFrame:
         candidatos = dentro[dentro["setup"] == setup]
         combinacoes = len(parte[parte["periodo"] == "1995-2015"])
         if candidatos.empty:
-            linhas.append({"setup": setup, "passou": False, "combinacoes": combinacoes})
+            linhas.append(
+                {"setup": setup, "nivel": FALHOU, "passou": False, "combinacoes": combinacoes}
+            )
             continue
         melhor = candidatos.sort_values("expectativa", ascending=False).iloc[0]
         conf = fora.get((str(setup), str(melhor["saida"]), str(melhor["grupo"])))
         nan = float("nan")
         exp_fora = float(conf["expectativa"]) if conf is not None else nan
         dif_fora = float(conf["diferenca"]) if conf is not None else nan
+        ic_baixo = float(conf["ic_baixo"]) if conf is not None else nan
+        nivel = nivel_da_conferencia(exp_fora, ic_baixo, dif_fora)
         linhas.append(
             {
                 "setup": setup,
@@ -160,10 +175,11 @@ def escolher(g: pd.DataFrame) -> pd.DataFrame:
                 "dif_escolha": float(melhor["diferenca"]),
                 "n_conferencia": int(conf["n"]) if conf is not None else 0,
                 "exp_conferencia": exp_fora,
-                "ic_conf_baixo": float(conf["ic_baixo"]) if conf is not None else nan,
+                "ic_conf_baixo": ic_baixo,
                 "ic_conf_alto": float(conf["ic_alto"]) if conf is not None else nan,
                 "dif_conferencia": dif_fora,
-                "passou": bool(exp_fora > 0 and dif_fora > 0),
+                "nivel": nivel,
+                "passou": nivel != FALHOU,
             }
         )
     return pd.DataFrame(linhas)

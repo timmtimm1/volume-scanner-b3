@@ -101,7 +101,7 @@ def relatorio(pasta: Path) -> None:
             print(f"{nomes.get(s, s)}: poucos trades para escolher")
             continue
         print(
-            f"{'PASSOU' if linha['passou'] else 'falhou'}  {nomes.get(s, s)}:"
+            f"{str(linha['nivel']).upper():6}  {nomes.get(s, s)}:"
             f" {linha['saida']}/{linha['grupo']}"
             f"  escolha {linha['exp_escolha']:+.3f}R (n {linha['n_escolha']},"
             f" contra controle {linha['dif_escolha']:+.3f})"

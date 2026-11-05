@@ -450,15 +450,16 @@ Roda na máquina (`scripts/backtest_setups.py processar` e `relatorio`), sobre o
 - **Um trade por vez** por papel e setup.
 - **Controle:** para cada trade, um papel sorteado entre os líquidos do mesmo dia, comprado na abertura seguinte, com stop à mesma distância e a mesma saída. O setup só vale alguma coisa se ganhar do controle.
 - **Números:** expectativa em R líquida, intervalo de 95% por bootstrap por mês, acerto, payoff, fator de lucro, dias, % por motivo de saída, ano a ano e curva de R acumulado.
-- **Protocolo:** para cada setup, a melhor combinação de saída e tendência é escolhida só com 1995–2015 (mínimo de 100 trades) e conferida uma vez em 2016–2026. Passa quem, na conferência, tem expectativa positiva **e** ganha do controle.
+- **Protocolo:** para cada setup, a melhor combinação de saída e tendência é escolhida só com 1995–2015 (mínimo de 100 trades) e conferida uma vez em 2016–2026. Três níveis, pela conferência (decisão de 05/11/2026): **firme** (intervalo de 95% acima de zero e ganha do controle), **fraco** (positivo e ganha do controle, mas o intervalo cruza o zero) e **falhou** (o resto).
+- **Volume:** só etiqueta (volume do dia do sinal sobre a mediana dos 20 anteriores), mostrada no app; não entra na escolha (decisão de 05/11/2026).
 
 ### Resultado da primeira rodada (COTAHIST até 09/10/2026, 1,41 milhão de trades)
 
 | Setup | Escolhida em 1995–2015 | 1995–2015 | 2016–2026 [IC 95%] | Contra o controle em 2016–2026 | |
 |---|---|---|---|---|---|
-| Força | MME 9, em alta | +0,21 R | +0,31 R [+0,09; +0,54] | +0,32 R | passou |
-| 9.4 | MME 9, em alta | +0,21 R | +0,04 R [−0,06; +0,12] | +0,02 R | passou |
-| Suporte | alvo 3R, em alta | +0,06 R | +0,03 R [−0,22; +0,28] | +0,01 R | passou |
+| Força | MME 9, em alta | +0,21 R | +0,31 R [+0,09; +0,54] | +0,32 R | firme |
+| 9.4 | MME 9, em alta | +0,21 R | +0,04 R [−0,06; +0,12] | +0,02 R | fraco |
+| Suporte | alvo 3R, em alta | +0,06 R | +0,03 R [−0,22; +0,28] | +0,01 R | fraco |
 | 9.1 | MME 9, em alta | +0,09 R | +0,01 R [−0,08; +0,10] | −0,04 R | falhou |
 | 123 | alvo 3R, em alta | +0,11 R | +0,03 R [−0,08; +0,12] | −0,04 R | falhou |
 | 9.2 | MME 9, em alta | +0,41 R | −0,05 R [−0,20; +0,09] | −0,19 R | falhou |
@@ -474,5 +475,5 @@ Leitura: só a Força tem intervalo acima de zero, e com poucos trades (404) e r
 
 1. Motor dos setups clássicos, suíte de backtest local, testes, este plano e o CLAUDE.md. (Esta.)
 2. Resultado no banco e a página Backtest no app: escolher setup e variação; números, curva, ano a ano e lista de trades.
-3. Setups no pregão diário: o site abre nos Setups, etiquetas de tendência e volume, alerta liga/desliga por setup (ligado de início só nos que passaram), Telegram, entrada/stop/alvo no gráfico da ficha.
+3. Setups no pregão diário: o site abre nos Setups, etiquetas de tendência e volume, alerta liga/desliga por setup (ligado de início só nos firmes e fracos), Telegram, entrada/stop/alvo no gráfico da ficha.
 4. Calculadora de lote (capital salvo na conta, risco padrão de 1%, ação inteira no fracionário) e diário ligado ao setup (botão "Entrei" no setup confirmado e campos setup e stop no formulário; resultado em R).

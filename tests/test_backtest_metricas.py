@@ -6,7 +6,16 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scanner.backtest.metricas import bootstrap, curva, escolher, resumo
+from scanner.backtest.metricas import (
+    FALHOU,
+    FIRME,
+    FRACO,
+    bootstrap,
+    curva,
+    escolher,
+    nivel_da_conferencia,
+    resumo,
+)
 from scanner.backtest.simulador import ALVO, STOP
 
 
@@ -118,3 +127,19 @@ def test_curva_acumula_e_recua() -> None:
     c = c[c["grupo"] == "todos"]
     assert list(c["acumulado"]) == [2.0, 1.0, 0.0, -1.0, 1.0]
     assert list(c["recuo"]) == [0.0, -1.0, -2.0, -3.0, -1.0]
+
+
+def test_tres_niveis() -> None:
+    assert nivel_da_conferencia(0.3, 0.1, 0.2) == FIRME
+    assert nivel_da_conferencia(0.3, -0.1, 0.2) == FRACO
+    assert nivel_da_conferencia(0.3, 0.1, -0.01) == FALHOU  # positivo, mas o controle ganhou
+    assert nivel_da_conferencia(-0.1, -0.3, 0.2) == FALHOU
+    assert nivel_da_conferencia(float("nan"), float("nan"), float("nan")) == FALHOU
+
+
+def test_escolha_leva_o_nivel() -> None:
+    g = pd.DataFrame(
+        [_linha("forca", "mme9", "1995-2015", 0.2), _linha("forca", "mme9", "2016-2026", 0.3)]
+    )
+    e = escolher(g).iloc[0]
+    assert e["nivel"] == FIRME  # ic_baixo 0,2 > 0 e diferenca 0,1 > 0

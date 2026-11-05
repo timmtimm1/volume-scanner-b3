@@ -7,7 +7,7 @@
 
 import { NextResponse } from "next/server";
 import { ehDono } from "@/auth";
-import { listarSetups } from "@/lib/setups";
+import { listarSetups, preferenciasDosSetups } from "@/lib/setups";
 import { TICKER } from "@/lib/ticker";
 
 // O estado do setup muda a noite e o alerta durante o pregao: nada de cache.
@@ -21,5 +21,9 @@ export async function GET(pedido: Request) {
   if (!TICKER.test(ticker)) {
     return NextResponse.json({ erro: "ticker fora do formato da B3" }, { status: 400 });
   }
-  return NextResponse.json({ setups: await listarSetups(ticker) });
+  const [setups, preferencias] = await Promise.all([
+    listarSetups(ticker),
+    preferenciasDosSetups(),
+  ]);
+  return NextResponse.json({ setups, preferencias });
 }

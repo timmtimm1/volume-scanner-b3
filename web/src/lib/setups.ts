@@ -8,8 +8,9 @@
  * nao importa `pg` e pode ir para o navegador e para os testes.
  */
 
+import { CATEGORIAS_DE_SETUP, PADROES_DOS_SETUPS, type CategoriaDoSetup, type SaidaDoSetup } from "./config";
 import { conexaoDeAlertas } from "./db";
-import type { Setup } from "./setups-tela";
+import type { AoVivo, Preferencias, Setup } from "./setups-tela";
 
 type Linha = {
   id: string | number;
@@ -47,6 +48,10 @@ type Linha = {
   rc5: string | number | null;
   rc10: string | number | null;
   rc20: string | number | null;
+  // Ausentes antes da migration 0017: valem null (linha antiga).
+  alta?: boolean | null;
+  saida_regra?: string | null;
+  resultado_r?: string | number | null;
   alerta_preco: string | number | null;
   alerta_disparado_em: Date | string | null;
   alerta_preco_disparo: string | number | null;
@@ -68,12 +73,18 @@ function dia(v: Date | string | null): string | null {
 
 const num = (v: string | number | null): number | null => (v === null ? null : Number(v));
 
+function categoriaDe(c: string): CategoriaDoSetup {
+  return (CATEGORIAS_DE_SETUP as readonly string[]).includes(c)
+    ? (c as CategoriaDoSetup)
+    : "reversao";
+}
+
 function paraSetup(r: Linha): Setup {
   return {
     id: Number(r.id),
     ticker: r.ticker,
     tradeDate: dia(r.trade_date) ?? "",
-    categoria: r.categoria === "forca" ? "forca" : r.categoria === "media" ? "media" : "reversao",
+    categoria: categoriaDe(r.categoria),
     padroes: r.padroes,
     toques: Number(r.toques),
     virou: r.virou,
@@ -98,6 +109,9 @@ function paraSetup(r: Linha): Setup {
     r: { 5: num(r.r5), 10: num(r.r10), 20: num(r.r20) },
     m: { 5: num(r.m5), 10: num(r.m10), 20: num(r.m20) },
     rc: { 5: num(r.rc5), 10: num(r.rc10), 20: num(r.rc20) },
+    alta: r.alta ?? null,
+    saidaRegra: (r.saida_regra ?? null) as SaidaDoSetup | null,
+    resultadoR: r.resultado_r === null || r.resultado_r === undefined ? null : Number(r.resultado_r),
     alerta:
       r.alerta_preco === null
         ? null
@@ -115,15 +129,24 @@ function paraSetup(r: Linha): Setup {
   };
 }
 
+/** Janela da aba: o que ja encerrou ha mais que isso fica de fora (a tabela cresce ~100 linhas por pregao). */
+const DIAS_DA_ABA = 180;
+
 /**
- * Todos os setups (ou os de um papel), do candle mais novo para o mais antigo.
+ * Os setups da aba (ou todos os de um papel), do candle mais novo para o mais antigo.
+ *
+ * Sem papel: so o que esta armado ou em andamento, mais o que e dos ultimos
+ * 180 dias. Com papel, tudo dele -- a ficha precisa do historico inteiro.
  *
  * `pregoes_desde` conta os pregoes do papel depois da confirmacao: e o "dia N
  * de 20" do que esta em andamento. O ultimo fechamento vem de `daily_bars`, o
  * mesmo COTAHIST de tudo -- nao a cotacao do momento.
  */
 export async function listarSetups(ticker?: string): Promise<Setup[]> {
-  const filtro = ticker ? "WHERE s.ticker = $1" : "";
+  const filtro = ticker
+    ? "WHERE s.ticker = $1"
+    : `WHERE s.estado IN ('armado', 'confirmado')
+          OR s.trade_date >= CURRENT_DATE - ${DIAS_DA_ABA}`;
   const { rows } = await conexaoDeAlertas().query<Linha>(
     `SELECT s.*,
             a.preco AS alerta_preco,
@@ -147,4 +170,82 @@ export async function listarSetups(ticker?: string): Promise<Setup[]> {
     ticker ? [ticker.toUpperCase()] : [],
   );
   return rows.map(paraSetup);
+}
+
+const TABELA_AUSENTE = "42P01";
+
+/** Preferencias de cada setup: o que esta na tabela, e o padrao do resto. */
+export async function preferenciasDosSetups(): Promise<Preferencias> {
+  const prefs = { ...PADROES_DOS_SETUPS } as Preferencias;
+  try {
+    const { rows } = await conexaoDeAlertas().query<{
+      categoria: string;
+      alerta: boolean;
+      saida: string;
+    }>("SELECT categoria, alerta, saida FROM volume_scanner.setup_preferencias");
+    for (const r of rows) {
+      if (!(CATEGORIAS_DE_SETUP as readonly string[]).includes(r.categoria)) continue;
+      prefs[r.categoria as CategoriaDoSetup] = { alerta: r.alerta, saida: r.saida as SaidaDoSetup };
+    }
+  } catch (erro) {
+    // Migration 0017 ainda nao aplicada: valem os padroes.
+    if ((erro as { code?: string }).code !== TABELA_AUSENTE) throw erro;
+  }
+  return prefs;
+}
+
+/** Grava a escolha do usuario para um setup (o chamador ja validou os valores). */
+export async function gravarPreferencia(
+  categoria: CategoriaDoSetup,
+  alerta: boolean,
+  saida: SaidaDoSetup,
+): Promise<void> {
+  await conexaoDeAlertas().query(
+    `INSERT INTO volume_scanner.setup_preferencias (categoria, alerta, saida, atualizado_em)
+          VALUES ($1, $2, $3, now())
+     ON CONFLICT (categoria)
+       DO UPDATE SET alerta = EXCLUDED.alerta, saida = EXCLUDED.saida, atualizado_em = now()`,
+    [categoria, alerta, saida],
+  );
+}
+
+
+/**
+ * A conferencia ao vivo de cada setup, desde a estreia: setups vistos ao vivo,
+ * ja encerrados, com a saida escolhida (`saida_regra`). O R e o `resultado_r`
+ * do pipeline: escala ajustada e o mesmo custo do backtest (0,08% por lado),
+ * para comparar com ele. Conta no banco,
+ * sem a janela de 180 dias da lista. Sem a migration 0017, nada.
+ */
+export async function conferenciaAoVivo(): Promise<Partial<Record<string, AoVivo>>> {
+  try {
+    const { rows } = await conexaoDeAlertas().query<{
+      categoria: string;
+      n: string | number;
+      media_r: string | number | null;
+      acerto: string | number | null;
+    }>(
+      `SELECT categoria, count(*) AS n, avg(resultado_r) AS media_r,
+              avg(CASE WHEN resultado_r > 0 THEN 1.0 ELSE 0.0 END) AS acerto
+         FROM volume_scanner.setups
+        WHERE ao_vivo AND saida_regra IS NOT NULL AND resultado_r IS NOT NULL
+          AND estado IN ('stop', 'prazo', 'alvo', 'movel', 'mme9')
+        GROUP BY categoria`,
+    );
+    return Object.fromEntries(
+      rows.map((x) => [
+        x.categoria,
+        {
+          n: Number(x.n),
+          mediaR: x.media_r === null ? null : Number(x.media_r),
+          acerto: x.acerto === null ? null : Number(x.acerto),
+        },
+      ]),
+    );
+  } catch (erro) {
+    // 42P01/42703: tabela ou coluna da migration 0017 ainda nao existe
+    const codigo = (erro as { code?: string }).code;
+    if (codigo === "42P01" || codigo === "42703") return {};
+    throw erro;
+  }
 }

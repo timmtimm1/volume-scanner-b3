@@ -168,3 +168,19 @@ def test_nan_vira_null(limpo: Engine) -> None:
     with session_scope(limpo) as s:
         e = s.scalars(select(BacktestEscolha).where(BacktestEscolha.rodada_id == rodada_id)).all()
         assert all(x.nivel == "falhou" and x.saida is None and x.exp_conferencia is None for x in e)
+
+
+def test_trade_aberto_fica_sem_data_de_saida_no_banco(limpo: Engine) -> None:
+    # regressao: NaT ia para o banco como 21/11/48113
+    t = _trades()
+    t.loc[t["motivo"] == ABERTO, "data_saida"] = pd.NaT
+    t.loc[t["motivo"] == ABERTO, "data_entrada"] = pd.Timestamp("2026-10-01")  # entram na amostra
+    rodada_id = _enviar(limpo, t)
+    with session_scope(limpo) as s:
+        abertos = s.scalars(
+            select(BacktestTrade).where(
+                BacktestTrade.rodada_id == rodada_id, BacktestTrade.motivo == "aberto"
+            )
+        ).all()
+        assert abertos
+        assert all(x.data_saida is None and x.preco_saida is None and x.r is None for x in abertos)

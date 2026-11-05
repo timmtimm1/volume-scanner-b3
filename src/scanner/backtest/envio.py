@@ -43,7 +43,9 @@ COLUNAS_ESCOLHA = tuple(c.name for c in BacktestEscolha.__table__.columns if c.n
 
 def _limpo(v: Any) -> Any:
     """NaN e NaT viram NULL; tipos do numpy viram tipos do Python."""
-    if v is None:
+    # NaT nao e Timestamp nem None: sem esta linha, ia para o banco como uma
+    # data absurda (ano 48113) em vez de NULL.
+    if v is None or v is pd.NaT:
         return None
     if isinstance(v, pd.Timestamp):
         return None if pd.isna(v) else v.date()

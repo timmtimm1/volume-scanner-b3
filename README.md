@@ -1142,6 +1142,7 @@ e uma linha na tabela abaixo. Os testes novos sem outro lugar para morar ficam e
 | Quedas em "Maiores altas" (18/10/2026) | Com poucas altas na semana, a lista era completada com quedas: WBT (−3,1%) e BCH (−3,2%) apareceram nas altas de cripto. As ações tinham a mesma regra | `test_semana_cripto.py::test_altas_so_com_quem_subiu_e_quedas_so_com_quem_caiu`, `test_semana_acoes.py::test_altas_so_com_quem_subiu_e_quedas_so_com_quem_caiu` e, para as edições já gravadas, `web/src/lib/semana.test.mjs` (`soQuemSubiu`) |
 | SGS do BCB passou do tempo na montagem (17/10/2026) | A mensagem do Telegram saiu com "Selic indisponível", e o site sem Selic, CDI e IPCA: a Selic dos indicadores dependia do SGS, timeout não era repetido e uma série fora derrubava o bloco inteiro | `test_semana_bcb.py::test_sgs_fora_a_selic_dos_indicadores_vem_do_copom`, `test_semana_bcb.py::test_timeout_tenta_mais_uma_vez` e `test_semana_mensagem.py::test_juros_com_cdi_e_ipca_fora_ainda_mostra_a_selic` |
 | Setup abria o gráfico no evento antigo (21/10/2026) | O link do setup usava `?data=`, que a ficha lê como evento de volume; sem evento no dia, caía no último evento do papel, meses antes | `web/src/lib/foco.test.mjs` e `test_setups_alertas.py::test_links_do_setup_centram_no_candle_e_nao_no_evento` |
+| Trade aberto do backtest com saída em 48113 (05/11/2026) | O `NaT` do pandas não é `None` nem `Timestamp` e ia para o banco como data absurda; a lista de trades mostrava a saída "21/11/48113" | `test_backtest_envio.py::test_trade_aberto_fica_sem_data_de_saida_no_banco` |
 | Banco `*_pytest` em numeração velha (18/10/2026) | "Can't locate revision" no pytest | Sem teste: não é bug de código. Apague o banco `<db>_pytest` (`DROP DATABASE`) e rode de novo; a fixture `engine` o recria |
 
 ## Notícias na ficha
@@ -1446,7 +1447,14 @@ python scripts/gatilhos_carregar.py data/raw data/raw data/backtest_setups/barra
 BACKTEST_LOTE=100 python scripts/backtest_setups.py processar data/backtest_setups/barras.pkl data/backtest_setups/v1
 # 3. números, escolha em 1995-2015 e conferência em 2016-2026
 python scripts/backtest_setups.py relatorio data/backtest_setups/v1
+# 4. o resultado para o banco de SCANNER_DATABASE_URL (uma rodada nova; ficam as 2 últimas)
+python scripts/backtest_setups.py enviar data/backtest_setups/v1
 ```
+
+No site, a página **Backtest** (`/setups/backtest`, só logado, com link no topo da
+aba Setups) mostra a rodada mais recente: o nível de cada setup (firme, fraco ou
+falhou), e, para o setup e a variação escolhidos, os números dos três períodos, a
+curva de R acumulado contra o controle, o ano a ano e os trades mais recentes.
 
 O que cada parte faz:
 
@@ -1458,7 +1466,10 @@ O que cada parte faz:
 - `scanner/backtest/suite.py`: todos os setups × todas as saídas num lote, e um
   trade de **controle** para cada trade (papel sorteado no mesmo dia, mesma saída).
 - `scanner/backtest/metricas.py`: expectativa em R com intervalo por bootstrap por
-  mês, contra o controle, ano a ano, curva, e o protocolo de escolha.
+  mês, contra o controle, ano a ano, curva, e o protocolo de escolha (firme, fraco
+  ou falhou).
+- `scanner/backtest/envio.py`: a rodada no banco (migration 0016), numa transação,
+  com uma amostra dos trades (os 200 mais recentes de cada setup e saída).
 
 O número que importa é o setup **contra o controle**: em 2016–2026 o controle ganhou
 uns +0,05 R por trade só por estar comprado num mercado que subiu.

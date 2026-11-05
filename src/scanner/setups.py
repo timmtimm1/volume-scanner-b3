@@ -22,6 +22,15 @@ usuario viu. Na estreia (tabela vazia), a janela inteira entra de uma vez com
 Estado e resultados sao calculados de novo a cada noite a partir das barras:
 assim uma noite perdida (B3 atrasada, Actions fora do ar) se resolve sozinha
 na seguinte.
+
+Plataforma de setups (secao 14 do plano, 05/11/2026): os setups classicos
+(9.1 a 9.4, 123, PFR, MMA 20, pullback) entram na mesma tabela. Cada setup
+segue, depois de confirmado, a saida escolhida para ele no app
+(`setup_preferencias`, com o padrao do `config.yaml`), gravada na linha na
+noite em que arma: alvo de 1/2/3 R, stop movel pelas minimas ou MME 9 virando.
+O estado e a mesma conta da suite de backtest (`scanner.backtest.simulador`),
+para a conferencia ao vivo medir o que o backtest mediu. Setup gravado antes
+disso (sem `saida_regra`) segue a regra antiga ate encerrar.
 """
 
 from __future__ import annotations
@@ -37,11 +46,25 @@ import numpy.typing as npt
 import pandas as pd
 from sqlalchemy import Engine
 
+from scanner.backtest.simulador import (
+    ABERTO,
+    ALVO,
+    MEDIA,
+    MOVEL,
+    PRAZO,
+    SAIDAS,
+    STOP,
+    Precos,
+    entrar,
+    simular,
+)
 from scanner.calendar import next_trading_day
-from scanner.config import ScannerConfig
-from scanner.gatilhos.regra import Analise, analisar, niveis, setups
+from scanner.config import PadraoDoSetup, ScannerConfig, SetupsConfig
+from scanner.gatilhos.classicos import CENTAVO, NOMES
+from scanner.gatilhos.regra import Analise, analisar, niveis, setups, setups_classicos
 from scanner.storage.repository import (
     atualizar_setups,
+    carregar_preferencias,
     carregar_setups,
     criar_alerta,
     gravar_setups,
@@ -54,6 +77,22 @@ I64 = npt.NDArray[np.int64]
 
 HORIZONTES = (5, 10, 20)
 COLUNAS_AVANCO = ("id", "estado", "confirmado_em", "entrada", "encerrado_em", "saida")
+# Motivo de saida do simulador -> estado do setup (o teto de 60 pregoes e `prazo`).
+ESTADO_DO_MOTIVO = {STOP: "stop", MOVEL: "movel", ALVO: "alvo", MEDIA: "mme9", PRAZO: "prazo"}
+SAIDA_POR_NOME = {s.nome: s for s in SAIDAS}
+# Resultados (r*, m*, rc*) so mudam ate 20 pregoes depois da confirmacao: a
+# noite comum so recalcula os setups desta janela, mais os recem-gravados.
+JANELA_DE_RESULTADOS = max(HORIZONTES) + 5
+
+
+def preferencias(engine: Engine, cfg: SetupsConfig) -> dict[str, PadraoDoSetup]:
+    """Alerta e saida de cada setup: o que o usuario escolheu no app sobre o padrao."""
+    escolhas = carregar_preferencias(engine)
+    saida = dict(cfg.padroes)
+    for categoria, (alerta, nome) in escolhas.items():
+        if categoria in saida:
+            saida[categoria] = PadraoDoSetup(alerta=alerta, saida=nome)  # type: ignore[arg-type]
+    return saida
 
 
 def _posicoes(frame: pd.DataFrame, a: Analise) -> tuple[pd.DataFrame, I64, I64]:
@@ -159,6 +198,75 @@ def avancar(abertos: pd.DataFrame, a: Analise, prazo: int) -> pd.DataFrame:
     return cast(pd.DataFrame, out[mudou].reset_index(drop=True))
 
 
+def avancar_pela_saida(abertos: pd.DataFrame, a: Analise) -> pd.DataFrame:
+    """Estado dos setups com `saida_regra`: a conta da suite de backtest.
+
+    Confirma se o pregao seguinte chegar a 1 centavo acima da maxima (entrada
+    no gatilho, ou na abertura se abriu acima). Confirmado, o trade segue a
+    saida da linha, com o stop inicial 1 centavo abaixo da minima do padrao,
+    pelo `simulador` -- as mesmas escolhas conservadoras do backtest. Tudo e
+    refeito das barras a cada noite; so volta o que mudou.
+    """
+    vazio = pd.DataFrame({c: pd.Series(dtype="object") for c in COLUNAS_AVANCO})
+    if abertos.empty:
+        return vazio
+    f, d0, col = _posicoes(abertos, a)
+    if f.empty:
+        return vazio
+    m = a.m
+    ultimo = len(m.datas) - 1
+    tick = CENTAVO * a.ajuste
+    precos = Precos.de(m.abertura, m.maxima, m.minima, m.fechamento, tick)
+    esc0 = a.ajuste[d0, col]
+    gatilho = _num(f["maxima"]) * esc0 + tick[d0, col]
+    stop = _num(f["minima"]) * esc0 - tick[d0, col]
+    ent = entrar(precos, d0, col, gatilho)
+    decidido = d0 + 1 <= ultimo
+    estado = np.where(
+        ent.entrou, "confirmado", np.where(decidido, "nao_confirmou", "armado")
+    ).astype(object)
+    dc = np.where(ent.entrou, d0 + 1, -1)
+    fim = np.where(decidido & ~ent.entrou, d0 + 1, -1)
+    saida = np.full(len(f), np.nan)
+    regra = f["saida_regra"].to_numpy(dtype=object)
+    for nome, como in SAIDA_POR_NOME.items():
+        i = np.nonzero(ent.entrou & (regra == nome))[0]
+        if i.size == 0:
+            continue
+        res = simular(
+            precos,
+            dc[i],
+            col[i],
+            ent.preco[i],
+            stop[i],
+            como,
+            dia_anterior_minima=m.minima[d0[i], col[i]],
+        )
+        fechou = res.motivo != ABERTO
+        j = i[fechou]
+        estado[j] = [ESTADO_DO_MOTIVO[int(x)] for x in res.motivo[fechou]]
+        fim[j] = res.dia_saida[fechou]
+        saida[j] = res.preco_saida[fechou]
+
+    mudou = estado != f["estado"].to_numpy(dtype=object)
+    if not mudou.any():
+        return vazio
+    datas = m.datas.date
+    escala_dc = np.where(dc >= 0, a.ajuste[np.maximum(dc, 0), col], np.nan)
+    escala_fim = np.where(fim >= 0, a.ajuste[np.maximum(fim, 0), col], np.nan)
+    out = pd.DataFrame(
+        {
+            "id": f["id"].to_numpy(),
+            "estado": estado,
+            "confirmado_em": [datas[i] if i >= 0 else None for i in dc],
+            "entrada": ent.preco / escala_dc,
+            "encerrado_em": [datas[i] if i >= 0 else None for i in fim],
+            "saida": saida / escala_fim,
+        }
+    )
+    return cast(pd.DataFrame, out[mudou].reset_index(drop=True))
+
+
 def resultados(gravados: pd.DataFrame, a: Analise) -> pd.DataFrame:
     """Retornos de cada setup ate onde as barras alcancam.
 
@@ -198,24 +306,25 @@ def resultados(gravados: pd.DataFrame, a: Analise) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
-def criar_alertas(engine: Engine, gravados: pd.DataFrame, config: ScannerConfig) -> int:
+def criar_alertas(
+    engine: Engine,
+    gravados: pd.DataFrame,
+    config: ScannerConfig,
+    prefs: dict[str, PadraoDoSetup],
+) -> int:
     """Um alerta "acima da maxima" para cada setup armado ao vivo nesta noite.
 
+    So os setups com alerta ligado (no app, ou pelo padrao do `config.yaml`).
     O alerta vale so no pregao seguinte ao candle, que e quando o setup confirma
     ou nao, e nasce um centavo acima da maxima: a confirmacao pede passar dela,
     e tocar exatamente a maxima nao e passar. Setup retroativo (estreia, ou
     noite perdida) nao ganha alerta -- o pregao da confirmacao ja passou.
     """
-    cfg = config.setups
-    if not cfg.alerta or gravados.empty:
+    if not config.setups.alerta or gravados.empty:
         return 0
-    categorias = (
-        ["reversao"]
-        + (["forca"] if cfg.alerta_forca else [])
-        + (["media"] if cfg.alerta_media else [])
-    )
+    categorias = [c for c, p in prefs.items() if p.alerta]
     alvo = gravados[gravados["ao_vivo"].astype(bool) & gravados["categoria"].isin(categorias)]
-    # Poucos por noite (cerca de um por semana): um INSERT por setup basta.
+    # Com os padroes de hoje, uns 6 por noite (9.4 quase todos): um INSERT por setup basta.
     for linha in alvo.to_dict("records"):
         candle: date = linha["trade_date"]
         criar_alerta(
@@ -248,6 +357,10 @@ class RelatorioDeSetups:
     alertas: int = 0
     dry_run: bool = False
     desligado: bool = False
+    # Armados hoje por setup classico (9.1 a 9.4, 123, PFR, MMA 20, pullback).
+    classicos: dict[str, int] = field(default_factory=dict)
+    # Setups com alerta ligado nesta noite.
+    ligados: list[str] = field(default_factory=list)
 
     def summary(self) -> str:
         if self.desligado:
@@ -259,6 +372,10 @@ class RelatorioDeSetups:
             partes.append(f"na media {', '.join(self.media)}")
         if self.forca:
             partes.append(f"forca {', '.join(self.forca)}")
+        if self.classicos:
+            partes.append(
+                "classicos " + ", ".join(f"{k} {v}" for k, v in sorted(self.classicos.items()))
+            )
         partes.append(f"{len(self.confirmados)} confirmado(s)")
         partes.append(f"{len(self.nao_confirmaram)} nao confirmou")
         partes.append(f"{self.encerrados} encerrado(s), {self.em_andamento} em andamento")
@@ -267,8 +384,12 @@ class RelatorioDeSetups:
             partes.append(f"{self.alertas} alerta(s) de confirmacao criado(s)")
         if self.estreia:
             partes.append(f"estreia: {self.gravados} setups retroativos gravados")
-        elif self.gravados > len(self.armados) + len(self.media) + len(self.forca):
+        elif self.gravados > len(self.armados) + len(self.media) + len(self.forca) + sum(
+            self.classicos.values()
+        ):
             partes.append(f"{self.gravados} gravados (retroativos de categoria nova)")
+        if self.ligados:
+            partes.append(f"alerta ligado em {', '.join(self.ligados)}")
         return "; ".join(partes)
 
 
@@ -288,28 +409,53 @@ def run_setups(
         return RelatorioDeSetups(dia=dia, dry_run=dry_run)
 
     a = analisar(barras, cfg, config.universe)
-    todos = setups(a, cfg)
-    # Cada categoria a partir do seu ultimo candle gravado: categoria nova (a
-    # `media`, de 21/10/2026) grava a janela inteira na primeira noite.
+    todos = pd.concat([setups(a, cfg), setups_classicos(a, cfg)], ignore_index=True)
+    prefs = preferencias(engine, cfg)
+    # Cada categoria a partir do seu ultimo candle gravado. Categoria nova grava
+    # a janela inteira na primeira noite (a `media`, em 21/10/2026) -- mas so se
+    # tiver alerta ligado: os classicos sem alerta armam ~100 por pregao, o
+    # passado deles ja esta no backtest e encheria o banco gratis a toa
+    # (decisao de 05/11/2026). Esses comecam a ser gravados na noite da estreia.
     ultimos = ultimos_por_categoria(engine)
     estreia = not ultimos
-    # poucas centenas de linhas: comparar data a data e mais simples que alinhar
-    # datas com categorias ausentes num Series
+    # poucas centenas de linhas por noite: comparar data a data e mais simples que
+    # alinhar datas com categorias ausentes num Series
     entra = [
-        cat not in ultimos or dia_ > ultimos[cat]
+        (dia_ > ultimos[cat]) if cat in ultimos else (prefs[cat].alerta or dia_ == dia)
         for cat, dia_ in zip(todos["categoria"], todos["trade_date"], strict=True)
     ]
     novos = todos[entra]
-    novos = novos.assign(ao_vivo=novos["trade_date"] == dia, estado="armado")
+    novos = novos.assign(
+        ao_vivo=novos["trade_date"] == dia,
+        estado="armado",
+        # a saida que o setup vai seguir, congelada hoje
+        saida_regra=[prefs[c].saida for c in novos["categoria"]],
+    )
     desenho = niveis(a, cfg)
 
     gravados = novos.head(0) if dry_run else gravar_setups(engine, novos)
-    alertas = 0 if dry_run else criar_alertas(engine, gravados, config)
+    alertas = 0 if dry_run else criar_alertas(engine, gravados, config, prefs)
     abertos = carregar_setups(engine, abertos=True)
-    mudancas = avancar(abertos, a, cfg.prazo_pregoes)
+    com_regra = abertos["saida_regra"].notna().to_numpy(dtype=bool)
+    mudancas = pd.concat(
+        [
+            avancar(abertos[~com_regra], a, cfg.prazo_pregoes),
+            avancar_pela_saida(abertos[com_regra], a),
+        ],
+        ignore_index=True,
+    )
     if not dry_run:
         atualizar_setups(engine, mudancas)
-        janela = carregar_setups(engine, desde=a.m.datas[0].date())
+        # resultados: a janela recente; a inteira so quando entrou passado (estreia
+        # ou categoria nova), que ainda nao tem resultado nenhum
+        recente = a.m.datas[max(0, len(a.m.datas) - JANELA_DE_RESULTADOS)].date()
+        entrou_passado = (
+            bool((pd.to_datetime(gravados["trade_date"]).dt.date < recente).any())
+            if not gravados.empty
+            else False
+        )
+        desde = a.m.datas[0].date() if entrou_passado else recente
+        janela = carregar_setups(engine, desde=desde)
         atualizar_setups(engine, resultados(janela, a))
         trocar_niveis(engine, desenho)
 
@@ -324,6 +470,7 @@ def run_setups(
     if not mudancas.empty:
         final.update(mudancas.set_index("id")["estado"])
     em_andamento = int((final == "confirmado").sum())
+    classicos = hoje[hoje["categoria"].isin(list(NOMES))]
     return RelatorioDeSetups(
         dia=dia,
         estreia=estreia,
@@ -338,4 +485,6 @@ def run_setups(
         niveis=len(desenho),
         alertas=alertas,
         dry_run=dry_run,
+        classicos={str(k): int(v) for k, v in classicos.groupby("categoria").size().items()},
+        ligados=[c for c, p in prefs.items() if p.alerta],
     )

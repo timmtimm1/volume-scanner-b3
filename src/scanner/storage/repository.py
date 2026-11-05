@@ -54,6 +54,7 @@ from scanner.storage.models import (
     PriceAlert,
     ResumoSemanal,
     Setup,
+    SetupPreferencia,
     Trade,
     TradeOperacao,
     TradeSnapshot,
@@ -1682,6 +1683,26 @@ def ultimos_por_categoria(engine: Engine) -> dict[str, date]:
     stmt = select(Setup.categoria, func.max(Setup.trade_date)).group_by(Setup.categoria)
     with engine.connect() as conn:
         return {str(c): d for c, d in conn.execute(stmt) if isinstance(d, date)}
+
+
+def carregar_preferencias(engine: Engine) -> dict[str, tuple[bool, str]]:
+    """O que o usuario escolheu no app, por setup: (alerta, saida). Sem linha, sem chave."""
+    with engine.connect() as conn:
+        linhas = conn.execute(
+            select(SetupPreferencia.categoria, SetupPreferencia.alerta, SetupPreferencia.saida)
+        ).all()
+    return {str(c): (bool(a), str(s)) for c, a, s in linhas}
+
+
+def gravar_preferencia(engine: Engine, categoria: str, *, alerta: bool, saida: str) -> None:
+    """Grava a escolha de um setup (o site faz o mesmo pela rota da aba)."""
+    stmt = insert(SetupPreferencia).values(categoria=categoria, alerta=alerta, saida=saida)
+    stmt = stmt.on_conflict_do_update(
+        index_elements=["categoria"],
+        set_={"alerta": alerta, "saida": saida, "atualizado_em": func.now()},
+    )
+    with engine.begin() as conn:
+        conn.execute(stmt)
 
 
 def gravar_setups(engine: Engine, frame: pd.DataFrame) -> pd.DataFrame:

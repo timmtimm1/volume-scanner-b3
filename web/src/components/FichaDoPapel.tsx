@@ -167,7 +167,7 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = []
 
   const estadoDosAlertas = useAlertasDoPapel(ticker, barras, evento?.tradeDate, hoje);
   const estadoDosTrades = useTradesDoPapel(ticker, estadoDosAlertas.autenticado);
-  const setups = useSetupsDoPapel(ticker, estadoDosAlertas.autenticado);
+  const { marcas: setups, linhas: linhasDeSetup } = useSetupsDoPapel(ticker, estadoDosAlertas.autenticado);
 
   // No computador, logado, o alerta e criado, arrastado e apagado no proprio
   // grafico, e os que ja dispararam saem dele (continuam na lista do painel).
@@ -395,7 +395,8 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = []
                 ▲
               </span>
               setup (M martelo · L libélula · E engolfo · P piercing · ★ estrela · F força; na
-              cor da média quando o suporte foi ela)
+              cor da média quando o suporte foi ela; o nome, como 9.4, nos setups clássicos).
+              Só os setups com alerta ligado.
             </span>
           )}
         </p>
@@ -415,6 +416,7 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = []
         publicacoes={publicacoes}
         niveis={niveis}
         setups={setups}
+        linhasDeSetup={linhasDeSetup}
         regua={regua}
         edicaoDeAlertas={edicaoDeAlertas}
         classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"

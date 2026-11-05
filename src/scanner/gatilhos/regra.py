@@ -33,9 +33,10 @@ import pandas as pd
 
 from scanner.config import SetupsConfig, UniverseConfig
 from scanner.gatilhos.candles import padroes
+from scanner.gatilhos.classicos import CENTAVO, classicos, tendencia_de_alta
 from scanner.gatilhos.contexto import atr_wilder, calcular
 from scanner.gatilhos.matrizes import Matrizes, ajuste_acumulado, montar
-from scanner.gatilhos.medias import RegrasDaMedia, toques_na_media
+from scanner.gatilhos.medias import RegrasDaMedia, media_movel, toques_na_media
 from scanner.gatilhos.niveis import ROMPEU, Eventos, Regras, Retrato, detectar
 
 F64 = npt.NDArray[np.float64]
@@ -64,6 +65,7 @@ COLUNAS_SETUP = (
     "resistencia",
     "espaco_r",
     "risco_pct",
+    "alta",
 )
 COLUNAS_NIVEL = (
     "ticker",
@@ -232,6 +234,7 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
             tipo = ["nivel"] * dd.size
         escala = a.ajuste[dd, tt]  # volta cada preco para a escala do proprio dia
         lateral = ~np.isnan(ret.caixa_altura[dd, tt])
+        alta = tendencia_de_alta(c)
         correcao = np.asarray(ctx["correcao"], dtype=bool)[dd, tt]
         partes.append(
             pd.DataFrame(
@@ -257,6 +260,7 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
                     "resistencia": ret.res_preco[dd, tt] / escala,
                     "espaco_r": espaco[dd, tt],
                     "risco_pct": risco[dd, tt] / c[dd, tt] * 100,
+                    "alta": alta[dd, tt],
                 }
             )
         )
@@ -264,6 +268,97 @@ def setups(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
         return pd.DataFrame({k: pd.Series(dtype="object") for k in COLUNAS_SETUP})
     saida = pd.concat(partes, ignore_index=True)
     return saida.sort_values(["trade_date", "ticker"]).reset_index(drop=True)
+
+
+# O que serve de referencia em cada setup classico, para a coluna `suporte`.
+_REFERENCIA = {
+    "9.1": "mme9",
+    "9.2": "mme9",
+    "9.3": "mme9",
+    "9.4": "mme9",
+    "123": "minima",
+    "pfr": "minima",
+    "mma20": "mma20",
+    "pullback": "nivel",
+}
+
+
+def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
+    """Os setups classicos (secao 14 do plano), no formato de `setups`.
+
+    Sem filtro de volume, contexto ou espaco: a regra de cada um e so a dele
+    (`classicos`). So o universo liquido do dia. Volume e tendencia vao como
+    etiqueta (`rvol`, `destaque`, `alta`). A coluna `suporte` guarda a
+    referencia do setup: a MME 9 nos 9.x, a MMA 20, o nivel rompido no pullback
+    e a minima do padrao no 123 e no PFR (`suporte_tipo` diz qual). `minima` e
+    a minima do padrao, de onde sai o stop.
+    """
+    m, ret, ctx = a.m, a.retrato, a.contexto
+    c = m.fechamento
+    tick = CENTAVO * a.ajuste
+    sinais = classicos(m.abertura, m.maxima, m.minima, c, tick, ret, a.eventos)
+    alta = tendencia_de_alta(c)
+    rvol = np.asarray(ctx["rvol"], dtype=np.float64)
+    correcao_m = np.asarray(ctx["correcao"], dtype=bool)
+    referencia = {
+        "mme9": media_movel(c, "MME", 9),
+        "mma20": media_movel(c, "MMA", 20),
+        "nivel": ret.toca_preco[0].astype(np.float64),
+    }
+    partes = []
+    # volume conhecido: a coluna e obrigatoria no banco (papel liquido quase sempre tem)
+    com_volume = np.isfinite(rvol)
+    for nome, sinal in sinais.items():
+        dd, tt = np.nonzero(sinal.armado & a.liquido & com_volume)
+        if dd.size == 0:
+            continue
+        escala = a.ajuste[dd, tt]
+        fech = c[dd, tt]
+        minima = sinal.stop[dd, tt] + tick[dd, tt]
+        tipo = _REFERENCIA[nome]
+        ref = minima if tipo == "minima" else referencia[tipo][dd, tt]
+        with np.errstate(invalid="ignore", divide="ignore"):
+            risco = fech - minima
+            espaco = np.where(risco > 0, (ret.res_preco[dd, tt] - fech) / risco, np.nan)
+        pullback = nome == "pullback"
+        lateral = ~np.isnan(ret.caixa_altura[dd, tt])
+        correcao = correcao_m[dd, tt]
+        partes.append(
+            pd.DataFrame(
+                {
+                    "ticker": np.asarray(m.tickers)[tt],
+                    "trade_date": m.datas[dd].date,
+                    "categoria": nome,
+                    "padroes": [[] for _ in range(dd.size)],
+                    "toques": (ret.toca_forca[0, dd, tt] if pullback else np.zeros(dd.size)).astype(
+                        int
+                    ),
+                    "virou": np.full(dd.size, pullback),
+                    "furou": (ret.toca_furou[0, dd, tt] if pullback else np.zeros(dd.size)).astype(
+                        bool
+                    ),
+                    "rvol": rvol[dd, tt],
+                    "destaque": rvol[dd, tt] >= cfg.volume_destaque,
+                    "contexto": [
+                        [n for n, f in (("lateral", la), ("correcao", co)) if f]
+                        for la, co in zip(lateral, correcao, strict=True)
+                    ],
+                    "fechamento": fech / escala,
+                    "maxima": m.maxima[dd, tt] / escala,
+                    "minima": minima / escala,
+                    "suporte": ref / escala,
+                    "suporte_tipo": tipo,
+                    "resistencia": ret.res_preco[dd, tt] / escala,
+                    "espaco_r": espaco,
+                    "risco_pct": risco / fech * 100,
+                    "alta": alta[dd, tt],
+                }
+            )
+        )
+    if not partes:
+        return pd.DataFrame({k: pd.Series(dtype="object") for k in COLUNAS_SETUP})
+    saida = pd.concat(partes, ignore_index=True)
+    return saida.sort_values(["trade_date", "ticker", "categoria"]).reset_index(drop=True)
 
 
 def niveis(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:

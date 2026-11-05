@@ -766,6 +766,10 @@ class Setup(Base):
     # A saida que o setup segue depois de confirmado, congelada na noite em que
     # arma. NULL = regra antiga (fecha abaixo da minima ou 20 pregoes).
     saida_regra: Mapped[str | None] = mapped_column(Text)
+    # Resultado em R, liquido do custo do backtest, na escala ajustada (um
+    # grupamento no meio do trade nao estraga a conta). Encerrado: o final; em
+    # andamento: ate o ultimo fechamento. NULL antes da 0017.
+    resultado_r: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
 
 
 class SetupPreferencia(Base):

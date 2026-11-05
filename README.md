@@ -1143,6 +1143,7 @@ e uma linha na tabela abaixo. Os testes novos sem outro lugar para morar ficam e
 | SGS do BCB passou do tempo na montagem (17/10/2026) | A mensagem do Telegram saiu com "Selic indisponível", e o site sem Selic, CDI e IPCA: a Selic dos indicadores dependia do SGS, timeout não era repetido e uma série fora derrubava o bloco inteiro | `test_semana_bcb.py::test_sgs_fora_a_selic_dos_indicadores_vem_do_copom`, `test_semana_bcb.py::test_timeout_tenta_mais_uma_vez` e `test_semana_mensagem.py::test_juros_com_cdi_e_ipca_fora_ainda_mostra_a_selic` |
 | Setup abria o gráfico no evento antigo (21/10/2026) | O link do setup usava `?data=`, que a ficha lê como evento de volume; sem evento no dia, caía no último evento do papel, meses antes | `web/src/lib/foco.test.mjs` e `test_setups_alertas.py::test_links_do_setup_centram_no_candle_e_nao_no_evento` |
 | Trade aberto do backtest com saída em 48113 (05/11/2026) | O `NaT` do pandas não é `None` nem `Timestamp` e ia para o banco como data absurda; a lista de trades mostrava a saída "21/11/48113" | `test_backtest_envio.py::test_trade_aberto_fica_sem_data_de_saida_no_banco` |
+| Grupamento no meio do trade (ENJU3, 09/10/2026) | Os preços do setup ficam cada um na escala do próprio dia; com o 10 para 1 no dia da confirmação, entrada R$ 8,30 e stop R$ 0,71 davam um R sem sentido no site e na conferência ao vivo. O pipeline passou a gravar o R na escala ajustada (`resultado_r`). Na linha do em andamento, entrada e stop ainda aparecem cada um na sua escala | `test_setups_classicos.py::test_grupamento_no_meio_do_trade_nao_estraga_o_resultado` e `web/src/lib/setups-tela.test.mjs` (`resultadoEmR`) |
 | Banco `*_pytest` em numeração velha (18/10/2026) | "Can't locate revision" no pytest | Sem teste: não é bug de código. Apague o banco `<db>_pytest` (`DROP DATABASE`) e rode de novo; a fixture `engine` o recria |
 
 ## Notícias na ficha
@@ -1419,7 +1420,9 @@ gravada na linha na noite em que arma (`saida_regra`). O estado é a mesma conta
 do backtest (`scanner.backtest.simulador`): a conferência ao vivo mede o mesmo
 que os 30 anos mediram. O passado (400 pregões) só é gravado para setup com
 alerta ligado; os outros começam a ser gravados na noite da estreia — o passado
-deles está na página Backtest.
+deles está na página Backtest. O resultado em R de cada setup (`resultado_r`) é
+feito pelo pipeline, na escala ajustada e com o custo do backtest: é o número da
+aba e da conferência ao vivo de cada setup.
 
 ### O estudo de 30 anos
 

@@ -58,6 +58,7 @@ from scanner.backtest.simulador import (
     entrar,
     simular,
 )
+from scanner.backtest.suite import CUSTO
 from scanner.calendar import next_trading_day
 from scanner.config import PadraoDoSetup, ScannerConfig, SetupsConfig
 from scanner.gatilhos.classicos import CENTAVO, NOMES
@@ -77,6 +78,7 @@ I64 = npt.NDArray[np.int64]
 
 HORIZONTES = (5, 10, 20)
 COLUNAS_AVANCO = ("id", "estado", "confirmado_em", "entrada", "encerrado_em", "saida")
+COLUNAS_AVANCO_R = (*COLUNAS_AVANCO, "resultado_r")
 # Motivo de saida do simulador -> estado do setup (o teto de 60 pregoes e `prazo`).
 ESTADO_DO_MOTIVO = {STOP: "stop", MOVEL: "movel", ALVO: "alvo", MEDIA: "mme9", PRAZO: "prazo"}
 SAIDA_POR_NOME = {s.nome: s for s in SAIDAS}
@@ -205,9 +207,13 @@ def avancar_pela_saida(abertos: pd.DataFrame, a: Analise) -> pd.DataFrame:
     no gatilho, ou na abertura se abriu acima). Confirmado, o trade segue a
     saida da linha, com o stop inicial 1 centavo abaixo da minima do padrao,
     pelo `simulador` -- as mesmas escolhas conservadoras do backtest. Tudo e
-    refeito das barras a cada noite; so volta o que mudou.
+    refeito das barras a cada noite; volta o que mudou de estado e todo
+    confirmado ainda aberto (o `resultado_r` dele anda todo dia).
+
+    `resultado_r`: liquido do mesmo custo do backtest, na escala ajustada.
+    Encerrado, o final; em andamento, ate o ultimo fechamento.
     """
-    vazio = pd.DataFrame({c: pd.Series(dtype="object") for c in COLUNAS_AVANCO})
+    vazio = pd.DataFrame({c: pd.Series(dtype="object") for c in COLUNAS_AVANCO_R})
     if abertos.empty:
         return vazio
     f, d0, col = _posicoes(abertos, a)
@@ -228,6 +234,12 @@ def avancar_pela_saida(abertos: pd.DataFrame, a: Analise) -> pd.DataFrame:
     dc = np.where(ent.entrou, d0 + 1, -1)
     fim = np.where(decidido & ~ent.entrou, d0 + 1, -1)
     saida = np.full(len(f), np.nan)
+    risco = ent.preco - stop
+    with np.errstate(invalid="ignore", divide="ignore"):
+        # em andamento: marcado no ultimo fechamento conhecido, como se saisse ali
+        ultimo_fech = _fechamento_ff(a)[ultimo, col]
+        resultado = (ultimo_fech * (1 - CUSTO) - ent.preco * (1 + CUSTO)) / risco
+    resultado = np.where(ent.entrou, resultado, np.nan)
     regra = f["saida_regra"].to_numpy(dtype=object)
     for nome, como in SAIDA_POR_NOME.items():
         i = np.nonzero(ent.entrou & (regra == nome))[0]
@@ -240,6 +252,7 @@ def avancar_pela_saida(abertos: pd.DataFrame, a: Analise) -> pd.DataFrame:
             ent.preco[i],
             stop[i],
             como,
+            custo=CUSTO,
             dia_anterior_minima=m.minima[d0[i], col[i]],
         )
         fechou = res.motivo != ABERTO
@@ -247,8 +260,9 @@ def avancar_pela_saida(abertos: pd.DataFrame, a: Analise) -> pd.DataFrame:
         estado[j] = [ESTADO_DO_MOTIVO[int(x)] for x in res.motivo[fechou]]
         fim[j] = res.dia_saida[fechou]
         saida[j] = res.preco_saida[fechou]
+        resultado[j] = res.r[fechou]
 
-    mudou = estado != f["estado"].to_numpy(dtype=object)
+    mudou = (estado != f["estado"].to_numpy(dtype=object)) | (estado == "confirmado")
     if not mudou.any():
         return vazio
     datas = m.datas.date
@@ -262,6 +276,7 @@ def avancar_pela_saida(abertos: pd.DataFrame, a: Analise) -> pd.DataFrame:
             "entrada": ent.preco / escala_dc,
             "encerrado_em": [datas[i] if i >= 0 else None for i in fim],
             "saida": saida / escala_fim,
+            "resultado_r": np.round(resultado, 4),
         }
     )
     return cast(pd.DataFrame, out[mudou].reset_index(drop=True))

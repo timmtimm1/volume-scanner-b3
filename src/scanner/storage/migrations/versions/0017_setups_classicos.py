@@ -12,6 +12,11 @@ Decisoes de 05/11/2026:
   e `mme9`. `stop` e `prazo` continuam (o teto de 60 pregoes e `prazo`);
 - `setups.alta`: a etiqueta de tendencia (acima da MMA 200 subindo). NULL nas
   linhas antigas;
+- `setups.resultado_r`: o resultado em R, liquido do custo do backtest, feito
+  pelo pipeline na escala ajustada -- o site nao consegue: os precos da linha
+  ficam cada um na escala do proprio dia, e um grupamento no meio do trade
+  (ENJU3, 10 para 1 em 09/10/2026) mistura as escalas. Encerrado: o final.
+  Em andamento: ate o ultimo fechamento. NULL nas linhas antigas;
 - `setup_preferencias`: o que o usuario escolheu no app para cada setup --
   alerta ligado ou nao e a saida. Sem linha, vale o padrao do `config.yaml`.
 
@@ -50,6 +55,9 @@ def upgrade() -> None:
     )
     op.add_column("setups", sa.Column("alta", sa.Boolean(), nullable=True), schema=SCHEMA)
     op.add_column("setups", sa.Column("saida_regra", sa.Text(), nullable=True), schema=SCHEMA)
+    op.add_column(
+        "setups", sa.Column("resultado_r", sa.Numeric(10, 4), nullable=True), schema=SCHEMA
+    )
     op.create_check_constraint(
         "ck_setups_saida_regra",
         "setups",
@@ -81,6 +89,7 @@ def downgrade() -> None:
         f"UPDATE {SCHEMA}.setups SET estado = 'stop' WHERE estado IN ('alvo', 'movel', 'mme9')"
     )
     op.drop_constraint("ck_setups_saida_regra", "setups", schema=SCHEMA, type_="check")
+    op.drop_column("setups", "resultado_r", schema=SCHEMA)
     op.drop_column("setups", "saida_regra", schema=SCHEMA)
     op.drop_column("setups", "alta", schema=SCHEMA)
     op.drop_constraint("ck_setups_estado", "setups", schema=SCHEMA, type_="check")

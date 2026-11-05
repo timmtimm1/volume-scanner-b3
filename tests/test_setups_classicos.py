@@ -219,3 +219,25 @@ def test_passado_so_entra_para_setup_com_alerta_ligado(engine: Engine) -> None:
     with engine.connect() as conn:
         assert conn.execute(contar).scalar_one() > 1
         assert conn.execute(contar.where(Setup.trade_date == meio)).scalar_one() == 1
+
+
+def test_grupamento_no_meio_do_trade_nao_estraga_o_resultado() -> None:
+    """Regressao: ENJU3 fez grupamento de 10 para 1 em 09/10/2026, no dia da
+    confirmacao de um 9.4. Os precos da linha ficam cada um na escala do proprio
+    dia; o R feito com eles misturava as escalas. O pipeline faz o R na escala
+    ajustada e grava em `resultado_r`."""
+    custo = 0.0008
+    # confirma a 10,31 (stop 9,49, R = 0,82) e no dia seguinte o papel agrupa 10:1
+    depois = [(10.25, 10.6, 10.2, 10.5), (105.0, 106.0, 104.0, 105.5)]
+    m = _avanca(depois, "mme9").iloc[0]
+    assert m["estado"] == "confirmado"  # o stop nao "disparou" com a escala nova
+    esperado = (10.55 * (1 - custo) - 10.31 * (1 + custo)) / (10.31 - 9.49)
+    assert float(m["resultado_r"]) == pytest.approx(esperado, abs=1e-3)
+
+
+def test_resultado_r_do_encerrado_e_o_do_backtest() -> None:
+    depois = [(10.25, 10.6, 10.2, 10.5), (10.5, 11.2, 10.4, 11.1), (11.1, 12.1, 11.0, 12.0)]
+    m = _avanca(depois, "alvo2").iloc[0]
+    alvo = 10.31 + 2 * (10.31 - 9.49)
+    esperado = (alvo * (1 - 0.0008) - 10.31 * (1 + 0.0008)) / (10.31 - 9.49)
+    assert float(m["resultado_r"]) == pytest.approx(esperado, abs=1e-3)

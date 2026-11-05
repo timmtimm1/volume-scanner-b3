@@ -255,6 +255,14 @@ reversão no suporte e não mexe no alerta.
   fica guardado em `trade_snapshots`, gravado pelo job noturno, e o resumo diário
   no Telegram ganha o bloco **Seus trades** com a posição de cada trade aberto e
   dos encerrados no pregão. Sem custos de corretagem e sem proventos, por enquanto.
+- **Lote e diário dos setups** (05/11/2026, seção 14 do plano). Com o capital e o
+  risco por trade salvos (padrão 1%), cada setup armado mostra quantas ações
+  comprar e a perda máxima: ações inteiras, o menor entre capital × risco ÷
+  (entrada − stop) e capital ÷ entrada. No setup confirmado, o botão **Entrei**
+  registra a compra já preenchida e ligada ao setup; no formulário comum, setup e
+  stop são opcionais. Com stop, o resultado do trade aparece em R (resultado ÷
+  risco em reais, a soma das compras × (preço − stop)), e `/trades` mostra o
+  resultado por setup.
 - **Fundamentos da CVM.** A carga traz para o banco os balanços trimestrais e
   anuais de cada empresa negociada (ITR e DFP dos dados abertos da CVM), com a
   data em que cada um foi entregue, e os proventos em dinheiro de cada papel —

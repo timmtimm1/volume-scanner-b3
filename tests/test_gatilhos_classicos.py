@@ -11,8 +11,15 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from scanner.gatilhos.classicos import CENTAVO, Sinal, classicos, tendencia_de_alta
-from scanner.gatilhos.contexto import atr_wilder
+from scanner.gatilhos.classicos import (
+    CENTAVO,
+    RegrasClassicas,
+    Sinal,
+    classicos,
+    tendencia_de_alta,
+    topos_e_fundos_ascendentes,
+)
+from scanner.gatilhos.contexto import atr_wilder, calcular
 from scanner.gatilhos.matrizes import montar
 from scanner.gatilhos.medias import media_movel
 from scanner.gatilhos.niveis import Regras, detectar
@@ -30,13 +37,16 @@ def _barras_de(fech: list[float], folga: float = 0.05) -> list[Barra]:
     return out
 
 
-def _sinais(barras: list[Barra]) -> dict[str, Sinal]:
+def _sinais(barras: list[Barra], volume: list[float] | None = None) -> dict[str, Sinal]:
+    """Os classicos de um papel. Volume constante, salvo o pedido."""
     a = np.array(barras, dtype=np.float64)
     o, h, low, c = (a[:, i : i + 1].copy() for i in range(4))
+    v = np.array(volume if volume is not None else [1e6] * len(barras), dtype=np.float64)[:, None]
     tick = np.full_like(c, CENTAVO)
     atr = atr_wilder(h, low, c)
     retrato, eventos = detectar(h, low, c, atr, Regras(toques_min=2))
-    return classicos(o, h, low, c, tick, retrato, eventos)
+    rvol = np.asarray(calcular(h, c, v)["rvol"], dtype=np.float64)
+    return classicos(o, h, low, c, tick, retrato, eventos, rvol)
 
 
 def _so_no_ultimo(s: Sinal, nome: str) -> None:
@@ -44,14 +54,55 @@ def _so_no_ultimo(s: Sinal, nome: str) -> None:
     assert not s.armado[-2, 0], f"{nome} nao deveria armar na vespera"
 
 
-def test_91_mme_vira_para_cima() -> None:
-    fech = list(np.linspace(20, 15, 40))
-    fech.append(fech[-1] + 0.8)  # fecha bem acima: a MME 9 vira
-    barras = _barras_de(fech)
-    s = _sinais(barras)["9.1"]
+def _serra_subindo(ciclos: int = 18, inicio: float = 10.0) -> list[float]:
+    """Alta em serra: 6 pregoes subindo 0,30, 4 caindo 0,25. Topos e fundos
+    ascendentes e a media de 80 subindo -- o ambiente em que os 9.x valem
+    (06/11/2026). Termina num recuo de 4 pregoes."""
+    f = [inicio]
+    for _ in range(ciclos):
+        f += [f[-1] + 0.30 * (i + 1) for i in range(6)]
+        f += [f[-1] - 0.25 * (i + 1) for i in range(4)]
+    return f
+
+
+def _alta_terminando_em_alta() -> list[float]:
+    """A mesma serra, terminando numa perna de alta (MME 9 subindo)."""
+    base = _serra_subindo()
+    return base + [base[-1] + 0.3 * (i + 1) for i in range(6)]
+
+
+def _91_no_suporte(alta: float = 1.2) -> list[Barra]:
+    """Serra entre 10 e 12 (suporte de muitos toques em ~10) terminando no fundo,
+    e um candle que sai do suporte e vira a MME 9 para cima."""
+    fech = serra(10.0, 12.0, 256)
+    fundo = max(k for k, x in enumerate(fech) if abs(x - 10.0) < 1e-9)
+    barras = _barras_de(fech[: fundo + 1])
+    f = fech[fundo]
+    barras.append((f, f + alta + 0.05, f - 0.03, f + alta))
+    return barras
+
+
+def test_91_no_suporte_com_volume() -> None:
+    """Pedido de 06/11/2026: o 9.1 so vale com a minima num suporte de 3+ toques
+    e volume de 1,5x a mediana ou mais."""
+    barras = _91_no_suporte()
+    volume = [1e6] * (len(barras) - 1) + [2e6]
+    s = _sinais(barras, volume)["9.1"]
     _so_no_ultimo(s, "9.1")
     assert s.gatilho[-1, 0] == pytest.approx(barras[-1][1] + 0.01)
     assert s.stop[-1, 0] == pytest.approx(barras[-1][2] - 0.01)
+
+
+def test_91_no_suporte_sem_volume_nao_arma() -> None:
+    assert not _sinais(_91_no_suporte())["9.1"].armado[-1, 0]
+
+
+def test_91_em_alta_fora_do_suporte_nao_arma() -> None:
+    fech = _serra_subindo()
+    fech.append(fech[-1] + 1.0)  # a MME 9 vira, mas longe de suporte
+    barras = _barras_de(fech)
+    volume = [1e6] * (len(barras) - 1) + [3e6]
+    assert not _sinais(barras, volume)["9.1"].armado[-1, 0]
 
 
 def test_91_nao_arma_com_a_media_ja_subindo() -> None:
@@ -61,8 +112,8 @@ def test_91_nao_arma_com_a_media_ja_subindo() -> None:
 
 
 def test_92_fecha_abaixo_da_minima_anterior_com_a_media_subindo() -> None:
-    fech = list(10 + 0.5 * np.arange(40))
-    fech.append(fech[-1] - 0.7)  # abaixo da minima anterior (abertura dela - 0,05), acima da MME
+    fech = _alta_terminando_em_alta()
+    fech.append(fech[-1] - 0.5)  # abaixo da minima anterior, a MME 9 ainda sobe
     s = _sinais(_barras_de(fech))
     _so_no_ultimo(s["9.2"], "9.2")
     mme = media_movel(np.array(fech)[:, None], "MME", 9)[:, 0]
@@ -70,7 +121,7 @@ def test_92_fecha_abaixo_da_minima_anterior_com_a_media_subindo() -> None:
 
 
 def test_93_dois_fechamentos_abaixo_da_referencia() -> None:
-    fech = list(10 + 0.5 * np.arange(40))
+    fech = _alta_terminando_em_alta()
     ref = fech[-1]
     fech += [ref - 0.1, ref - 0.05]  # os dois abaixo da referencia, a MME ainda sobe
     s = _sinais(_barras_de(fech))["9.3"]
@@ -78,9 +129,9 @@ def test_93_dois_fechamentos_abaixo_da_referencia() -> None:
 
 
 def test_94_venda_desfeita_sem_perder_a_minima() -> None:
-    fech = list(10 + 0.2 * np.arange(40))
+    fech = _alta_terminando_em_alta()
     topo = fech[-1]
-    fech.append(topo - 1.4)  # vira a MME para baixo (9.1 de venda)
+    fech.append(topo - 1.2)  # vira a MME para baixo (9.1 de venda)
     barras = _barras_de(fech)
     # volta forte, sem perder a minima do candle de baixa
     o = fech[-1]
@@ -89,6 +140,55 @@ def test_94_venda_desfeita_sem_perder_a_minima() -> None:
     s = _sinais(barras)["9.4"]
     _so_no_ultimo(s, "9.4")
     assert s.stop[-1, 0] == pytest.approx(barras[-2][2] - 0.01)
+
+
+def test_9x_em_queda_nao_arma() -> None:
+    """Pedido de 06/11/2026: 9.2 a 9.4 so em tendencia (MME 80 subindo, topos e
+    fundos ascendentes); 9.1 so em suporte com volume. No fim de uma serra de
+    queda, sem suporte nem volume, nenhum vale."""
+    queda = list(reversed(_serra_subindo()))
+    fech = [*queda, queda[-1] + 1.0]
+    s = _sinais(_barras_de(fech))
+    assert not any(s[n].armado[-30:, 0].any() for n in ("9.1", "9.2", "9.3", "9.4"))
+    # e sem os filtros, o mesmo candle armaria o 9.1
+    a = np.array(_barras_de(fech), dtype=np.float64)
+    o, h, low, c = (a[:, i : i + 1].copy() for i in range(4))
+    atr = atr_wilder(h, low, c)
+    ret, ev = detectar(h, low, c, atr, Regras(toques_min=2))
+    sem = classicos(
+        o,
+        h,
+        low,
+        c,
+        np.full_like(c, CENTAVO),
+        ret,
+        ev,
+        np.ones_like(c),
+        RegrasClassicas(tendencia_9x=None, pivo_9x=None, regra_91="nenhum"),
+    )
+    assert sem["9.1"].armado[-1, 0]
+
+
+def test_topos_e_fundos_ascendentes() -> None:
+    sobe = _barras_de(_serra_subindo())
+    desce = _barras_de(list(reversed(_serra_subindo())))
+    for barras, esperado in ((sobe, True), (desce, False)):
+        a = np.array(barras, dtype=np.float64)
+        asc = topos_e_fundos_ascendentes(a[:, 1:2], a[:, 2:3], 3)
+        assert bool(asc[-1, 0]) is esperado
+    # no comeco nao ha dois fundos e dois topos conhecidos: nao vale
+    a = np.array(sobe, dtype=np.float64)
+    assert not topos_e_fundos_ascendentes(a[:, 1:2], a[:, 2:3], 3)[:10, 0].any()
+
+
+def test_pivo_so_vale_depois_de_k_pregoes() -> None:
+    """O fundo de um dia so e conhecido k pregoes depois: cortar a serie logo
+    depois de um fundo novo mais alto nao pode mudar o que o dia sabia antes."""
+    a = np.array(_barras_de(_serra_subindo()), dtype=np.float64)
+    cheio = topos_e_fundos_ascendentes(a[:, 1:2], a[:, 2:3], 3)
+    for corte in (120, 137, 150):
+        parte = topos_e_fundos_ascendentes(a[:corte, 1:2], a[:corte, 2:3], 3)
+        assert (parte[:, 0] == cheio[:corte, 0]).all()
 
 
 def test_123_minima_do_meio_e_a_menor() -> None:
@@ -231,8 +331,16 @@ def test_papeis_independentes() -> None:
     m = montar(pd.DataFrame(linhas))
     atr = atr_wilder(m.maxima, m.minima, m.fechamento)
     ret, ev = detectar(m.maxima, m.minima, m.fechamento, atr, Regras(toques_min=2))
+    rvol = np.asarray(calcular(m.maxima, m.fechamento, m.volume)["rvol"], dtype=np.float64)
     juntos = classicos(
-        m.abertura, m.maxima, m.minima, m.fechamento, np.full_like(m.fechamento, CENTAVO), ret, ev
+        m.abertura,
+        m.maxima,
+        m.minima,
+        m.fechamento,
+        np.full_like(m.fechamento, CENTAVO),
+        ret,
+        ev,
+        rvol,
     )
     sozinho = _sinais(_barras_de(fechs[1]))
     for nome in juntos:

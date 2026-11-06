@@ -15,6 +15,24 @@ Larry Williams (versao Palex/TradingView, a mais documentada; decisao de
 - 9.4: a MME 9 subia, virou para baixo em `t-1` (um 9.1 de venda) e voltou a
   subir em `t` sem o candle perder a minima de `t-1`. Stop na minima de `t-1`.
 
+Filtros pedidos pelo usuario em 06/11/2026:
+
+- 9.1: so com a minima do candle num suporte de 3 ou mais toques (o motor de
+  `niveis`, o mesmo das linhas da ficha) e volume do dia de 1,5x a mediana dos
+  20 pregoes anteriores ou mais -- a virada da MME 9 vale como fundo em suporte,
+  sem exigir tendencia;
+- 9.2, 9.3 e 9.4 so contam em tendencia de alta:
+
+- a media de 80 periodos acima do valor de 20 pregoes atras (`tendencia_9x`);
+  simples ou exponencial foi decidido no backtest, escolhendo com 1995-2015 e
+  conferindo em 2016-2026 (secao 14 do plano);
+- topos e fundos ascendentes (`pivo_9x`): o ultimo fundo conhecido acima do
+  fundo anterior, e o ultimo topo acima do topo anterior. Fundo e topo sao os
+  pivos do grafico (`niveis.pivos`: k pregoes de cada lado), e o pivo do dia j
+  so e conhecido no dia j + k.
+
+Fora disso, o 9.x nao arma.
+
 Micro-fundos de 1 a 3 candles:
 
 - 123 de compra: o candle do meio (`t-1`) tem a minima mais baixa dos tres
@@ -48,7 +66,7 @@ import numpy.typing as npt
 import pandas as pd
 
 from scanner.gatilhos.medias import media_movel
-from scanner.gatilhos.niveis import Eventos, Retrato
+from scanner.gatilhos.niveis import Eventos, Retrato, pivos
 
 F64 = npt.NDArray[np.float64]
 B = npt.NDArray[np.bool_]
@@ -79,6 +97,21 @@ class RegrasClassicas:
     toque_mma_pct: float = 0.01
     toques_rompimento: int = 3
     pullback_pregoes: int = 20
+    # Filtro de tendencia dos 9.x (06/11/2026): media de 80 subindo, acima do
+    # valor de `inclinacao_9x` pregoes atras. None desliga (o 9.x de antes).
+    # Exponencial: escolhida no backtest de 06/11/2026 (media de 9.2-9.4 em
+    # 1995-2015: MME 80 +0,28 R contra MMA 80 +0,10 R por trade).
+    tendencia_9x: tuple[str, int] | None = ("MME", 80)
+    inclinacao_9x: int = 20
+    # Topos e fundos ascendentes nos 9.x (06/11/2026), pelos pivos de k pregoes
+    # de cada lado (o mesmo k dos niveis do grafico). None desliga.
+    pivo_9x: int | None = 3
+    # 9.1 (06/11/2026): "suporte_volume" = minima num suporte de `toques_91`+
+    # toques e volume de `volume_91`x ou mais, sem tendencia; "tendencia" = o
+    # mesmo filtro dos outros 9.x; "nenhum" = o 9.1 de antes.
+    regra_91: str = "suporte_volume"
+    toques_91: int = 3
+    volume_91: float = 1.5
 
 
 @dataclass(frozen=True)
@@ -105,6 +138,28 @@ def tendencia_de_alta(fechamento: F64, regras: RegrasClassicas | None = None) ->
     sobe = (mm > mm.shift(r.inclinacao_longa)).to_numpy(dtype=bool)
     with np.errstate(invalid="ignore"):
         return np.asarray((fechamento > mm.to_numpy(dtype=np.float64)) & sobe, dtype=bool)
+
+
+def topos_e_fundos_ascendentes(maxima: F64, minima: F64, k: int) -> B:
+    """O ultimo fundo conhecido acima do anterior, e o ultimo topo acima do anterior.
+
+    Fundo e topo sao os pivos de `k` pregoes para cada lado; o do dia j usa os
+    k pregoes seguintes, entao so vale a partir do dia j + k. Nada olha o futuro.
+    """
+    fundo, topo = pivos(minima, maxima, k)
+
+    def ultimo_e_anterior(marca: B, valores: F64) -> tuple[F64, F64]:
+        # o valor do pivo aparece no dia em que ele fica conhecido
+        conhecido = pd.DataFrame(_antes(np.where(marca, valores, np.nan), k))
+        ultimo = conhecido.ffill()
+        # no dia de um pivo novo, o ultimo de ontem e o anterior a ele
+        anterior = ultimo.shift(1).where(conhecido.notna()).ffill()
+        return ultimo.to_numpy(dtype=np.float64), anterior.to_numpy(dtype=np.float64)
+
+    uf, af = ultimo_e_anterior(fundo, minima)
+    ut, at = ultimo_e_anterior(topo, maxima)
+    with np.errstate(invalid="ignore"):
+        return np.asarray((uf > af) & (ut > at), dtype=bool)
 
 
 def _dias_desde_o_rompimento(retrato: Retrato, eventos: Eventos) -> F64:
@@ -137,9 +192,14 @@ def classicos(
     tick: F64,
     retrato: Retrato,
     eventos: Eventos,
+    rvol: F64,
     regras: RegrasClassicas | None = None,
 ) -> dict[str, Sinal]:
-    """Todos os setups classicos, um `Sinal` por nome de `NOMES`."""
+    """Todos os setups classicos, um `Sinal` por nome de `NOMES`.
+
+    `rvol`: volume do dia sobre a mediana dos 20 pregoes anteriores
+    (`contexto.calcular`), para o filtro do 9.1.
+    """
     r = regras or RegrasClassicas()
     o, h, low, c = abertura, maxima, minima, fechamento
     negociou = np.isfinite(o) & np.isfinite(h) & np.isfinite(low) & np.isfinite(c)
@@ -154,12 +214,25 @@ def classicos(
     gatilho = h + tick
     stop_do_dia = low - tick
     with np.errstate(invalid="ignore"):
+        tendencia = np.ones_like(negociou)
+        if r.tendencia_9x is not None:
+            tipo, periodo = r.tendencia_9x
+            mm_t = media_movel(c, tipo, periodo)
+            tendencia &= mm_t > _antes(mm_t, r.inclinacao_9x)
+        if r.pivo_9x is not None:
+            tendencia &= topos_e_fundos_ascendentes(h, low, r.pivo_9x)
+        if r.regra_91 == "suporte_volume":
+            filtro_91 = (retrato.toca_forca[0] >= r.toques_91) & (rvol >= r.volume_91)
+        elif r.regra_91 == "tendencia":
+            filtro_91 = tendencia
+        else:
+            filtro_91 = np.ones_like(negociou)
         sobe = e > e1
         regras_ = {
-            "9.1": ((e2 > e1) & sobe, stop_do_dia),
-            "9.2": (sobe & (c < l1), stop_do_dia),
-            "9.3": (sobe & (c1 < c2) & (c < c2), stop_do_dia),
-            "9.4": ((e2 > e3) & (e1 < e2) & sobe & (low >= l1), l1 - tick),
+            "9.1": ((e2 > e1) & sobe & filtro_91, stop_do_dia),
+            "9.2": (sobe & (c < l1) & tendencia, stop_do_dia),
+            "9.3": (sobe & (c1 < c2) & (c < c2) & tendencia, stop_do_dia),
+            "9.4": ((e2 > e3) & (e1 < e2) & sobe & (low >= l1) & tendencia, l1 - tick),
             "123": ((l2 > l1) & (low > l1), l1 - tick),
             "pfr": ((low < np.fmin(l1, l2)) & (c > c1) & np.isfinite(l2), stop_do_dia),
             "mma20": (

@@ -125,20 +125,20 @@ const COMPRA = "Compra 1 centavo acima da máxima no pregão seguinte; stop 1 ce
 export const SETUPS: Record<string, { nome: string; regra: string }> = {
   "9.1": {
     nome: "9.1",
-    regra: `A média de 9 dias (MME 9) vinha caindo e virou para cima hoje. ${COMPRA}`,
+    regra: `A média de 9 dias (MME 9) vinha caindo e virou para cima hoje, com a mínima num suporte de 3 ou mais toques e volume de 1,5× a mediana ou mais. ${COMPRA}`,
   },
   "9.2": {
     nome: "9.2",
-    regra: `A MME 9 está subindo e o candle fechou abaixo da mínima do candle anterior. ${COMPRA}`,
+    regra: `A MME 9 está subindo e o candle fechou abaixo da mínima do candle anterior. Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. ${COMPRA}`,
   },
   "9.3": {
     nome: "9.3",
-    regra: `A MME 9 está subindo e houve dois fechamentos abaixo do fechamento de dois dias antes. ${COMPRA}`,
+    regra: `A MME 9 está subindo e houve dois fechamentos abaixo do fechamento de dois dias antes. Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. ${COMPRA}`,
   },
   "9.4": {
     nome: "9.4",
     regra:
-      "A MME 9 subia, virou para baixo no dia anterior e voltou a subir hoje, sem perder a mínima de ontem. Compra 1 centavo acima da máxima no pregão seguinte; stop 1 centavo abaixo da mínima de ontem.",
+      "A MME 9 subia, virou para baixo no dia anterior e voltou a subir hoje, sem perder a mínima de ontem. Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. Compra 1 centavo acima da máxima no pregão seguinte; stop 1 centavo abaixo da mínima de ontem.",
   },
   "123": {
     nome: "1-2-3",

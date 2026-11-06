@@ -427,15 +427,17 @@ Todos armam no fechamento de `t` e compram R$ 0,01 acima da máxima de `t`, só 
 
 | Setup | Regra |
 |---|---|
-| 9.1 | MME 9 vinha caindo e vira para cima no dia |
-| 9.2 | MME 9 subindo e fechamento abaixo da mínima do candle anterior |
-| 9.3 | MME 9 subindo e dois fechamentos abaixo do fechamento de `t-2` |
-| 9.4 | MME 9 subia, virou para baixo em `t-1` e volta a subir em `t` sem perder a mínima de `t-1`; stop na mínima de `t-1` |
+| 9.1 | MME 9 vinha caindo e vira para cima no dia, com a mínima num suporte de 3+ toques e volume de 1,5× ou mais (06/11/2026) |
+| 9.2 | MME 9 subindo e fechamento abaixo da mínima do candle anterior; só em tendência* |
+| 9.3 | MME 9 subindo e dois fechamentos abaixo do fechamento de `t-2`; só em tendência* |
+| 9.4 | MME 9 subia, virou para baixo em `t-1` e volta a subir em `t` sem perder a mínima de `t-1`; stop na mínima de `t-1`; só em tendência* |
 | 123 | o candle do meio tem a mínima mais baixa dos três (estrito); stop na mínima dele |
 | PFR | mínima abaixo das dos dois candles anteriores e fechamento acima do anterior |
 | MMA 20 | MMA 20 subindo (acima de 10 pregões atrás), fechamento acima da MMA 200, mínima até 1% da MMA 20 e fechamento acima dela |
 | Pullback | resistência de 3+ toques rompida no fechamento (vira suporte); a volta até ela em até 20 pregões, com o fechamento segurando o nível |
 | Suporte, Na média, Força | as regras da seção 13, inalteradas |
+
+\* Tendência dos 9.2 a 9.4 (pedido de 06/11/2026): MME 80 acima do valor de 20 pregões atrás e topos e fundos ascendentes (último fundo conhecido acima do anterior e último topo acima do anterior; fundo e topo são os pivôs de 3 pregões de cada lado do motor de níveis, conhecidos 3 pregões depois).
 
 Versões dos 9.x: as do Palex/TradingView, as mais documentadas. Tendência é etiqueta: "em alta" = fechamento acima da MMA 200 e MMA 200 acima de 20 pregões atrás.
 
@@ -486,3 +488,19 @@ Leitura: só a Força tem intervalo acima de zero, e com poucos trades (404) e r
    - lote: capital e risco por trade salvos na conta (`perfil_de_risco`, risco padrão 1%); ações inteiras (fracionário), o menor entre capital × risco ÷ (entrada − stop) e capital ÷ entrada. Aparece em cada setup armado e no "Entrei";
    - diário: botão "Entrei" no setup confirmado, com papel, data, entrada, stop e o lote já preenchidos (`trades.setup_id`); no formulário comum, campos setup e stop para trade feito fora do site (`trades.categoria_setup`, `trades.stop`);
    - resultado em R = resultado total ÷ risco em reais (soma das compras × (preço − stop)); na página Trades, o resultado por setup (encerrados, acerto, média e soma em R), em ordem fixa.
+
+### Os filtros dos 9.x (06/11/2026)
+
+Pedido do usuário: 9.2 a 9.4 só em tendência (média de 80 inclinada para cima e topos e fundos ascendentes), e o 9.1 só em suporte com volume, para filtrar melhor os trades e subir o acerto. Medido antes de ir ao ar, com o protocolo de sempre:
+
+- **Média de 80:** simples ou exponencial, escolhida pela média dos 9.2 a 9.4 em 1995–2015 (regra fixada antes de ver o resultado): MME 80 com +0,28 R por trade, contra +0,10 R da MMA 80. "Subindo" é acima do valor de 20 pregões atrás (escolha do usuário).
+- **O que mudou** (saída pela MME 9, todos os trades; antes → depois):
+
+| Setup | Trades em 30 anos | Acerto 1995–2015 | Acerto 2016–2026 | R por trade 2016–2026 | Contra o controle 2016–2026 |
+|---|---|---|---|---|---|
+| 9.1 (suporte + volume) | 71 mil → 2,8 mil | 30% → 34% | 28% → 28% | +0,02 → +0,01 | −0,05 → −0,07 |
+| 9.2 (tendência) | 9 mil → 2,9 mil | 25% → 26% | 25% → 26% | −0,06 → −0,08 | −0,20 → −0,26 |
+| 9.3 (tendência) | 33 mil → 10,6 mil | 26% → 26% | 26% → 27% | −0,00 → +0,00 | −0,13 → −0,09 |
+| 9.4 (tendência) | 14,5 mil → 3,8 mil | 33% → 34% | 30% → 31% | +0,04 → +0,04 | −0,02 → −0,04 |
+
+Leitura: os filtros cortam de 2/3 a 96% dos sinais, o que tira ruído da aba, mas o acerto quase não muda (0 a 4 pontos) e a melhora que aparece em 1995–2015 não se repete em 2016–2026. Com alvo de 2R o 9.4 melhora um pouco nos dois períodos (acerto 38% → 41% e 36% → 37%; contra o controle −0,04 → +0,03 R em 2016–2026). Na conferência, o 9.4 cai de "fraco" para "falhou" na combinação escolhida, e o 9.1 continua em "falhou". Os filtros ficaram porque foram pedidos; esta tabela é a referência para revê-los.

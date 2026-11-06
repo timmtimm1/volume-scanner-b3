@@ -26,7 +26,13 @@ import pandas as pd
 from scanner.backtest.simulador import SAIDAS, Precos, Saida, entrar, simular
 from scanner.config import SetupsConfig
 from scanner.gatilhos.candles import padroes
-from scanner.gatilhos.classicos import CENTAVO, Sinal, classicos, tendencia_de_alta
+from scanner.gatilhos.classicos import (
+    CENTAVO,
+    RegrasClassicas,
+    Sinal,
+    classicos,
+    tendencia_de_alta,
+)
 from scanner.gatilhos.contexto import atr_wilder, calcular
 from scanner.gatilhos.matrizes import ajuste_acumulado, montar
 from scanner.gatilhos.medias import RegrasDaMedia, toques_na_media
@@ -145,8 +151,14 @@ def rodar_lote(
     semente: int,
     custo: float = CUSTO,
     saidas: tuple[Saida, ...] = SAIDAS,
+    regras_classicas: RegrasClassicas | None = None,
+    so: frozenset[str] | None = None,
 ) -> pd.DataFrame:
-    """Todos os trades (setup x saida) dos papeis do lote."""
+    """Todos os trades (setup x saida) dos papeis do lote.
+
+    `regras_classicas` troca as regras dos classicos (variantes de um estudo);
+    `so` limita aos setups pedidos, para o estudo de uma regra rodar rapido.
+    """
     m = montar(barras, tickers, sessoes)
     o, h, low, c = m.abertura, m.maxima, m.minima, m.fechamento
     ajuste = ajuste_acumulado(m.fator)
@@ -166,8 +178,11 @@ def rodar_lote(
         liquido=liquido,
         medias=toques_na_media(low, c, atr, RegrasDaMedia(medias=tuple(cfg.medias))),
     )
-    sinais = classicos(o, h, low, c, tick, retrato, eventos)
+    rvol_ = np.asarray(ctx["rvol"], dtype=np.float64)
+    sinais = classicos(o, h, low, c, tick, retrato, eventos, rvol_, regras_classicas)
     sinais.update(_sinais_da_regra(analise, cfg, tick))
+    if so is not None:
+        sinais = {k: v for k, v in sinais.items() if k in so}
     alta = tendencia_de_alta(c)
     precos = Precos.de(o, h, low, c, tick)
     rvol = np.asarray(ctx["rvol"], dtype=np.float64)

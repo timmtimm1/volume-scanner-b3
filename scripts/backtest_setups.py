@@ -18,6 +18,12 @@ rodada nova (o site mostra a mais recente; ficam as duas ultimas).
 `barras.pkl` sai de `scripts/gatilhos_carregar.py`. Lote de papeis pela variavel
 BACKTEST_LOTE (padrao 150): o motor de suporte e resistencia e o que mais pesa
 na memoria.
+
+Estudo de uma regra (variantes): BACKTEST_SO=9.1,9.2 limita aos setups pedidos;
+BACKTEST_TENDENCIA_9X=MMA80, MME80 ou nenhuma troca o filtro de tendencia dos
+9.x; BACKTEST_PIVO_9X=3 (ou outro k) ou nenhum, o de topos e fundos ascendentes;
+BACKTEST_REGRA_91=suporte_volume, tendencia ou nenhum, o do 9.1 (padrao: os do
+codigo).
 """
 
 from __future__ import annotations
@@ -36,9 +42,37 @@ from scanner.backtest.metricas import curva, escolher, grade, por_ano
 from scanner.backtest.simulador import TETO
 from scanner.backtest.suite import CUSTO, liquidez_historica, rodar_lote
 from scanner.config import load_config
-from scanner.gatilhos.classicos import NOMES
+from scanner.gatilhos.classicos import NOMES, RegrasClassicas
 
 LOTE = int(os.environ.get("BACKTEST_LOTE", "150"))
+
+
+def _variante() -> tuple[RegrasClassicas | None, frozenset[str] | None]:
+    """Regras e setups do estudo pedido nas variaveis de ambiente (ou o padrao)."""
+    so_txt = os.environ.get("BACKTEST_SO", "").strip()
+    so = frozenset(x.strip() for x in so_txt.split(",") if x.strip()) or None
+    t = os.environ.get("BACKTEST_TENDENCIA_9X", "").strip().upper()
+    p = os.environ.get("BACKTEST_PIVO_9X", "").strip().lower()
+    r91 = os.environ.get("BACKTEST_REGRA_91", "").strip().lower()
+    if not t and not p and not r91:
+        return None, so
+    padrao = RegrasClassicas()
+    tendencia = padrao.tendencia_9x
+    if t == "NENHUMA":
+        tendencia = None
+    elif t:
+        tipo, periodo = t[:3], int(t[3:])
+        if tipo not in ("MMA", "MME"):
+            raise SystemExit(f"BACKTEST_TENDENCIA_9X invalida: {t}")
+        tendencia = (tipo, periodo)
+    pivo = padrao.pivo_9x if not p else (None if p == "nenhum" else int(p))
+    if r91 and r91 not in ("suporte_volume", "tendencia", "nenhum"):
+        raise SystemExit(f"BACKTEST_REGRA_91 invalida: {r91}")
+    return RegrasClassicas(
+        tendencia_9x=tendencia, pivo_9x=pivo, regra_91=r91 or padrao.regra_91
+    ), so
+
+
 SEMENTE = 20261105
 
 
@@ -63,7 +97,10 @@ def processar(barras_pkl: Path, pasta: Path) -> None:
             continue
         t1 = time.time()
         parte = b[b["ticker"].isin(lote)]
-        trades = rodar_lote(parte, lote, sessoes, liq, cfg, semente=SEMENTE + k)
+        regras, so = _variante()
+        trades = rodar_lote(
+            parte, lote, sessoes, liq, cfg, semente=SEMENTE + k, regras_classicas=regras, so=so
+        )
         trades.to_pickle(destino)
         print(
             f"lote {k + 1}/{len(lotes)}: {len(trades)} trades ({time.time() - t1:.0f}s)", flush=True

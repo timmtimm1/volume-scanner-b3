@@ -296,9 +296,9 @@ def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
     m, ret, ctx = a.m, a.retrato, a.contexto
     c = m.fechamento
     tick = CENTAVO * a.ajuste
-    sinais = classicos(m.abertura, m.maxima, m.minima, c, tick, ret, a.eventos)
-    alta = tendencia_de_alta(c)
     rvol = np.asarray(ctx["rvol"], dtype=np.float64)
+    sinais = classicos(m.abertura, m.maxima, m.minima, c, tick, ret, a.eventos, rvol)
+    alta = tendencia_de_alta(c)
     correcao_m = np.asarray(ctx["correcao"], dtype=bool)
     referencia = {
         "mme9": media_movel(c, "MME", 9),

@@ -91,7 +91,8 @@ def test_rodar_lote_devolve_trades_de_toda_saida() -> None:
     liq = pd.DataFrame(True, index=sessoes, columns=tickers)
     t = rodar_lote(b, tickers, sessoes, liq, SetupsConfig(), semente=1)
     assert set(t["saida"].unique()) == {"alvo1", "alvo2", "alvo3", "minimas", "mme9"}
-    assert {"9.1", "123", "pfr"} <= set(t["setup"].unique())
+    # (o 9.1 pede volume de 1,5x desde 06/11/2026; aqui o volume e constante)
+    assert {"123", "pfr"} <= set(t["setup"].unique())
     fechado = t[t["motivo"] != 0]
     assert np.isfinite(fechado["r"]).all()
     assert (fechado["r"] >= -20).all()

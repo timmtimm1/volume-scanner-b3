@@ -433,6 +433,8 @@ Todos armam no fechamento de `t` e compram R$ 0,01 acima da máxima de `t`, só 
 | 9.4 | MME 9 subia, virou para baixo em `t-1` e volta a subir em `t` sem perder a mínima de `t-1`; stop na mínima de `t-1`; perto da média** e só em tendência* |
 | 123 | o candle do meio tem a mínima mais baixa dos três (estrito); stop na mínima dele |
 | PFR | mínima abaixo das dos dois candles anteriores e fechamento acima do anterior |
+| 123 no suporte | o 123, com a mínima do candle do meio num suporte de 3+ toques (09/11/2026) |
+| PFR no suporte | o PFR, com a mínima do dia num suporte de 3+ toques (09/11/2026) |
 | MMA 20 | MMA 20 subindo (acima de 10 pregões atrás), fechamento acima da MMA 200, mínima até 1% da MMA 20 e fechamento acima dela |
 | Pullback | resistência de 3+ toques rompida no fechamento (vira suporte); a volta até ela em até 20 pregões, com o fechamento segurando o nível |
 | Suporte, Na média, Força | as regras da seção 13, inalteradas |
@@ -523,3 +525,19 @@ Pedido do usuário: os 9.2, 9.3 "e afins" têm de acompanhar a média de 9; com 
 | 9.4 | 3,8 mil → 3,7 mil | 34% → 33% | 31% → 31% | +0,04 → +0,04 | −0,04 → −0,01 |
 
 Leitura: a regra tira da lista o que o usuário não reconhece como o setup (19% dos 9.2, 10% dos 9.3, 2% dos 9.4), mas o resultado não muda: os três continuam em "falhou" na conferência (o controle é sorteado, então a coluna contra o controle oscila alguns centésimos de uma rodada para outra). É um acerto de definição, não uma melhora de retorno. Os 8 casos em que a distância não explica a marcação têm, em parte, a média quase parada (fechamento colado nela); com 4 casos, não virou regra.
+
+### 1-2-3 e PFR no suporte (09/11/2026)
+
+Pedido do usuário: análises de reversão e padrões de compra em região de suporte.
+
+- **Pesquisa.** Nos estudos com custo e correção de garimpo de dados, candle sozinho não dá vantagem (Marshall, Young e Rose); os padrões de 3 candles sobrevivem, e só por poucos dias (Caginalp e Laurent; Lu, Chen e Hsu). Nas contagens do Bulkowski, a taxa de virada é 78% na estrela da manhã, 75% no três por fora, 63% no engolfo, 60% no martelo e 53% no harami. Falso rompimento (spring de Wyckoff, turtle soup de Raschke) não tem estatística publicada confiável. Nada disso foi medido na B3.
+- **Conferência com o usuário.** 52 casos reais de 2026, 4 por padrão, marcados como "entraria" ou "não entraria" sem ver o que veio depois: os 5 padrões da seção 13 e 8 candidatos novos. Aprovados: martelo 4 de 4, 1-2-3 no suporte 4 de 4, engolfo 3, libélula 3, PFR no suporte 3, estrela 2, três por fora 2, harami 1, martelo invertido 1, piercing 1, pinça de fundo 1, falso rompimento 1, três por dentro 0. Toques do suporte, volume, ter furado o suporte, risco e queda recente têm a mesma mediana entre aprovados e recusados. Com 4 casos por padrão isso escolhe o que medir, não fixa regra.
+- **O que entrou.** `123_suporte` e `pfr_suporte`: a regra de sempre de cada um, com a mínima do padrão num suporte de 3+ toques do motor de níveis (`RegrasClassicas.toques_suporte`). São setups à parte; o 123 e o PFR soltos continuam. Os outros seis candidatos ficaram de fora.
+- **Medição** (1995–2015 escolhe, 2016–2026 confere):
+
+| Setup | Escolhida em 1995–2015 | 1995–2015 | 2016–2026 [IC 95%] | Contra o controle em 2016–2026 | |
+|---|---|---|---|---|---|
+| 123 no suporte | alvo 3R, em alta | +0,05 R | −0,01 R [−0,13; +0,10] | −0,06 R | falhou |
+| PFR no suporte | alvo 3R, em alta | −0,01 R | −0,04 R [−0,16; +0,08] | −0,05 R | falhou |
+
+Leitura: exigir o suporte não melhora o 1-2-3 nem o PFR; os dois ficam em "falhou", como as versões soltas (na mesma rodada: 123 +0,03 R e PFR +0,00 R na conferência, os dois perdendo do controle). O suporte corta os sinais a cerca de um quarto. Entraram porque foram pedidos, com o alerta desligado por padrão (a regra da casa: alerta ligado só em firme e fraco) e a saída padrão de alvo 3R. Esta tabela é a referência para revê-los.

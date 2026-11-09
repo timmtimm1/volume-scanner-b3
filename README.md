@@ -1421,8 +1421,8 @@ sem `<pre>`: no iPhone o bloco de código cobre os números.
 ### Setups clássicos e a saída de cada um
 
 Pedido de 05/11/2026 (seção 14 do plano). Todo pregão a etapa de setups também
-procura 9.1 a 9.4, 123, PFR, toque na MMA 20 e pullback de rompimento
-(`scanner/gatilhos/regra.py`, `setups_classicos`), com a etiqueta de tendência
+procura 9.1 a 9.4, 123, PFR, 123 e PFR no suporte, toque na MMA 20 e pullback de
+rompimento (`scanner/gatilhos/regra.py`, `setups_classicos`), com a etiqueta de tendência
 (`alta`) em todo setup. Depois de confirmado, cada setup segue a saída escolhida
 para ele na aba (alvo de 1/2/3 R, stop móvel nas mínimas ou MME 9 virando),
 gravada na linha na noite em que arma (`saida_regra`). O estado é a mesma conta
@@ -1488,8 +1488,8 @@ curva de R acumulado contra o controle, o ano a ano e os trades mais recentes.
 
 O que cada parte faz:
 
-- `scanner/gatilhos/classicos.py`: 9.1 a 9.4, 123, PFR, toque na MMA 20 e pullback
-  de rompimento, cada um como regra mecânica (pregão × papel, sem olhar o futuro).
+- `scanner/gatilhos/classicos.py`: 9.1 a 9.4, 123, PFR (soltos e no suporte), toque
+  na MMA 20 e pullback de rompimento, cada um como regra mecânica (pregão × papel, sem olhar o futuro).
 - `scanner/backtest/simulador.py`: o trade, pregão a pregão. Entra no pregão seguinte
   acima da máxima; sai por alvo de 1/2/3 R, stop móvel pelas mínimas ou MME 9
   virando para baixo. Onde a ordem dos preços no dia é desconhecida, conta o pior.

@@ -278,9 +278,14 @@ _REFERENCIA = {
     "9.4": "mme9",
     "123": "minima",
     "pfr": "minima",
+    "123_suporte": "nivel",
+    "pfr_suporte": "nivel",
     "mma20": "mma20",
     "pullback": "nivel",
 }
+# Setups que tocam um suporte horizontal, e a camada do retrato em que tocam:
+# 0 = a minima do dia; 2 = a minima dos ultimos 3 candles (a do meio, no 123).
+_CAMADA_DO_NIVEL = {"pullback": 0, "pfr_suporte": 0, "123_suporte": 2}
 
 
 def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
@@ -303,7 +308,6 @@ def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
     referencia = {
         "mme9": media_movel(c, "MME", 9),
         "mma20": media_movel(c, "MMA", 20),
-        "nivel": ret.toca_preco[0].astype(np.float64),
     }
     partes = []
     # volume conhecido: a coluna e obrigatoria no banco (papel liquido quase sempre tem)
@@ -316,7 +320,15 @@ def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
         fech = c[dd, tt]
         minima = sinal.stop[dd, tt] + tick[dd, tt]
         tipo = _REFERENCIA[nome]
-        ref = minima if tipo == "minima" else referencia[tipo][dd, tt]
+        camada = _CAMADA_DO_NIVEL.get(nome)
+        if camada is not None:
+            ref = ret.toca_preco[camada, dd, tt].astype(np.float64)
+            toques = ret.toca_forca[camada, dd, tt].astype(int)
+            furou = ret.toca_furou[camada, dd, tt].astype(bool)
+        else:
+            ref = minima if tipo == "minima" else referencia[tipo][dd, tt]
+            toques = np.zeros(dd.size, dtype=int)
+            furou = np.zeros(dd.size, dtype=bool)
         with np.errstate(invalid="ignore", divide="ignore"):
             risco = fech - minima
             espaco = np.where(risco > 0, (ret.res_preco[dd, tt] - fech) / risco, np.nan)
@@ -330,13 +342,9 @@ def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
                     "trade_date": m.datas[dd].date,
                     "categoria": nome,
                     "padroes": [[] for _ in range(dd.size)],
-                    "toques": (ret.toca_forca[0, dd, tt] if pullback else np.zeros(dd.size)).astype(
-                        int
-                    ),
+                    "toques": toques,
                     "virou": np.full(dd.size, pullback),
-                    "furou": (ret.toca_furou[0, dd, tt] if pullback else np.zeros(dd.size)).astype(
-                        bool
-                    ),
+                    "furou": furou,
                     "rvol": rvol[dd, tt],
                     "destaque": rvol[dd, tt] >= cfg.volume_destaque,
                     "contexto": [

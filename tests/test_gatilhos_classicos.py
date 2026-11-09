@@ -275,6 +275,50 @@ def test_pfr_fechando_abaixo_do_anterior_nao_vale() -> None:
     assert not _sinais(barras)["pfr"].armado[-1, 0]
 
 
+def _fundo_no_suporte() -> list[Barra]:
+    """Serra entre 10 e 12 (suporte de muitos toques em ~10), terminando no fundo."""
+    fech = serra(10.0, 12.0, 256)
+    fundo = max(k for k, x in enumerate(fech) if abs(x - 10.0) < 1e-9)
+    return _barras_de(fech[: fundo + 1])
+
+
+def test_123_no_suporte() -> None:
+    """Pedido de 09/11/2026: o 123 com a minima do candle do meio num suporte de
+    3+ toques e um setup a parte; o 123 de sempre continua armando igual."""
+    barras = _fundo_no_suporte()
+    barras.append((10.0, 10.4, 10.1, 10.3))  # 3o candle: minima acima da do meio
+    s = _sinais(barras)
+    _so_no_ultimo(s["123_suporte"], "123 no suporte")
+    assert s["123"].armado[-1, 0]
+    assert s["123_suporte"].stop[-1, 0] == pytest.approx(barras[-2][2] - 0.01)
+    assert s["123_suporte"].gatilho[-1, 0] == pytest.approx(10.4 + 0.01)
+
+
+def test_pfr_no_suporte() -> None:
+    barras = _fundo_no_suporte()
+    barras[-1] = (10.4, 10.45, 9.97, 10.05)  # penultimo: cai ate o suporte
+    barras.append((10.05, 10.3, 9.93, 10.2))  # nova minima no suporte, fecha acima
+    s = _sinais(barras)
+    _so_no_ultimo(s["pfr_suporte"], "PFR no suporte")
+    assert s["pfr"].armado[-1, 0]
+    assert s["pfr_suporte"].stop[-1, 0] == pytest.approx(9.93 - 0.01)
+
+
+def test_123_e_pfr_fora_do_suporte_nao_armam_no_suporte() -> None:
+    """Os mesmos candles longe de qualquer suporte: so os setups de sempre."""
+    barras = _barras_de(_alta_longa(120))
+    b = barras[-1][3]
+    barras += [(b, b + 0.2, b - 0.3, b - 0.1), (b - 0.1, b, b - 0.5, b - 0.2)]
+    barras.append((b - 0.2, b + 0.3, b - 0.4, b + 0.2))  # 123
+    s = _sinais(barras)
+    assert s["123"].armado[-1, 0]
+    assert not s["123_suporte"].armado[-1, 0]
+    barras[-1] = (b - 0.2, b + 0.1, b - 0.6, b - 0.05)  # PFR
+    s = _sinais(barras)
+    assert s["pfr"].armado[-1, 0]
+    assert not s["pfr_suporte"].armado[-1, 0]
+
+
 def _alta_longa(dias: int = 260) -> list[float]:
     return list(10 * 1.003 ** np.arange(dias))
 

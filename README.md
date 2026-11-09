@@ -1124,6 +1124,7 @@ e uma linha na tabela abaixo. Os testes novos sem outro lugar para morar ficam e
 
 | Incidente (data, PR) | O que acontecia | Teste que trava |
 | --- | --- | --- |
+| 9.2 a 9.4 longe da MME 9 (09/11/2026) | O setup armava com o candle esticado, longe da média de 9; na conferência de 54 casos o usuário recusou 22 dos 25 com a mínima a mais de 0,35 ATR da média | `test_gatilhos_classicos.py::test_9x_longe_da_media_nao_arma` e `::test_9x_perto_da_media_vale_ate_o_limite` |
 | Duas migrations `0010` (17/10/2026) | Dois branches criaram o mesmo número; colidiu no banco | `test_regressoes.py::test_migrations_tem_numero_unico_e_cadeia_linear` |
 | Yahoo responde 429 (17/10/2026) | User-Agent de navegador (Chrome) era recusado em toda requisição | `test_regressoes.py::test_yahoo_usa_o_user_agent_do_projeto_e_nao_o_de_navegador` |
 | Dev apontando para o Neon (08/09/2026, #12) | A suíte criava banco dentro da produção | `test_regressoes.py::test_env_example_aponta_o_desenvolvimento_para_o_postgres_local` e `test_retention.py::test_guarda_impede_teste_de_abrir_o_banco_de_trabalho` |

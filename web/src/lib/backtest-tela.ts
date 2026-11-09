@@ -129,16 +129,16 @@ export const SETUPS: Record<string, { nome: string; regra: string }> = {
   },
   "9.2": {
     nome: "9.2",
-    regra: `A MME 9 está subindo e o candle fechou abaixo da mínima do candle anterior. Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. ${COMPRA}`,
+    regra: `A MME 9 está subindo e o candle fechou abaixo da mínima do candle anterior. O candle precisa estar junto da média: mínima a no máximo 0,35 ATR acima da MME 9 (encostar ou furar vale). Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. ${COMPRA}`,
   },
   "9.3": {
     nome: "9.3",
-    regra: `A MME 9 está subindo e houve dois fechamentos abaixo do fechamento de dois dias antes. Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. ${COMPRA}`,
+    regra: `A MME 9 está subindo e houve dois fechamentos abaixo do fechamento de dois dias antes. O candle precisa estar junto da média: mínima a no máximo 0,35 ATR acima da MME 9 (encostar ou furar vale). Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. ${COMPRA}`,
   },
   "9.4": {
     nome: "9.4",
     regra:
-      "A MME 9 subia, virou para baixo no dia anterior e voltou a subir hoje, sem perder a mínima de ontem. Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. Compra 1 centavo acima da máxima no pregão seguinte; stop 1 centavo abaixo da mínima de ontem.",
+      "A MME 9 subia, virou para baixo no dia anterior e voltou a subir hoje, sem perder a mínima de ontem. O candle precisa estar junto da média: mínima a no máximo 0,35 ATR acima da MME 9 (encostar ou furar vale). Só em tendência de alta: MME 80 subindo (acima de 20 pregões atrás) e topos e fundos ascendentes. Compra 1 centavo acima da máxima no pregão seguinte; stop 1 centavo abaixo da mínima de ontem.",
   },
   "123": {
     nome: "1-2-3",

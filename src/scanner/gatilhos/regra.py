@@ -297,7 +297,7 @@ def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
     c = m.fechamento
     tick = CENTAVO * a.ajuste
     rvol = np.asarray(ctx["rvol"], dtype=np.float64)
-    sinais = classicos(m.abertura, m.maxima, m.minima, c, tick, ret, a.eventos, rvol)
+    sinais = classicos(m.abertura, m.maxima, m.minima, c, tick, ret, a.eventos, rvol, a.atr)
     alta = tendencia_de_alta(c)
     correcao_m = np.asarray(ctx["correcao"], dtype=bool)
     referencia = {

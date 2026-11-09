@@ -428,9 +428,9 @@ Todos armam no fechamento de `t` e compram R$ 0,01 acima da máxima de `t`, só 
 | Setup | Regra |
 |---|---|
 | 9.1 | MME 9 vinha caindo e vira para cima no dia, com a mínima num suporte de 3+ toques e volume de 1,5× ou mais (06/11/2026) |
-| 9.2 | MME 9 subindo e fechamento abaixo da mínima do candle anterior; só em tendência* |
-| 9.3 | MME 9 subindo e dois fechamentos abaixo do fechamento de `t-2`; só em tendência* |
-| 9.4 | MME 9 subia, virou para baixo em `t-1` e volta a subir em `t` sem perder a mínima de `t-1`; stop na mínima de `t-1`; só em tendência* |
+| 9.2 | MME 9 subindo e fechamento abaixo da mínima do candle anterior; perto da média** e só em tendência* |
+| 9.3 | MME 9 subindo e dois fechamentos abaixo do fechamento de `t-2`; perto da média** e só em tendência* |
+| 9.4 | MME 9 subia, virou para baixo em `t-1` e volta a subir em `t` sem perder a mínima de `t-1`; stop na mínima de `t-1`; perto da média** e só em tendência* |
 | 123 | o candle do meio tem a mínima mais baixa dos três (estrito); stop na mínima dele |
 | PFR | mínima abaixo das dos dois candles anteriores e fechamento acima do anterior |
 | MMA 20 | MMA 20 subindo (acima de 10 pregões atrás), fechamento acima da MMA 200, mínima até 1% da MMA 20 e fechamento acima dela |
@@ -438,6 +438,8 @@ Todos armam no fechamento de `t` e compram R$ 0,01 acima da máxima de `t`, só 
 | Suporte, Na média, Força | as regras da seção 13, inalteradas |
 
 \* Tendência dos 9.2 a 9.4 (pedido de 06/11/2026): MME 80 acima do valor de 20 pregões atrás e topos e fundos ascendentes (último fundo conhecido acima do anterior e último topo acima do anterior; fundo e topo são os pivôs de 3 pregões de cada lado do motor de níveis, conhecidos 3 pregões depois).
+
+\*\* Perto da média (pedido de 09/11/2026): a mínima do candle do sinal a no máximo 0,35 ATR (14 pregões) acima da MME 9; encostar ou furar a média vale. Sem isso o 9.2 a 9.4 não arma.
 
 Versões dos 9.x: as do Palex/TradingView, as mais documentadas. Tendência é etiqueta: "em alta" = fechamento acima da MMA 200 e MMA 200 acima de 20 pregões atrás.
 
@@ -504,3 +506,20 @@ Pedido do usuário: 9.2 a 9.4 só em tendência (média de 80 inclinada para cim
 | 9.4 (tendência) | 14,5 mil → 3,8 mil | 33% → 34% | 30% → 31% | +0,04 → +0,04 | −0,02 → −0,04 |
 
 Leitura: os filtros cortam de 2/3 a 96% dos sinais, o que tira ruído da aba, mas o acerto quase não muda (0 a 4 pontos) e a melhora que aparece em 1995–2015 não se repete em 2016–2026. Com alvo de 2R o 9.4 melhora um pouco nos dois períodos (acerto 38% → 41% e 36% → 37%; contra o controle −0,04 → +0,03 R em 2016–2026). Na conferência, o 9.4 cai de "fraco" para "falhou" na combinação escolhida, e o 9.1 continua em "falhou". Os filtros ficaram porque foram pedidos; esta tabela é a referência para revê-los.
+
+### Perto da MME 9 nos 9.2 a 9.4 (09/11/2026)
+
+Pedido do usuário: os 9.2, 9.3 "e afins" têm de acompanhar a média de 9; com o candle longe dela, não é o setup, e a lista trazia muitos casos assim.
+
+- **Pesquisa.** Lidos o blog do Palex (2014), o livro dele, FL Journal e Scanner da Bolsa. Nenhuma fonte dá um número para a distância; o curso do Palex lista a "proximidade da mm9" entre as características desejáveis dos setups de correção. As fontes divergem no candle de referência do 9.2 (o de maior fechamento da perna, no Palex; o candle anterior, nos scripts) e todas descrevem um gatilho que desce para a máxima seguinte enquanto a MME 9 não vira, que o sistema não implementa (o setup vale só o pregão seguinte).
+- **Conferência com o usuário.** 54 casos reais de 2026 (24 de 9.2, 21 de 9.3, 9 de 9.4), marcados um a um como "é o setup" ou "não é", sem ver o que veio depois. A distância da mínima do candle do sinal até a MME 9, em ATR, explica 46 das 54 marcações: ele aceitou 24 dos 29 casos com a mínima até 0,35 ATR acima da média e recusou 22 dos 25 acima disso (qualquer corte entre 0,32 e 0,39 dá esse acerto; ficou 0,35). Exigir a referência no maior fechamento da perna não bateu com as marcações (ele aceitou 8 casos sem isso) e ficou de fora.
+- **Regra.** Mínima do candle do sinal ≤ MME 9 + 0,35 ATR (`RegrasClassicas.perto_9x`). Vale junto com o filtro de tendência.
+- **O que mudou no backtest** (saída pela MME 9, todos os trades, já com o filtro de tendência; antes → depois).:
+
+| Setup | Trades em 30 anos | Acerto 1995–2015 | Acerto 2016–2026 | R por trade 2016–2026 | Contra o controle 2016–2026 |
+|---|---|---|---|---|---|
+| 9.2 | 2,9 mil → 2,3 mil | 26% → 26% | 26% → 26% | −0,08 → −0,07 | −0,26 → −0,10 |
+| 9.3 | 10,6 mil → 9,5 mil | 26% → 27% | 27% → 28% | +0,00 → +0,02 | −0,09 → −0,07 |
+| 9.4 | 3,8 mil → 3,7 mil | 34% → 33% | 31% → 31% | +0,04 → +0,04 | −0,04 → −0,01 |
+
+Leitura: a regra tira da lista o que o usuário não reconhece como o setup (19% dos 9.2, 10% dos 9.3, 2% dos 9.4), mas o resultado não muda: os três continuam em "falhou" na conferência (o controle é sorteado, então a coluna contra o controle oscila alguns centésimos de uma rodada para outra). É um acerto de definição, não uma melhora de retorno. Os 8 casos em que a distância não explica a marcação têm, em parte, a média quase parada (fechamento colado nela); com 4 casos, não virou regra.

@@ -22,8 +22,9 @@ na memoria.
 Estudo de uma regra (variantes): BACKTEST_SO=9.1,9.2 limita aos setups pedidos;
 BACKTEST_TENDENCIA_9X=MMA80, MME80 ou nenhuma troca o filtro de tendencia dos
 9.x; BACKTEST_PIVO_9X=3 (ou outro k) ou nenhum, o de topos e fundos ascendentes;
-BACKTEST_REGRA_91=suporte_volume, tendencia ou nenhum, o do 9.1 (padrao: os do
-codigo).
+BACKTEST_REGRA_91=suporte_volume, tendencia ou nenhum, o do 9.1;
+BACKTEST_PERTO_9X=0.3 (ATR) ou nenhum, o "perto da MME 9" dos 9.2 a 9.4 (padrao:
+os do codigo).
 """
 
 from __future__ import annotations
@@ -54,7 +55,8 @@ def _variante() -> tuple[RegrasClassicas | None, frozenset[str] | None]:
     t = os.environ.get("BACKTEST_TENDENCIA_9X", "").strip().upper()
     p = os.environ.get("BACKTEST_PIVO_9X", "").strip().lower()
     r91 = os.environ.get("BACKTEST_REGRA_91", "").strip().lower()
-    if not t and not p and not r91:
+    perto_txt = os.environ.get("BACKTEST_PERTO_9X", "").strip().lower()
+    if not t and not p and not r91 and not perto_txt:
         return None, so
     padrao = RegrasClassicas()
     tendencia = padrao.tendencia_9x
@@ -68,8 +70,11 @@ def _variante() -> tuple[RegrasClassicas | None, frozenset[str] | None]:
     pivo = padrao.pivo_9x if not p else (None if p == "nenhum" else int(p))
     if r91 and r91 not in ("suporte_volume", "tendencia", "nenhum"):
         raise SystemExit(f"BACKTEST_REGRA_91 invalida: {r91}")
+    perto = (
+        padrao.perto_9x if not perto_txt else (None if perto_txt == "nenhum" else float(perto_txt))
+    )
     return RegrasClassicas(
-        tendencia_9x=tendencia, pivo_9x=pivo, regra_91=r91 or padrao.regra_91
+        tendencia_9x=tendencia, pivo_9x=pivo, regra_91=r91 or padrao.regra_91, perto_9x=perto
     ), so
 
 

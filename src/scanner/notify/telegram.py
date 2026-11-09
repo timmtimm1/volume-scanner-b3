@@ -442,11 +442,15 @@ NOME_DO_SETUP = {
     "9.4": "9.4",
     "123": "123",
     "pfr": "PFR",
+    "123_suporte": "123 no suporte",
+    "pfr_suporte": "PFR no suporte",
     "mma20": "MMA 20",
     "pullback": "Pullback",
 }
 # Setups classicos (secao 14): sem padrao de candle, o nome do setup diz tudo.
-CLASSICOS = frozenset({"9.1", "9.2", "9.3", "9.4", "123", "pfr", "mma20", "pullback"})
+CLASSICOS = frozenset(
+    {"9.1", "9.2", "9.3", "9.4", "123", "pfr", "123_suporte", "pfr_suporte", "mma20", "pullback"}
+)
 SAIDA_EM_TEXTO = {
     "alvo1": "alvo de 1R",
     "alvo2": "alvo de 2R",

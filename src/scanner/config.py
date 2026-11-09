@@ -116,6 +116,8 @@ CATEGORIAS_DE_SETUP: tuple[str, ...] = (
     "9.4",
     "123",
     "pfr",
+    "123_suporte",
+    "pfr_suporte",
     "mma20",
     "pullback",
 )
@@ -142,6 +144,8 @@ def _padroes_iniciais() -> dict[str, PadraoDoSetup]:
         "9.4": "mme9",
         "123": "alvo3",
         "pfr": "alvo3",
+        "123_suporte": "alvo3",
+        "pfr_suporte": "alvo3",
         "mma20": "alvo3",
         "pullback": "mme9",
     }

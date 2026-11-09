@@ -19,6 +19,7 @@ from scanner.config import ScannerConfig, SetupsConfig
 from scanner.gatilhos.regra import analisar, setups_classicos
 from scanner.setups import avancar_pela_saida, preferencias, run_setups
 from scanner.storage.repository import gravar_preferencia
+from tests.gatilhos_sinteticos import barras
 
 Barra = tuple[float, float, float, float]
 CFG = ScannerConfig()
@@ -62,6 +63,23 @@ def test_123_vira_linha_da_tabela() -> None:
     assert linha["padroes"] == [] and linha["toques"] == 0
     assert linha["rvol"] == pytest.approx(1.0)
     assert linha["alta"] in (True, False)
+
+
+def test_123_no_suporte_vira_linha_com_o_nivel() -> None:
+    """A linha do 123 no suporte guarda o nivel tocado e os toques dele, e nao a
+    minima do padrao (pedido de 09/11/2026)."""
+    b = barras(martelo=False, extra=[(10.0, 10.4, 10.1, 10.3)])
+    a = analisar(b, CFG.setups, CFG.universe)
+    linhas = setups_classicos(a, CFG.setups)
+    dia = b["trade_date"].iloc[-1]
+    do_dia = linhas[linhas["trade_date"] == dia]
+    linha = do_dia[do_dia["categoria"] == "123_suporte"].iloc[0]
+    assert linha["suporte_tipo"] == "nivel"
+    assert linha["suporte"] == pytest.approx(10.0, abs=0.1)
+    assert linha["toques"] >= 3
+    assert linha["minima"] == pytest.approx(9.95)  # a minima do candle do meio
+    # o 123 de sempre arma no mesmo dia, como antes
+    assert (do_dia["categoria"] == "123").any()
 
 
 def test_papel_iliquido_nao_arma() -> None:

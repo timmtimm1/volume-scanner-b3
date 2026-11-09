@@ -215,7 +215,8 @@ class Trade(Base):
         ),
         CheckConstraint(
             "categoria_setup IS NULL OR categoria_setup IN ('reversao', 'forca', 'media', "
-            "'9.1', '9.2', '9.3', '9.4', '123', 'pfr', 'mma20', 'pullback')",
+            "'9.1', '9.2', '9.3', '9.4', '123', 'pfr', '123_suporte', 'pfr_suporte', "
+            "'mma20', 'pullback')",
             name="ck_trades_categoria_setup",
         ),
         CheckConstraint("stop IS NULL OR stop > 0", name="ck_trades_stop_positivo"),
@@ -689,10 +690,11 @@ class Arranjo(Base):
     )
 
 
-# Categorias de setup (migration 0017): os candles da secao 13 e os classicos
-# da secao 14 do plano.
+# Categorias de setup (migrations 0017 e 0019): os candles da secao 13 e os
+# classicos da secao 14 do plano.
 _CATEGORIAS_DE_SETUP = (
-    "'reversao', 'forca', 'media', '9.1', '9.2', '9.3', '9.4', '123', 'pfr', 'mma20', 'pullback'"
+    "'reversao', 'forca', 'media', '9.1', '9.2', '9.3', '9.4', '123', 'pfr', "
+    "'123_suporte', 'pfr_suporte', 'mma20', 'pullback'"
 )
 _SAIDAS_DE_SETUP = "'alvo1', 'alvo2', 'alvo3', 'minimas', 'mme9'"
 

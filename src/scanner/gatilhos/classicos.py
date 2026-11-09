@@ -33,6 +33,16 @@ Filtros pedidos pelo usuario em 06/11/2026:
 
 Fora disso, o 9.x nao arma.
 
+Perto da media (pedido do usuario em 09/11/2026): 9.2, 9.3 e 9.4 sao setups de
+correcao ATE a MME 9 -- com o candle longe dela, nao e o setup. A minima do
+candle do sinal tem de estar a no maximo `perto_9x` ATR acima da MME 9 (encostar
+ou furar vale). O Palex lista a "proximidade da mm9" entre as caracteristicas
+desejaveis dos setups de correcao, sem numero; o 0,3 ATR saiu de 54 casos reais
+de 2026 que o usuario marcou um a um ("e o setup" / "nao e"): o corte acerta 46.
+A mesma marcacao NAO confirmou exigir que o candle de referencia seja o de maior
+fechamento da perna (versao do blog do Palex): ele aceitou varios 9.2 e 9.3 sem
+isso, entao a referencia continua sendo o candle anterior.
+
 Micro-fundos de 1 a 3 candles:
 
 - 123 de compra: o candle do meio (`t-1`) tem a minima mais baixa dos tres
@@ -112,6 +122,9 @@ class RegrasClassicas:
     regra_91: str = "suporte_volume"
     toques_91: int = 3
     volume_91: float = 1.5
+    # Perto da media (09/11/2026): nos 9.2 a 9.4 a minima do candle do sinal a
+    # no maximo este tanto de ATR acima da MME 9. None desliga.
+    perto_9x: float | None = 0.3
 
 
 @dataclass(frozen=True)
@@ -193,12 +206,14 @@ def classicos(
     retrato: Retrato,
     eventos: Eventos,
     rvol: F64,
+    atr: F64,
     regras: RegrasClassicas | None = None,
 ) -> dict[str, Sinal]:
     """Todos os setups classicos, um `Sinal` por nome de `NOMES`.
 
     `rvol`: volume do dia sobre a mediana dos 20 pregoes anteriores
-    (`contexto.calcular`), para o filtro do 9.1.
+    (`contexto.calcular`), para o filtro do 9.1. `atr`: o ATR de 14 pregoes
+    (`contexto.atr_wilder`), a regua do "perto da MME 9" dos 9.2 a 9.4.
     """
     r = regras or RegrasClassicas()
     o, h, low, c = abertura, maxima, minima, fechamento
@@ -228,11 +243,15 @@ def classicos(
         else:
             filtro_91 = np.ones_like(negociou)
         sobe = e > e1
+        perto = np.ones_like(negociou)
+        if r.perto_9x is not None:
+            perto = low <= e + r.perto_9x * atr
+        correcao = tendencia & perto
         regras_ = {
             "9.1": ((e2 > e1) & sobe & filtro_91, stop_do_dia),
-            "9.2": (sobe & (c < l1) & tendencia, stop_do_dia),
-            "9.3": (sobe & (c1 < c2) & (c < c2) & tendencia, stop_do_dia),
-            "9.4": ((e2 > e3) & (e1 < e2) & sobe & (low >= l1) & tendencia, l1 - tick),
+            "9.2": (sobe & (c < l1) & correcao, stop_do_dia),
+            "9.3": (sobe & (c1 < c2) & (c < c2) & correcao, stop_do_dia),
+            "9.4": ((e2 > e3) & (e1 < e2) & sobe & (low >= l1) & correcao, l1 - tick),
             "123": ((l2 > l1) & (low > l1), l1 - tick),
             "pfr": ((low < np.fmin(l1, l2)) & (c > c1) & np.isfinite(l2), stop_do_dia),
             "mma20": (

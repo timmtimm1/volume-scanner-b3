@@ -7,6 +7,8 @@ stop do padrao.
 
 from __future__ import annotations
 
+from collections.abc import Callable
+
 import numpy as np
 import pandas as pd
 import pytest
@@ -37,7 +39,11 @@ def _barras_de(fech: list[float], folga: float = 0.05) -> list[Barra]:
     return out
 
 
-def _sinais(barras: list[Barra], volume: list[float] | None = None) -> dict[str, Sinal]:
+def _sinais(
+    barras: list[Barra],
+    volume: list[float] | None = None,
+    regras: RegrasClassicas | None = None,
+) -> dict[str, Sinal]:
     """Os classicos de um papel. Volume constante, salvo o pedido."""
     a = np.array(barras, dtype=np.float64)
     o, h, low, c = (a[:, i : i + 1].copy() for i in range(4))
@@ -46,7 +52,7 @@ def _sinais(barras: list[Barra], volume: list[float] | None = None) -> dict[str,
     atr = atr_wilder(h, low, c)
     retrato, eventos = detectar(h, low, c, atr, Regras(toques_min=2))
     rvol = np.asarray(calcular(h, c, v)["rvol"], dtype=np.float64)
-    return classicos(o, h, low, c, tick, retrato, eventos, rvol)
+    return classicos(o, h, low, c, tick, retrato, eventos, rvol, atr, regras)
 
 
 def _so_no_ultimo(s: Sinal, nome: str) -> None:
@@ -111,21 +117,69 @@ def test_91_nao_arma_com_a_media_ja_subindo() -> None:
     assert not s.armado[20:, 0].any()
 
 
-def test_92_fecha_abaixo_da_minima_anterior_com_a_media_subindo() -> None:
+def _com_a_minima_na_media(fech: list[float]) -> list[Barra]:
+    """As barras de `fech`, com a sombra do ultimo candle descendo ate a MME 9."""
+    barras = _barras_de(fech)
+    mme = float(media_movel(np.array(fech)[:, None], "MME", 9)[-1, 0])
+    o, h, low, c = barras[-1]
+    barras[-1] = (o, h, min(low, mme), c)
+    return barras
+
+
+def _recuo_do_92() -> list[float]:
     fech = _alta_terminando_em_alta()
-    fech.append(fech[-1] - 0.5)  # abaixo da minima anterior, a MME 9 ainda sobe
-    s = _sinais(_barras_de(fech))
+    return [*fech, fech[-1] - 0.5]  # abaixo da minima anterior, a MME 9 ainda sobe
+
+
+def _recuo_do_93() -> list[float]:
+    fech = _alta_terminando_em_alta()
+    ref = fech[-1]
+    return [*fech, ref - 0.1, ref - 0.05]  # os dois abaixo da referencia
+
+
+def test_92_fecha_abaixo_da_minima_anterior_com_a_media_subindo() -> None:
+    fech = _recuo_do_92()
+    s = _sinais(_com_a_minima_na_media(fech))
     _so_no_ultimo(s["9.2"], "9.2")
     mme = media_movel(np.array(fech)[:, None], "MME", 9)[:, 0]
     assert mme[-1] > mme[-2]
 
 
 def test_93_dois_fechamentos_abaixo_da_referencia() -> None:
-    fech = _alta_terminando_em_alta()
-    ref = fech[-1]
-    fech += [ref - 0.1, ref - 0.05]  # os dois abaixo da referencia, a MME ainda sobe
-    s = _sinais(_barras_de(fech))["9.3"]
+    s = _sinais(_com_a_minima_na_media(_recuo_do_93()))["9.3"]
     _so_no_ultimo(s, "9.3")
+
+
+@pytest.mark.parametrize(("nome", "recuo"), [("9.2", _recuo_do_92), ("9.3", _recuo_do_93)])
+def test_9x_longe_da_media_nao_arma(nome: str, recuo: Callable[[], list[float]]) -> None:
+    """Pedido de 09/11/2026: 9.2 a 9.4 acompanham a MME 9. Com a minima do candle
+    do sinal a mais de 0,3 ATR acima da media, nao e o setup -- era o erro mais
+    comum da lista (o usuario recusou 21 de 22 casos assim na conferencia)."""
+    barras = _barras_de(recuo())
+    a = np.array(barras, dtype=np.float64)
+    mme = media_movel(a[:, 3:4].copy(), "MME", 9)[-1, 0]
+    atr = atr_wilder(a[:, 1:2].copy(), a[:, 2:3].copy(), a[:, 3:4].copy())[-1, 0]
+    assert barras[-1][2] > mme + 0.3 * atr  # o candle esta mesmo longe
+    assert not _sinais(barras)[nome].armado[-1, 0]
+    # sem a regra, o mesmo candle armava
+    assert _sinais(barras, regras=RegrasClassicas(perto_9x=None))[nome].armado[-1, 0]
+
+
+def test_9x_perto_da_media_vale_ate_o_limite() -> None:
+    """A minima a 0,2 ATR da MME 9 vale; a 0,4 ATR, nao."""
+    fech = _recuo_do_92()
+    for folga, esperado in ((0.2, True), (0.4, False)):
+        barras = _barras_de(fech)
+        a = np.array(barras, dtype=np.float64)
+        mme = float(media_movel(a[:, 3:4].copy(), "MME", 9)[-1, 0])
+        atr = 0.4  # ordem de grandeza do ATR desta serie; conferido abaixo
+        o, h, _, c = barras[-1]
+        barras[-1] = (o, h, mme + folga * atr, c)
+        b = np.array(barras, dtype=np.float64)
+        real = float(atr_wilder(b[:, 1:2].copy(), b[:, 2:3].copy(), b[:, 3:4].copy())[-1, 0])
+        distancia = (barras[-1][2] - mme) / real
+        assert (distancia <= 0.3) is esperado
+        assert bool(_sinais(barras)["9.2"].armado[-1, 0]) is esperado
 
 
 def test_94_venda_desfeita_sem_perder_a_minima() -> None:
@@ -164,6 +218,7 @@ def test_9x_em_queda_nao_arma() -> None:
         ret,
         ev,
         np.ones_like(c),
+        atr,
         RegrasClassicas(tendencia_9x=None, pivo_9x=None, regra_91="nenhum"),
     )
     assert sem["9.1"].armado[-1, 0]
@@ -341,6 +396,7 @@ def test_papeis_independentes() -> None:
         ret,
         ev,
         rvol,
+        atr,
     )
     sozinho = _sinais(_barras_de(fechs[1]))
     for nome in juntos:

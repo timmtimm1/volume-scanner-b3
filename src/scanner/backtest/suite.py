@@ -179,7 +179,7 @@ def rodar_lote(
         medias=toques_na_media(low, c, atr, RegrasDaMedia(medias=tuple(cfg.medias))),
     )
     rvol_ = np.asarray(ctx["rvol"], dtype=np.float64)
-    sinais = classicos(o, h, low, c, tick, retrato, eventos, rvol_, regras_classicas)
+    sinais = classicos(o, h, low, c, tick, retrato, eventos, rvol_, atr, regras_classicas)
     sinais.update(_sinais_da_regra(analise, cfg, tick))
     if so is not None:
         sinais = {k: v for k, v in sinais.items() if k in so}

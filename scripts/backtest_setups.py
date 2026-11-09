@@ -23,7 +23,7 @@ Estudo de uma regra (variantes): BACKTEST_SO=9.1,9.2 limita aos setups pedidos;
 BACKTEST_TENDENCIA_9X=MMA80, MME80 ou nenhuma troca o filtro de tendencia dos
 9.x; BACKTEST_PIVO_9X=3 (ou outro k) ou nenhum, o de topos e fundos ascendentes;
 BACKTEST_REGRA_91=suporte_volume, tendencia ou nenhum, o do 9.1;
-BACKTEST_PERTO_9X=0.3 (ATR) ou nenhum, o "perto da MME 9" dos 9.2 a 9.4 (padrao:
+BACKTEST_PERTO_9X=0.35 (ATR) ou nenhum, o "perto da MME 9" dos 9.2 a 9.4 (padrao:
 os do codigo).
 """
 

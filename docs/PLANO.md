@@ -439,7 +439,7 @@ Todos armam no fechamento de `t` e compram R$ 0,01 acima da máxima de `t`, só 
 
 \* Tendência dos 9.2 a 9.4 (pedido de 06/11/2026): MME 80 acima do valor de 20 pregões atrás e topos e fundos ascendentes (último fundo conhecido acima do anterior e último topo acima do anterior; fundo e topo são os pivôs de 3 pregões de cada lado do motor de níveis, conhecidos 3 pregões depois).
 
-\*\* Perto da média (pedido de 09/11/2026): a mínima do candle do sinal a no máximo 0,3 ATR (14 pregões) acima da MME 9; encostar ou furar a média vale. Sem isso o 9.2 a 9.4 não arma.
+\*\* Perto da média (pedido de 09/11/2026): a mínima do candle do sinal a no máximo 0,35 ATR (14 pregões) acima da MME 9; encostar ou furar a média vale. Sem isso o 9.2 a 9.4 não arma.
 
 Versões dos 9.x: as do Palex/TradingView, as mais documentadas. Tendência é etiqueta: "em alta" = fechamento acima da MMA 200 e MMA 200 acima de 20 pregões atrás.
 
@@ -512,9 +512,9 @@ Leitura: os filtros cortam de 2/3 a 96% dos sinais, o que tira ruído da aba, ma
 Pedido do usuário: os 9.2, 9.3 "e afins" têm de acompanhar a média de 9; com o candle longe dela, não é o setup, e a lista trazia muitos casos assim.
 
 - **Pesquisa.** Lidos o blog do Palex (2014), o livro dele, FL Journal e Scanner da Bolsa. Nenhuma fonte dá um número para a distância; o curso do Palex lista a "proximidade da mm9" entre as características desejáveis dos setups de correção. As fontes divergem no candle de referência do 9.2 (o de maior fechamento da perna, no Palex; o candle anterior, nos scripts) e todas descrevem um gatilho que desce para a máxima seguinte enquanto a MME 9 não vira, que o sistema não implementa (o setup vale só o pregão seguinte).
-- **Conferência com o usuário.** 54 casos reais de 2026 (24 de 9.2, 21 de 9.3, 9 de 9.4), marcados um a um como "é o setup" ou "não é", sem ver o que veio depois. A distância da mínima do candle do sinal até a MME 9, em ATR, explica 46 das 54 marcações: ele aceitou 23 dos 30 casos com a mínima até 0,3 ATR acima da média e recusou 21 dos 22 acima disso (qualquer corte entre 0,15 e 0,40 dá o mesmo acerto; ficou 0,3). Exigir a referência no maior fechamento da perna não bateu com as marcações (ele aceitou 8 casos sem isso) e ficou de fora.
-- **Regra.** Mínima do candle do sinal ≤ MME 9 + 0,3 ATR (`RegrasClassicas.perto_9x`). Vale junto com o filtro de tendência.
-- **O que mudou no backtest** (saída pela MME 9, todos os trades, já com o filtro de tendência; antes → depois):
+- **Conferência com o usuário.** 54 casos reais de 2026 (24 de 9.2, 21 de 9.3, 9 de 9.4), marcados um a um como "é o setup" ou "não é", sem ver o que veio depois. A distância da mínima do candle do sinal até a MME 9, em ATR, explica 46 das 54 marcações: ele aceitou 24 dos 29 casos com a mínima até 0,35 ATR acima da média e recusou 22 dos 25 acima disso (qualquer corte entre 0,32 e 0,39 dá esse acerto; ficou 0,35). Exigir a referência no maior fechamento da perna não bateu com as marcações (ele aceitou 8 casos sem isso) e ficou de fora.
+- **Regra.** Mínima do candle do sinal ≤ MME 9 + 0,35 ATR (`RegrasClassicas.perto_9x`). Vale junto com o filtro de tendência.
+- **O que mudou no backtest** (saída pela MME 9, todos os trades, já com o filtro de tendência; antes → depois). Medido com o corte em 0,3 ATR; a rodada com 0,35 não coube na memória da máquina em 09/11/2026 e fica por refazer (`BACKTEST_SO=9.2,9.3,9.4 python scripts/backtest_setups.py processar ...`). A diferença esperada é de poucas dezenas de trades:
 
 | Setup | Trades em 30 anos | Acerto 1995–2015 | Acerto 2016–2026 | R por trade 2016–2026 | Contra o controle 2016–2026 |
 |---|---|---|---|---|---|

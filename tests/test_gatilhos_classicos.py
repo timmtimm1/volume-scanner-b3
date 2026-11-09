@@ -153,22 +153,22 @@ def test_93_dois_fechamentos_abaixo_da_referencia() -> None:
 @pytest.mark.parametrize(("nome", "recuo"), [("9.2", _recuo_do_92), ("9.3", _recuo_do_93)])
 def test_9x_longe_da_media_nao_arma(nome: str, recuo: Callable[[], list[float]]) -> None:
     """Pedido de 09/11/2026: 9.2 a 9.4 acompanham a MME 9. Com a minima do candle
-    do sinal a mais de 0,3 ATR acima da media, nao e o setup -- era o erro mais
-    comum da lista (o usuario recusou 21 de 22 casos assim na conferencia)."""
+    do sinal a mais de 0,35 ATR acima da media, nao e o setup -- era o erro mais
+    comum da lista (o usuario recusou 22 de 25 casos assim na conferencia)."""
     barras = _barras_de(recuo())
     a = np.array(barras, dtype=np.float64)
     mme = media_movel(a[:, 3:4].copy(), "MME", 9)[-1, 0]
     atr = atr_wilder(a[:, 1:2].copy(), a[:, 2:3].copy(), a[:, 3:4].copy())[-1, 0]
-    assert barras[-1][2] > mme + 0.3 * atr  # o candle esta mesmo longe
+    assert barras[-1][2] > mme + 0.35 * atr  # o candle esta mesmo longe
     assert not _sinais(barras)[nome].armado[-1, 0]
     # sem a regra, o mesmo candle armava
     assert _sinais(barras, regras=RegrasClassicas(perto_9x=None))[nome].armado[-1, 0]
 
 
 def test_9x_perto_da_media_vale_ate_o_limite() -> None:
-    """A minima a 0,2 ATR da MME 9 vale; a 0,4 ATR, nao."""
+    """A minima a 0,2 ATR da MME 9 vale; a 0,5 ATR, nao (o corte e 0,35)."""
     fech = _recuo_do_92()
-    for folga, esperado in ((0.2, True), (0.4, False)):
+    for folga, esperado in ((0.2, True), (0.5, False)):
         barras = _barras_de(fech)
         a = np.array(barras, dtype=np.float64)
         mme = float(media_movel(a[:, 3:4].copy(), "MME", 9)[-1, 0])
@@ -178,7 +178,7 @@ def test_9x_perto_da_media_vale_ate_o_limite() -> None:
         b = np.array(barras, dtype=np.float64)
         real = float(atr_wilder(b[:, 1:2].copy(), b[:, 2:3].copy(), b[:, 3:4].copy())[-1, 0])
         distancia = (barras[-1][2] - mme) / real
-        assert (distancia <= 0.3) is esperado
+        assert (distancia <= 0.35) is esperado
         assert bool(_sinais(barras)["9.2"].armado[-1, 0]) is esperado
 
 

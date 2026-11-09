@@ -37,8 +37,9 @@ Perto da media (pedido do usuario em 09/11/2026): 9.2, 9.3 e 9.4 sao setups de
 correcao ATE a MME 9 -- com o candle longe dela, nao e o setup. A minima do
 candle do sinal tem de estar a no maximo `perto_9x` ATR acima da MME 9 (encostar
 ou furar vale). O Palex lista a "proximidade da mm9" entre as caracteristicas
-desejaveis dos setups de correcao, sem numero; o 0,3 ATR saiu de 54 casos reais
-de 2026 que o usuario marcou um a um ("e o setup" / "nao e"): o corte acerta 46.
+desejaveis dos setups de correcao, sem numero; o 0,35 ATR saiu de 54 casos reais
+de 2026 que o usuario marcou um a um ("e o setup" / "nao e"): o corte acerta 46
+(aceitou 24 dos 29 ate 0,35 ATR e recusou 22 dos 25 acima disso).
 A mesma marcacao NAO confirmou exigir que o candle de referencia seja o de maior
 fechamento da perna (versao do blog do Palex): ele aceitou varios 9.2 e 9.3 sem
 isso, entao a referencia continua sendo o candle anterior.
@@ -124,7 +125,7 @@ class RegrasClassicas:
     volume_91: float = 1.5
     # Perto da media (09/11/2026): nos 9.2 a 9.4 a minima do candle do sinal a
     # no maximo este tanto de ATR acima da MME 9. None desliga.
-    perto_9x: float | None = 0.3
+    perto_9x: float | None = 0.35
 
 
 @dataclass(frozen=True)

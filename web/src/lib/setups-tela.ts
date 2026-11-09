@@ -347,6 +347,8 @@ export const NOME_DO_SETUP: Record<CategoriaDoSetup, string> = {
   "9.4": "9.4",
   "123": "1-2-3",
   pfr: "PFR",
+  "123_suporte": "1-2-3 no suporte",
+  pfr_suporte: "PFR no suporte",
   mma20: "MMA 20",
   pullback: "Pullback",
 };
@@ -359,6 +361,8 @@ export const ORDEM_DAS_CATEGORIAS: readonly CategoriaDoSetup[] = [
   "9.4",
   "123",
   "pfr",
+  "123_suporte",
+  "pfr_suporte",
   "mma20",
   "pullback",
   "reversao",

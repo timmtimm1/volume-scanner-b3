@@ -51,6 +51,15 @@ Micro-fundos de 1 a 3 candles:
 - PFR (preco de fechamento de reversao): minima abaixo das dos dois candles
   anteriores e fechamento acima do fechamento anterior.
 
+Os mesmos dois no suporte (pedido do usuario em 09/11/2026):
+
+- 123 no suporte e PFR no suporte: a regra de cada um, com a minima do padrao
+  num suporte de `toques_suporte`+ toques (o motor de `niveis`, o das linhas da
+  ficha). Na conferencia de 52 casos de padroes em suporte, foram os dois
+  padroes novos que o usuario aprovou (7 de 8); harami, pinca, martelo
+  invertido, falso rompimento, tres por dentro e tres por fora ficaram de fora.
+  Sao setups A PARTE: o 123 e o PFR de sempre continuam como estao.
+
 Tendencia:
 
 - MMA 20, toque simples: MMA 20 subindo (acima de 10 pregoes atras), fechamento
@@ -91,6 +100,8 @@ NOMES: dict[str, str] = {
     "9.4": "9.4 (9.1 de venda desfeito)",
     "123": "123 de compra",
     "pfr": "PFR (preco de fechamento de reversao)",
+    "123_suporte": "123 de compra no suporte",
+    "pfr_suporte": "PFR no suporte",
     "mma20": "Toque na MMA 20 em alta",
     "pullback": "Pullback de rompimento",
 }
@@ -123,6 +134,8 @@ class RegrasClassicas:
     regra_91: str = "suporte_volume"
     toques_91: int = 3
     volume_91: float = 1.5
+    # 123 e PFR no suporte (09/11/2026): toques minimos do suporte tocado.
+    toques_suporte: int = 3
     # Perto da media (09/11/2026): nos 9.2 a 9.4 a minima do candle do sinal a
     # no maximo este tanto de ATR acima da MME 9. None desliga.
     perto_9x: float | None = 0.35
@@ -244,6 +257,12 @@ def classicos(
         else:
             filtro_91 = np.ones_like(negociou)
         sobe = e > e1
+        um23 = (l2 > l1) & (low > l1)
+        pfr = (low < np.fmin(l1, l2)) & (c > c1) & np.isfinite(l2)
+        # camada 2 = a minima dos ultimos 3 candles (no 123 e a do meio);
+        # camada 0 = a do dia (no PFR e a menor das tres)
+        suporte_3 = retrato.toca_forca[2] >= r.toques_suporte
+        suporte_1 = retrato.toca_forca[0] >= r.toques_suporte
         perto = np.ones_like(negociou)
         if r.perto_9x is not None:
             perto = low <= e + r.perto_9x * atr
@@ -253,8 +272,10 @@ def classicos(
             "9.2": (sobe & (c < l1) & correcao, stop_do_dia),
             "9.3": (sobe & (c1 < c2) & (c < c2) & correcao, stop_do_dia),
             "9.4": ((e2 > e3) & (e1 < e2) & sobe & (low >= l1) & correcao, l1 - tick),
-            "123": ((l2 > l1) & (low > l1), l1 - tick),
-            "pfr": ((low < np.fmin(l1, l2)) & (c > c1) & np.isfinite(l2), stop_do_dia),
+            "123": (um23, l1 - tick),
+            "pfr": (pfr, stop_do_dia),
+            "123_suporte": (um23 & suporte_3, l1 - tick),
+            "pfr_suporte": (pfr & suporte_1, stop_do_dia),
             "mma20": (
                 (mm20 > _antes(mm20, r.inclinacao_curta))
                 & (c > mm200)

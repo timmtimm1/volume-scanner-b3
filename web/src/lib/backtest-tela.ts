@@ -113,6 +113,8 @@ export const ORDEM_DOS_SETUPS: readonly string[] = [
   "9.4",
   "123",
   "pfr",
+  "123_suporte",
+  "pfr_suporte",
   "mma20",
   "pullback",
   "suporte",
@@ -148,6 +150,15 @@ export const SETUPS: Record<string, { nome: string; regra: string }> = {
   pfr: {
     nome: "PFR",
     regra: `A mínima ficou abaixo das dos dois candles anteriores, mas o fechamento ficou acima do fechamento de ontem. ${COMPRA}`,
+  },
+  "123_suporte": {
+    nome: "1-2-3 no suporte",
+    regra:
+      "O 1-2-3 com a mínima do candle do meio num suporte de 3 ou mais toques (o nível das linhas da ficha). Compra 1 centavo acima da máxima no pregão seguinte; stop 1 centavo abaixo da mínima do candle do meio.",
+  },
+  pfr_suporte: {
+    nome: "PFR no suporte",
+    regra: `O PFR com a mínima do dia num suporte de 3 ou mais toques (o nível das linhas da ficha). ${COMPRA}`,
   },
   mma20: {
     nome: "MMA 20",

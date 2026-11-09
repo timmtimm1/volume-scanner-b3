@@ -111,5 +111,7 @@ setups:
     "9.4": {alerta: true, saida: mme9}        # fraco
     "123": {alerta: false, saida: alvo3}
     pfr: {alerta: false, saida: alvo3}
+    "123_suporte": {alerta: false, saida: alvo3}
+    pfr_suporte: {alerta: false, saida: alvo3}
     mma20: {alerta: false, saida: alvo3}
     pullback: {alerta: false, saida: mme9}

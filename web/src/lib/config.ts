@@ -37,6 +37,8 @@ export const CATEGORIAS_DE_SETUP = [
   "9.4",
   "123",
   "pfr",
+  "123_suporte",
+  "pfr_suporte",
   "mma20",
   "pullback",
 ] as const;
@@ -61,6 +63,8 @@ export const PADROES_DOS_SETUPS: Record<
   "9.4": { alerta: true, saida: "mme9" },
   "123": { alerta: false, saida: "alvo3" },
   pfr: { alerta: false, saida: "alvo3" },
+  "123_suporte": { alerta: false, saida: "alvo3" },
+  pfr_suporte: { alerta: false, saida: "alvo3" },
   mma20: { alerta: false, saida: "alvo3" },
   pullback: { alerta: false, saida: "mme9" },
 };

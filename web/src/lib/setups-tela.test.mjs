@@ -185,6 +185,8 @@ const PADRAO = {
   "9.4": { alerta: true, saida: "mme9" },
   "123": { alerta: false, saida: "alvo3" },
   pfr: { alerta: false, saida: "alvo3" },
+  "123_suporte": { alerta: false, saida: "alvo3" },
+  pfr_suporte: { alerta: false, saida: "alvo3" },
   mma20: { alerta: false, saida: "alvo3" },
   pullback: { alerta: false, saida: "mme9" },
 };
@@ -321,6 +323,8 @@ describe("agruparPorCategoria", () => {
       "9.3",
       "123",
       "pfr",
+      "123_suporte",
+      "pfr_suporte",
       "mma20",
       "pullback",
       "media",

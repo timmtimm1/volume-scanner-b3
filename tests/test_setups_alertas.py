@@ -271,7 +271,12 @@ def test_classico_no_resumo_com_a_etiqueta_e_a_contagem_dos_outros() -> None:
         {**SETUP, "id": 12 + i, "ticker": f"XX{i:02d}3", "categoria": c, "padroes": []}
         for i, c in enumerate(["123", "123", "9.1"])
     ]
+    # 9.4 falhou no backtest: pelo padrao vai so na contagem (desde 10/11/2026)
     texto = _resumo_com(pd.DataFrame([noventa_e_quatro, *outros]))
+    assert "WEGE3" not in texto
+    assert "Outros armados hoje, sem alerta:</i> 9.1 1 · 9.4 1 · 123 2" in texto
+    # ligado no app, entra na lista com a etiqueta
+    texto = _resumo_com(pd.DataFrame([noventa_e_quatro, *outros]), ligados=["9.4"])
     assert "WEGE3</a></b> 9.4 · volume 2,3" in texto
     assert "em alta" in texto
     assert "resistência" not in texto.split("WEGE3")[1].split("\n")[0]  # classico: sem espaco

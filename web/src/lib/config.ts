@@ -60,7 +60,7 @@ export const PADROES_DOS_SETUPS: Record<
   "9.1": { alerta: false, saida: "mme9" },
   "9.2": { alerta: false, saida: "mme9" },
   "9.3": { alerta: false, saida: "mme9" },
-  "9.4": { alerta: true, saida: "mme9" },
+  "9.4": { alerta: false, saida: "mme9" },
   "123": { alerta: false, saida: "alvo3" },
   pfr: { alerta: false, saida: "alvo3" },
   "123_suporte": { alerta: false, saida: "alvo3" },

@@ -99,8 +99,9 @@ setups:
   # fecha acima. Mesmos filtros de volume, contexto e espaco.
   medias: [[MME, 9], [MMA, 20]]
   # Alerta e saida de cada setup ate voce mudar no app (secao 14 do plano). Vem
-  # da rodada do backtest de 05/11/2026: alerta ligado nos firmes e fracos;
-  # saida = a escolhida em 1995-2015. Saidas: alvo1, alvo2, alvo3, minimas, mme9.
+  # do backtest: alerta ligado nos firmes e fracos; saida = a escolhida em
+  # 1995-2015. Saidas: alvo1, alvo2, alvo3, minimas, mme9. O 9.4 caiu de fraco
+  # para falhou com o filtro de tendencia (#99) e saiu do alerta em 10/11/2026.
   padroes:
     reversao: {alerta: true, saida: alvo3}    # fraco
     media: {alerta: false, saida: alvo3}      # falhou
@@ -108,7 +109,7 @@ setups:
     "9.1": {alerta: false, saida: mme9}
     "9.2": {alerta: false, saida: mme9}
     "9.3": {alerta: false, saida: mme9}
-    "9.4": {alerta: true, saida: mme9}        # fraco
+    "9.4": {alerta: false, saida: mme9}       # falhou
     "123": {alerta: false, saida: alvo3}
     pfr: {alerta: false, saida: alvo3}
     "123_suporte": {alerta: false, saida: alvo3}

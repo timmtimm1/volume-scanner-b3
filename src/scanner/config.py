@@ -132,8 +132,10 @@ class PadraoDoSetup(BaseModel):
 
 
 def _padroes_iniciais() -> dict[str, PadraoDoSetup]:
-    """Rodada do backtest de 05/11/2026: alerta ligado nos firmes e fracos
-    (forca, 9.4 e reversao no suporte); saida = a escolhida em 1995-2015."""
+    """Alerta ligado nos firmes e fracos do backtest (forca e reversao no
+    suporte); saida = a escolhida em 1995-2015. O 9.4 era fraco na rodada de
+    05/11/2026, caiu para falhou com o filtro de tendencia (#99) e saiu do
+    alerta em 10/11/2026."""
     saida: dict[str, SaidaDeSetup] = {
         "reversao": "alvo3",
         "media": "alvo3",
@@ -149,7 +151,7 @@ def _padroes_iniciais() -> dict[str, PadraoDoSetup]:
         "mma20": "alvo3",
         "pullback": "mme9",
     }
-    ligados = {"reversao", "forca", "9.4"}
+    ligados = {"reversao", "forca"}
     return {c: PadraoDoSetup(alerta=c in ligados, saida=s) for c, s in saida.items()}
 
 

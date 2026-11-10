@@ -170,13 +170,13 @@ def sem_preferencias(engine: Engine) -> None:
 def test_preferencia_do_app_vale_sobre_o_padrao(engine: Engine) -> None:
     cfg = SetupsConfig()
     p = preferencias(engine, cfg)
-    assert p["9.4"].alerta and p["9.4"].saida == "mme9"  # padrao: fraco no backtest
+    assert p["forca"].alerta and p["forca"].saida == "mme9"  # padrao: firme no backtest
     assert not p["123"].alerta
     gravar_preferencia(engine, "123", alerta=True, saida="alvo1")
-    gravar_preferencia(engine, "9.4", alerta=False, saida="minimas")
+    gravar_preferencia(engine, "forca", alerta=False, saida="minimas")
     p = preferencias(engine, cfg)
     assert p["123"].alerta and p["123"].saida == "alvo1"
-    assert not p["9.4"].alerta and p["9.4"].saida == "minimas"
+    assert not p["forca"].alerta and p["forca"].saida == "minimas"
 
 
 @pytest.mark.db

@@ -120,6 +120,8 @@ CATEGORIAS_DE_SETUP: tuple[str, ...] = (
     "pfr_suporte",
     "mma20",
     "pullback",
+    "contracao",
+    "rompimento",
 )
 SaidaDeSetup = Literal["alvo1", "alvo2", "alvo3", "minimas", "mme9"]
 
@@ -150,6 +152,8 @@ def _padroes_iniciais() -> dict[str, PadraoDoSetup]:
         "pfr_suporte": "alvo3",
         "mma20": "alvo3",
         "pullback": "mme9",
+        "contracao": "alvo3",
+        "rompimento": "mme9",
     }
     ligados = {"reversao", "forca"}
     return {c: PadraoDoSetup(alerta=c in ligados, saida=s) for c, s in saida.items()}

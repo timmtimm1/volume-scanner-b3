@@ -446,10 +446,25 @@ NOME_DO_SETUP = {
     "pfr_suporte": "PFR no suporte",
     "mma20": "MMA 20",
     "pullback": "Pullback",
+    "contracao": "Contração de volatilidade",
+    "rompimento": "Rompimento de resistência",
 }
 # Setups classicos (secao 14): sem padrao de candle, o nome do setup diz tudo.
 CLASSICOS = frozenset(
-    {"9.1", "9.2", "9.3", "9.4", "123", "pfr", "123_suporte", "pfr_suporte", "mma20", "pullback"}
+    {
+        "9.1",
+        "9.2",
+        "9.3",
+        "9.4",
+        "123",
+        "pfr",
+        "123_suporte",
+        "pfr_suporte",
+        "mma20",
+        "pullback",
+        "contracao",
+        "rompimento",
+    }
 )
 SAIDA_EM_TEXTO = {
     "alvo1": "alvo de 1R",

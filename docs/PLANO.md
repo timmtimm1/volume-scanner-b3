@@ -627,5 +627,26 @@ Leitura:
 - **Rompimento de resistência de 3+ toques com volume** é o mais consistente entre os frequentes: positivo e acima do controle nos dois períodos, 121 trades por ano, 9 pregões. É o nível da casa sem exigir o candle de Força.
 - **O stop de 1 ATR piora quase todos** (ao contrário do Força): nesses padrões o stop natural é parte do padrão.
 
-Nenhum entra no app por este estudo: é a referência para o usuário escolher.
+Este estudo não mexeu no app; o que entrou depois está na seção seguinte.
+
+### Contração e rompimento viram setups (11/11/2026)
+
+O usuário abriu o app, viu os mesmos setups de antes e cobrou: os estudos tinham ficado só no papel. Entraram os dois modelos que passaram, como setups de verdade (cartão, alerta, acompanhamento, nota do backtest):
+
+- **Contração de volatilidade** (`contracao`): três blocos seguidos de 10 pregões, cada um com amplitude menor que 70% da do anterior, e o último a até 1 ATR da máxima de 60 pregões. Compra 1 centavo acima da **máxima do último bloco** (é o primeiro setup cujo gatilho não é a máxima do dia: a coluna `maxima` da linha guarda a do bloco, e o alerta e a confirmação saem dela como sempre); stop 1 centavo abaixo da mínima do bloco. Padrão: alerta ligado, alvo de 3R.
+- **Rompimento de resistência** (`rompimento`): o dia fecha acima de uma resistência de 3+ toques (o motor de níveis), com volume de 1,5× ou mais. Compra acima da máxima do dia, stop abaixo da mínima. Padrão: alerta ligado, saída pela MME 9.
+
+Os padrões de candle das bibliotecas não entraram: todos falharam na varredura, e pela regra da casa entrariam só para encher a lista de cartões vermelhos.
+
+Rodada da suíte com os dois (COTAHIST até 09/10/2026, 1,11 milhão de trades), que reproduz o estudo:
+
+| Setup | Escolhida | 1995–2015 | 2016–2026 [IC 95%] | Contra o controle | Pior fase (30 anos) | |
+|---|---|---|---|---|---|---|
+| Contração | alvo 3R, todos | +0,44 R | +0,34 R [+0,05; +0,61] | +0,32 R | 9 perdas seguidas, −12 R | firme |
+| Força | MME 9, em alta | +0,21 R | +0,31 R [+0,09; +0,54] | +0,30 R | 8 perdas seguidas, −21 R | firme |
+| Rompimento | MME 9, em alta | +0,15 R | +0,17 R [−0,02; +0,36] | +0,06 R | 12 perdas seguidas, −48 R | fraco |
+
+O Suporte caiu de fraco para falhou nesta rodada sem a regra dele mudar: o resultado é o mesmo (+0,03 R), mas o controle sorteado mudou de −0,02 R para +0,11 R porque dois setups novos entraram antes dele na ordem do sorteio. Estava na fronteira; o alerta padrão dele ficou como estava, à espera de decisão do usuário.
+
+**Envio da rodada pelo GitHub** (`backtest-enviar.yml`, `scanner/backtest/pacote.py`). O endereço do banco de produção vive só nos segredos do GitHub, e pedir para o usuário achar a credencial no painel travou o envio da pior fase. Agora `scripts/backtest_setups.py empacotar` grava a rodada num JSON compactado, sem os trades; o arquivo sobe cifrado (chave no segredo `BACKTEST_CHAVE`) numa release, e o workflow abre, aplica as migrations e grava. Migration 0021: só a lista de categorias.
 

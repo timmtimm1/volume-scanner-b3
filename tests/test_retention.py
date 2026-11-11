@@ -36,6 +36,8 @@ WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pregao.yml"
 DAILY = PROJECT_ROOT / ".github" / "workflows" / "daily.yml"
 REPESCAGEM = PROJECT_ROOT / ".github" / "workflows" / "daily-repescagem.yml"
 MANUAL = PROJECT_ROOT / ".github" / "workflows" / "pregao-manual.yml"
+# So rodam a mao, sem agenda: o botao do pregao e o envio da rodada de backtest.
+SO_A_MAO = {MANUAL, PROJECT_ROOT / ".github" / "workflows" / "backtest-enviar.yml"}
 WORKFLOWS = sorted((PROJECT_ROOT / ".github" / "workflows").glob("*.yml"))
 CRON_EXTERNO = PROJECT_ROOT / ".github" / "cron-externo.yml"
 ROMPIMENTOS = PROJECT_ROOT / ".github" / "workflows" / "rompimentos.yml"
@@ -287,8 +289,8 @@ def test_agenda_externa_cobre_todo_workflow_sem_agendador_proprio() -> None:
         # `pregao.yml` so roda chamado por outro workflow.
         if set(gatilhos) == {"workflow_call"}:
             continue
-        # O manual e opcional por definicao: a agenda nao depende dele.
-        if arquivo == MANUAL:
+        # Os manuais sao opcionais por definicao: a agenda nao depende deles.
+        if arquivo in SO_A_MAO:
             continue
         assert arquivo.name in declarados, (
             f"{arquivo.name} nao tem agendador proprio nem esta em cron-externo.yml"

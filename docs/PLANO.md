@@ -601,3 +601,31 @@ O stop no meio do candle é melhor nos dois períodos, corta a distância pela m
 
 Afrouxar o sinal dá mais trades e menos vantagem em cada um, na mesma proporção: o nível de 3 toques e o corpo de 1,2 ATR são o que separa o Força do mercado. Nenhuma das 28 combinações passa no critério rígido (Bonferroni), nem a regra de hoje: são 400 trades em dez anos, pouco para esse rigor. A leitura que fica é de direção, coerente nos dois períodos: **stop mais curto (meio do candle) melhora; sinal mais frouxo dilui.**
 
+### Padrões de estrutura com entrada clara (11/11/2026)
+
+Pedido do usuário: modelos de padrão com definição fechada e entrada clara, testados. `scripts/estudo_estrutura.py` escreve dez modelos como regra mecânica (as ideias vêm dos projetos abertos pesquisados; nenhum código foi copiado) e roda cada um com o stop próprio e com 1 ATR abaixo da entrada: 20 combinações pelo protocolo da suíte. As definições completas estão no cabeçalho do script.
+
+Melhor combinação de cada modelo com o stop próprio, em 2016–2026:
+
+| Modelo | Escolhida | 1995–2015 | 2016–2026 [piso 95%] | Contra o controle | Trades/ano | Stop | Dura | Nível |
+|---|---|---|---|---|---|---|---|---|
+| Contração de volatilidade | alvo 3R, todos | +0,44 R | +0,34 R [+0,06] | +0,19 R | 27 | 6,1% | 21 | firme |
+| Rompimento da máxima de 20 | alvo 3R, em alta | +0,24 R | +0,21 R [+0,08] | +0,04 R | 521 | 6,6% | 21 | firme |
+| Rompimento da máxima de 55 | alvo 3R, em alta | +0,23 R | +0,19 R [+0,06] | +0,07 R | 424 | 6,4% | 20 | firme |
+| Rompimento de resistência (3+ toques, volume) | MME 9, em alta | +0,15 R | +0,17 R [−0,01] | +0,12 R | 121 | 5,6% | 9 | fraco |
+| Gap com volume | MME 9, em alta | +0,70 R | +0,18 R [−0,02] | +0,07 R | 94 | 5,1% | 8 | fraco |
+| Gap de valor justo | alvo 3R, em alta | +0,25 R | +0,12 R [−0,03] | +0,04 R | 129 | 5,9% | 17 | fraco |
+| Quebra de estrutura | alvo 3R, em alta | +0,20 R | +0,11 R [−0,03] | +0,03 R | 121 | 11,0% | 36 | fraco |
+| Bandeira | MME 9, contra | +0,25 R | +0,03 R | +0,06 R | 24 | 6,7% | 8 | fraco |
+| Fundo duplo | alvo 3R, em alta | +0,27 R | +0,26 R [+0,08] | 0,00 R | 63 | 9,1% | 34 | falhou |
+| NR7 | MME 9, em alta | −0,08 R | −0,12 R | −0,26 R | 1.522 | 2,3% | 3 | falhou |
+
+Leitura:
+
+- **Contração de volatilidade** é o único modelo novo que ganha do controle com folga nos dois períodos (+0,27 R e +0,19 R). São poucos trades (289 na conferência) e o intervalo da vantagem sobre o controle ainda cruza o zero.
+- **Rompimento da máxima de 20** é o único das 120 conferências dos três estudos que passa no critério rígido pelo resultado bruto, mas ganha do controle por só 0,04 R: o lucro é estar comprado em papel em alta com alvo longo, não o rompimento. O fundo duplo é o mesmo caso, mais claro: +0,26 R, igual ao controle.
+- **Rompimento de resistência de 3+ toques com volume** é o mais consistente entre os frequentes: positivo e acima do controle nos dois períodos, 121 trades por ano, 9 pregões. É o nível da casa sem exigir o candle de Força.
+- **O stop de 1 ATR piora quase todos** (ao contrário do Força): nesses padrões o stop natural é parte do padrão.
+
+Nenhum entra no app por este estudo: é a referência para o usuário escolher.
+

@@ -1498,6 +1498,8 @@ O que cada parte faz:
 - `scanner/backtest/metricas.py`: expectativa em R com intervalo por bootstrap por
   mês, contra o controle, ano a ano, curva, e o protocolo de escolha (firme, fraco
   ou falhou).
+  E a **pior fase** de quem opera um trade por vez (perdas seguidas e recuo em R,
+  migration 0020), que o cartão da aba Setups mostra.
 - `scanner/backtest/envio.py`: a rodada no banco (migration 0016), numa transação,
   com uma amostra dos trades (os 200 mais recentes de cada setup e saída).
 

@@ -44,7 +44,8 @@ A lista acima vale para o alerta de 6σ. Os setups e a suíte de backtest são e
 - Mudar uma regra ou um corte exige refazer a suíte: escolher com 1995–2015 e conferir em 2016–2026, que não pode ser usado para escolher. Setup que falha na conferência continua visível, à parte e com aviso — não some.
 - Tendência é etiqueta ("em alta" ou "contra a tendência"), não filtro: os dois grupos aparecem.
 - É lente separada: não alimenta, não altera e não suprime o alerta de 6σ. A regra mecânica da seção 1 continua valendo para o alerta.
-- Nada de "probabilidade", "chance de subir" ou "recomendação" no texto: a plataforma mostra uma leitura e o que ela fez no passado, não uma promessa. Setups, backtest, lote e diário só para quem está logado.
+- O cartão de cada entrada tem um **semáforo** (pedido do usuário em 11/11/2026): verde, amarelo e vermelho são os níveis firme, fraco e falhou do backtest, medidos em 2016–2026 com a saída do setup e a tendência do papel. O texto diz "histórico bom, duvidoso ou ruim" e explica que é o que o setup fez no passado. Continua fora: percentual de "probabilidade", "chance de subir" e "recomendação" — o semáforo é nota do histórico, não previsão. Setups, backtest, lote e diário só para quem está logado.
+- A aba Setups é uma lista só, "Entradas de hoje", do verde ao vermelho. Nenhuma entrada some por causa da nota; só fica escondida (com aviso e botão para abrir) a que não cabe no risco do perfil do usuário.
 - O site usa só os 400 pregões do banco. Os 30 anos ficam na máquina do usuário.
 
 ## Padrões de código

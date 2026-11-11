@@ -14,6 +14,7 @@ from scanner.backtest.metricas import (
     curva,
     escolher,
     nivel_da_conferencia,
+    pior_fase,
     resumo,
 )
 from scanner.backtest.simulador import ALVO, STOP
@@ -143,3 +144,37 @@ def test_escolha_leva_o_nivel() -> None:
     )
     e = escolher(g).iloc[0]
     assert e["nivel"] == FIRME  # ic_baixo 0,2 > 0 e diferenca 0,1 > 0
+
+
+def _dias(textos: list[str]) -> np.ndarray:
+    return np.array(textos, dtype="datetime64[D]")
+
+
+def test_pior_fase_de_um_caminho_so() -> None:
+    # um sinal por dia de entrada, sem sobreposicao: so existe um caminho
+    ent = _dias(["2020-01-01", "2020-01-10", "2020-01-20", "2020-02-01", "2020-02-10"])
+    sai = ent + np.timedelta64(3, "D")
+    r = np.array([2.0, -1.0, -1.0, -1.0, 2.0])
+    assert pior_fase(ent, sai, r) == (3.0, -3.0)
+
+
+def test_pior_fase_pula_o_sinal_que_cai_dentro_do_trade_aberto() -> None:
+    # o 2o sinal entra enquanto o 1o ainda esta aberto: quem opera um por vez
+    # nao pega; sem ele, sao duas perdas seguidas, nao tres
+    ent = _dias(["2020-01-01", "2020-01-03", "2020-01-10", "2020-01-20"])
+    sai = _dias(["2020-01-08", "2020-01-05", "2020-01-12", "2020-01-22"])
+    r = np.array([-1.0, -1.0, -1.0, 1.0])
+    assert pior_fase(ent, sai, r) == (2.0, -2.0)
+
+
+def test_pior_fase_sem_perda_e_sem_trade() -> None:
+    ent = _dias(["2020-01-01", "2020-01-10"])
+    assert pior_fase(ent, ent, np.array([1.0, 2.0])) == (0.0, 0.0)
+    vazio = _dias([])
+    assert all(np.isnan(pior_fase(vazio, vazio, np.array([]))))
+
+
+def test_pior_fase_entra_no_resumo() -> None:
+    m = resumo(_trades([1.0, -1.0, -1.0, 2.0]))
+    assert m["pior_sequencia"] == 2.0
+    assert m["pior_recuo"] == -2.0

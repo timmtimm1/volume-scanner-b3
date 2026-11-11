@@ -558,3 +558,18 @@ Pedido do usuário: a aba Setups estava confusa, com um bloco por setup e inform
 **Pior fase** (`scanner.backtest.metricas.pior_fase`, migration 0020: `pior_sequencia` e `pior_recuo` em `backtest_resultados`). A curva da suíte soma todos os papéis e não serve para uma pessoa (um setup com dez sinais por dia "perde 40 seguidas" numa semana). A medida nova simula quem opera **um trade por vez**: entra num sinal, espera sair, pega um sinal do primeiro dia seguinte que tiver algum (sorteado entre os daquele dia). São 200 caminhos; de cada um saem a maior sequência de perdas e o maior recuo do R acumulado, e o número gravado é a mediana. No cartão o recuo vira reais (R × a perda do lote). Sobre os trades da rodada de 10/11/2026, no histórico inteiro e na combinação escolhida: Força 8 perdas seguidas e −20,5 R; Suporte 12 e −31 R; 9.4 15 e −31 R; 9.2 27 e −79 R. As colunas antigas da grade não mudaram (diferença zero contra a rodada anterior).
 
 Site: `web/src/lib/entradas.ts` (as contas, com teste), `entradas-dados.ts` (as consultas; sem a migration 0020 a linha da pior fase some do cartão), `components/CartaoDeEntrada.tsx`, `AjustesDosSetups.tsx`, `SecaoRecolhida.tsx` e `app/setups/page.tsx`. Saíram `ListaDeSetups.tsx`, `BlocoDeSetup.tsx` e o cartão armado antigo.
+
+### Varredura de padrões de candle (11/11/2026)
+
+Pedido do usuário: procurar nas bibliotecas abertas algum padrão de candle que passe no critério dos setups. `scripts/estudo_candles.py` detecta os 62 padrões do `pandas-ta-classic` (os 61 do TA-Lib em Python puro, mais `inside`; instalado só para o estudo, fora do `pyproject`) e testa cada um como dois sinais de compra: o sinal de alta (`NOME+`) e a falha do sinal de baixa (`NOME-`, o preço passa da máxima no pregão seguinte). Mesma entrada, stop na menor mínima dos candles do padrão, mesmas cinco saídas, custo e controle da suíte (`trades_dos_sinais`, que saiu de dentro de `rodar_lote` sem mudar o resultado dela). 1.180 papéis, COTAHIST até 09/10/2026.
+
+Resultado, com o protocolo de sempre (escolher em 1995–2015, conferir em 2016–2026): dos 72 sinais com 100 trades ou mais na escolha, **57 falharam, 12 ficaram fracos e 3 firmes**. Com 72 conferências, uns 2 passariam do intervalo de 95% só por acaso; por isso o relatório tem um critério rígido (piso do intervalo com correção de Bonferroni), e **nenhum dos três passa nele**.
+
+| Sinal | Escolhida | 2016–2026 | Piso 95% | Contra o controle | Trades |
+|---|---|---|---|---|---|
+| Advance block, falha | alvo 3R, em alta | +0,18 R | +0,02 | +0,04 R | 922 |
+| Marubozu de alta | MME 9, em alta | +0,12 R | +0,01 | +0,03 R | 5.027 |
+| Closing marubozu de alta | MME 9, em alta | +0,10 R | +0,01 | +0,02 R | 10.817 |
+
+Leitura: nenhum padrão novo merece virar setup. Os dois marubozu são o candle de Força da casa em versão mais frouxa (candle verde cheio, em alta, saída pela MME 9), e ganham do controle por 0,02 a 0,03 R, contra +0,30 R do Força. A varredura confirma por outro caminho o que a suíte já dizia: o que funciona é candle de força em tendência de alta, deixando o lucro correr; desenho de reversão não ganha do papel sorteado. A grade completa fica na máquina (`data/backtest_setups/v7_candles/escolha.csv`).
+

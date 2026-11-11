@@ -1,0 +1,70 @@
+name: backtest enviar
+
+# Grava em producao a rodada de backtest feita na maquina do usuario.
+#
+# A suite roda local (30 anos de COTAHIST nao cabem no CI) e o endereco do banco
+# de producao vive so nos segredos daqui. Entao a rodada vem ate o workflow:
+#
+#   1. na maquina: scripts/backtest_setups.py empacotar <pasta>  -> rodada.json.gz
+#   2. cifra com a chave do segredo BACKTEST_CHAVE e sobe como arquivo da
+#      release indicada (o repositorio e publico; o backtest so aparece para
+#      quem esta logado no site, entao o arquivo vai cifrado)
+#   3. Actions -> backtest enviar -> Run workflow
+#
+# O passo a passo com os comandos esta no README, na secao da suite de backtest.
+# Usa o mesmo grupo de concorrencia do pregao: os dois gravam no mesmo banco e
+# aplicam migrations.
+on:
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Tag da release que tem o arquivo rodada.json.gz.enc"
+        required: false
+        default: "backtest-rodada"
+
+permissions:
+  contents: read
+
+jobs:
+  enviar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    concurrency:
+      group: pregao
+      cancel-in-progress: false
+    env:
+      SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
+      BACKTEST_CHAVE: ${{ secrets.BACKTEST_CHAVE }}
+      RELEASE: ${{ inputs.release || 'backtest-rodada' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Instalar dependencias
+        run: uv sync --locked --no-dev
+
+      - name: Conferir os segredos
+        run: |
+          test -n "$SCANNER_DATABASE_URL" || { echo "::error::SCANNER_DATABASE_URL ausente"; exit 1; }
+          test -n "$BACKTEST_CHAVE" || { echo "::error::BACKTEST_CHAVE ausente"; exit 1; }
+
+      - name: Baixar e abrir o pacote
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          mkdir -p /tmp/rodada
+          gh release download "$RELEASE" --repo "$GITHUB_REPOSITORY" \
+            --pattern rodada.json.gz.enc --dir /tmp/rodada
+          openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKTEST_CHAVE \
+            -in /tmp/rodada/rodada.json.gz.enc -out /tmp/rodada/rodada.json.gz
+
+      - name: Migrations
+        # --no-sync: sem ele o `uv run` ressincroniza com o grupo dev.
+        run: uv run --no-sync alembic upgrade head
+
+      - name: Gravar a rodada
+        run: uv run --no-sync python scripts/backtest_setups.py enviar /tmp/rodada/rodada.json.gz

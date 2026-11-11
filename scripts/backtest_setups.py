@@ -15,6 +15,13 @@ rodada nova (o site mostra a mais recente; ficam as duas ultimas).
 
     python scripts/backtest_setups.py enviar <pasta>
 
+Para a producao, sem o endereco do banco na maquina: `empacotar` grava a rodada
+num arquivo so (`<pasta>/rodada.json.gz`, sem os trades) e o workflow
+`backtest-enviar` do GitHub faz o envio com ele (ver README).
+
+    python scripts/backtest_setups.py empacotar <pasta>
+    python scripts/backtest_setups.py enviar <pasta>/rodada.json.gz
+
 `barras.pkl` sai de `scripts/gatilhos_carregar.py`. Lote de papeis pela variavel
 BACKTEST_LOTE (padrao 150): o motor de suporte e resistencia e o que mais pesa
 na memoria.
@@ -40,6 +47,7 @@ import pandas as pd
 
 from scanner.backtest.envio import amostra_de_trades, enviar, resumo_da_rodada
 from scanner.backtest.metricas import curva, escolher, grade, por_ano
+from scanner.backtest.pacote import gravar_pacote, ler_pacote
 from scanner.backtest.simulador import TETO
 from scanner.backtest.suite import CUSTO, liquidez_historica, rodar_lote
 from scanner.config import load_config
@@ -160,27 +168,39 @@ def relatorio(pasta: Path) -> None:
         )
 
 
-def enviar_rodada(pasta: Path) -> None:
+def _da_pasta(pasta: Path) -> dict[str, object]:
+    """A rodada de uma pasta de resultado, no formato de `enviar`."""
+    trades = pd.read_pickle(pasta / "trades.pkl")
+    return {
+        "rodada": resumo_da_rodada(trades, CUSTO, TETO),
+        "grade": pd.read_pickle(pasta / "grade.pkl"),
+        "escolha": pd.read_pickle(pasta / "escolha.pkl"),
+        "anos": pd.read_pickle(pasta / "por_ano.pkl"),
+        "curva": pd.read_pickle(pasta / "curva.pkl"),
+        "amostra": amostra_de_trades(trades),
+    }
+
+
+def empacotar(pasta: Path) -> None:
+    destino = pasta / "rodada.json.gz"
+    gravar_pacote(destino, **_da_pasta(pasta))  # type: ignore[arg-type]
+    print(f"{destino} ({destino.stat().st_size / 1e6:.1f} MB)")
+
+
+def enviar_rodada(origem: Path) -> None:
+    """`origem`: a pasta do resultado, ou o pacote (`rodada.json.gz`) feito por `empacotar`."""
     from scanner.storage.engine import build_engine
     from scanner.storage.migracao import migrar_se_preciso
 
     t0 = time.time()
-    trades = pd.read_pickle(pasta / "trades.pkl")
+    partes = ler_pacote(origem) if origem.is_file() else _da_pasta(origem)
     engine = build_engine()
     migrar_se_preciso(engine)
-    rodada = resumo_da_rodada(trades, CUSTO, TETO)
-    rodada_id = enviar(
-        engine,
-        rodada=rodada,
-        grade=pd.read_pickle(pasta / "grade.pkl"),
-        escolha=pd.read_pickle(pasta / "escolha.pkl"),
-        anos=pd.read_pickle(pasta / "por_ano.pkl"),
-        curva=pd.read_pickle(pasta / "curva.pkl"),
-        amostra=amostra_de_trades(trades),
-    )
+    rodada = partes["rodada"]
+    rodada_id = enviar(engine, **partes)  # type: ignore[arg-type]
     print(
-        f"rodada {rodada_id} gravada: dados de {rodada['dados_de']:%d/%m/%Y} a"
-        f" {rodada['dados_ate']:%d/%m/%Y}, {rodada['trades']} trades ({time.time() - t0:.0f}s)"
+        f"rodada {rodada_id} gravada: dados de {rodada['dados_de']:%d/%m/%Y} a"  # type: ignore[index]
+        f" {rodada['dados_ate']:%d/%m/%Y}, {rodada['trades']} trades ({time.time() - t0:.0f}s)"  # type: ignore[index]
     )
 
 
@@ -190,6 +210,8 @@ def main() -> None:
         processar(Path(sys.argv[2]), Path(sys.argv[3]))
     elif etapa == "relatorio":
         relatorio(Path(sys.argv[2]))
+    elif etapa == "empacotar":
+        empacotar(Path(sys.argv[2]))
     elif etapa == "enviar":
         enviar_rodada(Path(sys.argv[2]))
     else:

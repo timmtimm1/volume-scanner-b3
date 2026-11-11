@@ -1481,6 +1481,25 @@ python scripts/backtest_setups.py relatorio data/backtest_setups/v1
 python scripts/backtest_setups.py enviar data/backtest_setups/v1
 ```
 
+O passo 4 grava no banco de `SCANNER_DATABASE_URL`, que na máquina é o local. Para a
+**produção**, o endereço do banco vive só nos segredos do GitHub, então a rodada vai
+até lá (workflow `backtest enviar`, de 11/11/2026):
+
+```bash
+# a rodada num arquivo só, sem os trades (JSON compactado, uns poucos MB)
+python scripts/backtest_setups.py empacotar data/backtest_setups/v1
+# cifra com a chave do segredo BACKTEST_CHAVE e sobe na release "backtest-rodada"
+openssl enc -aes-256-cbc -pbkdf2 -pass file:data/backtest_chave.txt \
+  -in data/backtest_setups/v1/rodada.json.gz -out /tmp/rodada.json.gz.enc
+gh release upload backtest-rodada /tmp/rodada.json.gz.enc --clobber
+# o workflow baixa, abre, aplica as migrations e grava a rodada
+gh workflow run backtest-enviar.yml
+```
+
+A chave fica em `data/backtest_chave.txt` (fora do git) e no segredo `BACKTEST_CHAVE`
+do repositório. O arquivo vai cifrado porque o repositório é público e o backtest só
+aparece para quem está logado no site.
+
 No site, a página **Backtest** (`/setups/backtest`, só logado, com link no topo da
 aba Setups) mostra a rodada mais recente: o nível de cada setup (firme, fraco ou
 falhou), e, para o setup e a variação escolhidos, os números dos três períodos, a
@@ -1489,7 +1508,8 @@ curva de R acumulado contra o controle, o ano a ano e os trades mais recentes.
 O que cada parte faz:
 
 - `scanner/gatilhos/classicos.py`: 9.1 a 9.4, 123, PFR (soltos e no suporte), toque
-  na MMA 20 e pullback de rompimento, cada um como regra mecânica (pregão × papel, sem olhar o futuro).
+  na MMA 20, pullback de rompimento, contração de volatilidade e rompimento de
+  resistência, cada um como regra mecânica (pregão × papel, sem olhar o futuro).
 - `scanner/backtest/simulador.py`: o trade, pregão a pregão. Entra no pregão seguinte
   acima da máxima; sai por alvo de 1/2/3 R, stop móvel pelas mínimas ou MME 9
   virando para baixo. Onde a ordem dos preços no dia é desconhecida, conta o pior.

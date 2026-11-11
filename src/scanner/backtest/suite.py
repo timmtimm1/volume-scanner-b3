@@ -34,7 +34,7 @@ from scanner.gatilhos.classicos import (
     tendencia_de_alta,
 )
 from scanner.gatilhos.contexto import atr_wilder, calcular
-from scanner.gatilhos.matrizes import ajuste_acumulado, montar
+from scanner.gatilhos.matrizes import Matrizes, ajuste_acumulado, montar
 from scanner.gatilhos.medias import RegrasDaMedia, toques_na_media
 from scanner.gatilhos.niveis import Regras, detectar
 from scanner.gatilhos.regra import Analise
@@ -183,11 +183,33 @@ def rodar_lote(
     sinais.update(_sinais_da_regra(analise, cfg, tick))
     if so is not None:
         sinais = {k: v for k, v in sinais.items() if k in so}
+    return trades_dos_sinais(
+        m, sinais, liquido, tick, ajuste, ctx, np.random.default_rng(semente), custo, saidas
+    )
+
+
+def trades_dos_sinais(
+    m: Matrizes,
+    sinais: dict[str, Sinal],
+    liquido: B,
+    tick: F64,
+    ajuste: F64,
+    ctx: dict[str, F64 | B],
+    rng: np.random.Generator,
+    custo: float = CUSTO,
+    saidas: tuple[Saida, ...] = SAIDAS,
+) -> pd.DataFrame:
+    """Os trades (e o controle de cada um) de um conjunto de sinais, em toda saida.
+
+    Separado de `rodar_lote` para um estudo trazer os proprios sinais (a
+    varredura de padroes de candle, `scripts/estudo_candles.py`) e passar pela
+    mesma entrada, o mesmo controle e as mesmas saidas da suite.
+    """
+    o, h, low, c = m.abertura, m.maxima, m.minima, m.fechamento
     alta = tendencia_de_alta(c)
     precos = Precos.de(o, h, low, c, tick)
     rvol = np.asarray(ctx["rvol"], dtype=np.float64)
     z = np.asarray(ctx["z"], dtype=np.float64)
-    rng = np.random.default_rng(semente)
     # controle: liquido no dia do sinal e com pregao no dia seguinte
     abre_amanha = np.zeros_like(liquido)
     abre_amanha[:-1] = np.isfinite(o[1:])

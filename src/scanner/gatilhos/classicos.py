@@ -60,6 +60,18 @@ Os mesmos dois no suporte (pedido do usuario em 09/11/2026):
   invertido, falso rompimento, tres por dentro e tres por fora ficaram de fora.
   Sao setups A PARTE: o 123 e o PFR de sempre continuam como estao.
 
+Rompimento (pedido do usuario em 11/11/2026, depois do estudo de dez padroes de
+estrutura -- `scripts/estudo_estrutura.py`, secao 14 do plano):
+
+- Contracao de volatilidade: tres blocos seguidos de `contracao_bloco` pregoes,
+  cada um com amplitude (maior maxima menos menor minima) menor que
+  `contracao_fator` da do bloco anterior, e a maxima do ultimo bloco a ate 1 ATR
+  da maxima de `contracao_topo` pregoes. O gatilho NAO e a maxima do dia: e a
+  maxima do ultimo bloco. Stop na minima do bloco.
+- Rompimento de resistencia: o dia fecha acima de uma resistencia de
+  `toques_rompimento`+ toques (o motor de `niveis`), com volume de
+  `volume_rompimento`x ou mais. E o nivel do Forca sem exigir o candle grande.
+
 Tendencia:
 
 - MMA 20, toque simples: MMA 20 subindo (acima de 10 pregoes atras), fechamento
@@ -104,6 +116,8 @@ NOMES: dict[str, str] = {
     "pfr_suporte": "PFR no suporte",
     "mma20": "Toque na MMA 20 em alta",
     "pullback": "Pullback de rompimento",
+    "contracao": "Contracao de volatilidade",
+    "rompimento": "Rompimento de resistencia",
 }
 
 
@@ -136,6 +150,14 @@ class RegrasClassicas:
     volume_91: float = 1.5
     # 123 e PFR no suporte (09/11/2026): toques minimos do suporte tocado.
     toques_suporte: int = 3
+    # Contracao de volatilidade (11/11/2026): tamanho do bloco, quanto cada bloco
+    # tem de encolher e a janela da maxima de referencia.
+    contracao_bloco: int = 10
+    contracao_fator: float = 0.7
+    contracao_topo: int = 60
+    # Rompimento de resistencia (11/11/2026): volume minimo do dia do rompimento.
+    # Os toques sao os de `toques_rompimento`, o mesmo nivel do pullback.
+    volume_rompimento: float = 1.5
     # Perto da media (09/11/2026): nos 9.2 a 9.4 a minima do candle do sinal a
     # no maximo este tanto de ATR acima da MME 9. None desliga.
     perto_9x: float | None = 0.35
@@ -211,6 +233,15 @@ def _dias_desde_o_rompimento(retrato: Retrato, eventos: Eventos) -> F64:
     return out
 
 
+def _maior(m: F64, n: int) -> F64:
+    """A maior dos ultimos `n` pregoes, com o dia (NaN ate ter os `n`)."""
+    return np.array(pd.DataFrame(m).rolling(n, min_periods=n).max().to_numpy(dtype=np.float64))
+
+
+def _menor(m: F64, n: int) -> F64:
+    return np.array(pd.DataFrame(m).rolling(n, min_periods=n).min().to_numpy(dtype=np.float64))
+
+
 def classicos(
     abertura: F64,
     maxima: F64,
@@ -267,7 +298,19 @@ def classicos(
         if r.perto_9x is not None:
             perto = low <= e + r.perto_9x * atr
         correcao = tendencia & perto
-        regras_ = {
+        n = r.contracao_bloco
+        topo_bloco, fundo_bloco = _maior(h, n), _menor(low, n)
+        amp = topo_bloco - fundo_bloco
+        amp1, amp2 = _antes(amp, n), _antes(amp, 2 * n)
+        contracao = (
+            (amp < r.contracao_fator * amp1)
+            & (amp1 < r.contracao_fator * amp2)
+            & (topo_bloco >= _maior(h, r.contracao_topo) - atr)
+        )
+        rompimento = (retrato.rompeu_res_forca >= r.toques_rompimento) & (
+            rvol >= r.volume_rompimento
+        )
+        regras_: dict[str, tuple[B, F64] | tuple[B, F64, F64]] = {
             "9.1": ((e2 > e1) & sobe & filtro_91, stop_do_dia),
             "9.2": (sobe & (c < l1) & correcao, stop_do_dia),
             "9.3": (sobe & (c1 < c2) & (c < c2) & correcao, stop_do_dia),
@@ -289,9 +332,15 @@ def classicos(
                 & (desde <= r.pullback_pregoes),
                 stop_do_dia,
             ),
+            # o unico com gatilho proprio: a maxima do bloco, nao a do dia
+            "contracao": (contracao, fundo_bloco - tick, topo_bloco + tick),
+            "rompimento": (rompimento, stop_do_dia),
         }
     saida: dict[str, Sinal] = {}
-    for nome, (armado, stop) in regras_.items():
+    for nome, regra in regras_.items():
+        armado, stop = regra[0], regra[1]
+        entra = regra[2] if len(regra) == 3 else gatilho
         ok = np.asarray(armado, dtype=bool) & negociou & np.isfinite(stop) & (stop < low)
-        saida[nome] = Sinal(armado=ok, gatilho=gatilho, stop=stop)
+        ok &= np.isfinite(entra)
+        saida[nome] = Sinal(armado=ok, gatilho=entra, stop=stop)
     return saida

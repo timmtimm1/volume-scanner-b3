@@ -82,6 +82,27 @@ def test_123_no_suporte_vira_linha_com_o_nivel() -> None:
     assert (do_dia["categoria"] == "123").any()
 
 
+def test_contracao_vira_linha_com_a_maxima_do_bloco() -> None:
+    """Na contracao o gatilho e a maxima do ultimo bloco de 10 pregoes: e ela que
+    vai para a coluna `maxima`, de onde o alerta e a confirmacao tiram o preco."""
+    barras: list[Barra] = [(x, x + 0.05, x - 0.05, x) for x in np.linspace(10.0, 20.0, 60)]
+    for fundo, topo in ((18.0, 22.0), (20.0, 22.0), (21.0, 22.0)):
+        for i in range(10):
+            o, c = (fundo, topo) if i % 2 == 0 else (topo, fundo)
+            barras.append((o, topo, fundo, c))
+    # o ultimo pregao fica no meio do bloco: a maxima do dia NAO e a do bloco
+    barras[-1] = (21.4, 21.6, 21.3, 21.5)
+    b = _frame(barras)
+    a = analisar(b, CFG.setups, CFG.universe)
+    linhas = setups_classicos(a, CFG.setups)
+    dia = b["trade_date"].iloc[-1]
+    linha = linhas[(linhas["categoria"] == "contracao") & (linhas["trade_date"] == dia)].iloc[0]
+    assert linha["maxima"] == pytest.approx(22.0)
+    assert linha["minima"] == pytest.approx(21.0)
+    assert linha["suporte_tipo"] == "minima"
+    assert linha["risco_pct"] == pytest.approx((21.5 - 21.0) / 21.5 * 100)
+
+
 def test_papel_iliquido_nao_arma() -> None:
     b = _frame(_plano() + UM_DOIS_TRES).assign(volume_financial=10_000.0)
     a = analisar(b, CFG.setups, CFG.universe)

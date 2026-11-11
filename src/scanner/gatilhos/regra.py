@@ -282,10 +282,14 @@ _REFERENCIA = {
     "pfr_suporte": "nivel",
     "mma20": "mma20",
     "pullback": "nivel",
+    "contracao": "minima",
+    "rompimento": "minima",
 }
 # Setups que tocam um suporte horizontal, e a camada do retrato em que tocam:
 # 0 = a minima do dia; 2 = a minima dos ultimos 3 candles (a do meio, no 123).
 _CAMADA_DO_NIVEL = {"pullback": 0, "pfr_suporte": 0, "123_suporte": 2}
+# Setups cujo gatilho nao e a maxima do dia (11/11/2026).
+_GATILHO_PROPRIO = frozenset({"contracao"})
 
 
 def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
@@ -352,7 +356,14 @@ def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
                         for la, co in zip(lateral, correcao, strict=True)
                     ],
                     "fechamento": fech / escala,
-                    "maxima": m.maxima[dd, tt] / escala,
+                    # `maxima` e o preco de onde sai o gatilho (1 centavo acima): a
+                    # maxima do dia em todos, menos na contracao (a do bloco)
+                    "maxima": (
+                        sinal.gatilho[dd, tt] - tick[dd, tt]
+                        if nome in _GATILHO_PROPRIO
+                        else m.maxima[dd, tt]
+                    )
+                    / escala,
                     "minima": minima / escala,
                     "suporte": ref / escala,
                     "suporte_tipo": tipo,

@@ -573,3 +573,31 @@ Resultado, com o protocolo de sempre (escolher em 1995–2015, conferir em 2016�
 
 Leitura: nenhum padrão novo merece virar setup. Os dois marubozu são o candle de Força da casa em versão mais frouxa (candle verde cheio, em alta, saída pela MME 9), e ganham do controle por 0,02 a 0,03 R, contra +0,30 R do Força. A varredura confirma por outro caminho o que a suíte já dizia: o que funciona é candle de força em tendência de alta, deixando o lucro correr; desenho de reversão não ganha do papel sorteado. A grade completa fica na máquina (`data/backtest_setups/v7_candles/escolha.csv`).
 
+### Variações do Força: mais sinais e stop mais curto (11/11/2026)
+
+Pedido do usuário, depois da varredura: o Força é o único firme, mas arma pouco (uns 38 trades por ano no mercado inteiro) e o stop na mínima do candle fica a 7% da entrada em média, o que encolhe o lote de quem tem pouco capital. `scripts/estudo_forca.py` cruza 7 versões do sinal com 4 stops (28 combinações), cada uma com as cinco saídas, o controle e o protocolo de sempre. A regra de hoje com o stop de hoje reproduz a suíte (404 trades, +0,31 R em 2016–2026).
+
+**Stop** (sinal de hoje, saída pela MME 9, em alta; a mesma combinação seria a escolhida em 1995–2015 nos três primeiros):
+
+| Stop | 1995–2015 | 2016–2026 [piso 95%] | Contra o controle | Acerto | Distância do stop | Dura |
+|---|---|---|---|---|---|---|
+| mínima do candle (hoje) | +0,21 R | +0,31 R [+0,09] | +0,25 R | 39% | 7,2% | 10 pregões |
+| meio do candle | +0,30 R | +0,47 R [+0,12] | +0,40 R | 32% | 3,8% | 7 pregões |
+| 1 ATR abaixo da entrada | +0,26 R | +0,38 R [+0,04] | +0,30 R | 31% | 3,6% | 7 pregões |
+| 0,5 ATR abaixo da entrada | +0,10 R | −0,10 R | −0,17 R | 17% | 2,0% | 3 pregões |
+
+O stop no meio do candle é melhor nos dois períodos, corta a distância pela metade e é o único cuja vantagem sobre o controle tem intervalo de 95% acima de zero (+0,06 R). O de 1 ATR conta a mesma história; o de 0,5 ATR é apertado demais e vira prejuízo. O acerto cai de 39% para 32%: perde-se mais vezes, com perda menor.
+
+**Mais sinais** (melhor combinação de cada versão, em 2016–2026):
+
+| Versão | Trades por ano | Resultado | Contra o controle | Nível |
+|---|---|---|---|---|
+| de hoje, stop no meio | 38 | +0,47 R | +0,40 R | firme |
+| corpo ≥ 1,0 ATR, stop no meio | 51 | +0,30 R | +0,22 R | firme |
+| nível de 2 toques, stop no meio | 66 | +0,24 R | +0,19 R | firme |
+| sem exigir nível, alvo 3R | 218 | +0,15 R | +0,09 R | firme |
+| sem nível e sem volume, alvo 3R | 308 | +0,16 R | +0,05 R | firme |
+| acima da máxima de 20, alvo 3R | 162 | +0,17 R | +0,05 R | firme |
+
+Afrouxar o sinal dá mais trades e menos vantagem em cada um, na mesma proporção: o nível de 3 toques e o corpo de 1,2 ATR são o que separa o Força do mercado. Nenhuma das 28 combinações passa no critério rígido (Bonferroni), nem a regra de hoje: são 400 trades em dez anos, pouco para esse rigor. A leitura que fica é de direção, coerente nos dois períodos: **stop mais curto (meio do candle) melhora; sinal mais frouxo dilui.**
+

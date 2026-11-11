@@ -166,6 +166,7 @@ def por_mes(trades: pd.DataFrame) -> pd.DataFrame:
         dif=(r - ctrl).where(tem_ctrl, 0.0),
         n_dif=tem_ctrl.astype(np.int64),
         dias=t["dias"].astype(np.float64),
+        risco=t["risco_pct"].astype(np.float64),
     )
     return (
         t.groupby(["setup", "saida", "alta", "mes"], observed=True)
@@ -177,6 +178,7 @@ def por_mes(trades: pd.DataFrame) -> pd.DataFrame:
             dif=("dif", "sum"),
             n_dif=("n_dif", "sum"),
             dias=("dias", "sum"),
+            risco=("risco", "sum"),
         )
         .reset_index()
     )
@@ -244,7 +246,10 @@ def grade(mensal: pd.DataFrame) -> pd.DataFrame:
             g = parte if alta is None else parte[parte["alta"] == alta]
             for periodo, (de, ate) in PERIODOS.items():
                 p = g[(ano.loc[g.index] >= de) & (ano.loc[g.index] <= ate)]
-                mm = p.groupby("mes")[["n", "soma_r", "ganhou", "ganho", "dif", "n_dif", "dias"]]
+                colunas = ["n", "soma_r", "ganhou", "ganho", "dif", "n_dif", "dias"]
+                if "risco" in p:
+                    colunas.append("risco")
+                mm = p.groupby("mes")[colunas]
                 s = mm.sum()
                 n = float(s["n"].sum())
                 if n == 0:
@@ -263,6 +268,14 @@ def grade(mensal: pd.DataFrame) -> pd.DataFrame:
                         "ic_baixo": intervalo(soma_r, nn, REPETICOES, 0.025, rng),
                         "diferenca": float(s["dif"].sum() / max(s["n_dif"].sum(), 1)),
                         "dias_medio": float(s["dias"].sum() / n),
+                        "risco_medio": float(s["risco"].sum() / n) if "risco" in s else np.nan,
+                        "dif_ic_baixo": intervalo(
+                            s["dif"].to_numpy(),
+                            s["n_dif"].to_numpy(dtype=np.float64),
+                            REPETICOES,
+                            0.025,
+                            rng,
+                        ),
                     }
                 )
     return pd.DataFrame(linhas)
@@ -297,6 +310,8 @@ def relatorio(pasta: Path) -> None:
                 "ic_baixo": conf["ic_baixo"],
                 "dif": conf["diferenca"],
                 "dias": conf["dias_medio"],
+                "risco": conf.get("risco_medio", np.nan),
+                "dif_ic": conf.get("dif_ic_baixo", np.nan),
                 "nivel": nivel_da_conferencia(
                     float(conf["expectativa"]), float(conf["ic_baixo"]), float(conf["diferenca"])
                 ),

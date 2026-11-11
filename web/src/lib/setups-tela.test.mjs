@@ -189,6 +189,8 @@ const PADRAO = {
   pfr_suporte: { alerta: false, saida: "alvo3" },
   mma20: { alerta: false, saida: "alvo3" },
   pullback: { alerta: false, saida: "mme9" },
+  contracao: { alerta: true, saida: "alvo3" },
+  rompimento: { alerta: true, saida: "mme9" },
 };
 
 describe("estados novos", () => {
@@ -316,7 +318,13 @@ describe("agruparPorCategoria", () => {
 
   it("separa ligados e outros pelas preferencias, na ordem fixa", () => {
     const { ligados, outros } = agruparPorCategoria(lista, PADRAO);
-    assert.deepEqual(ligados.map((b) => b.categoria), ["9.4", "reversao", "forca"]);
+    assert.deepEqual(ligados.map((b) => b.categoria), [
+      "9.4",
+      "contracao",
+      "rompimento",
+      "reversao",
+      "forca",
+    ]);
     assert.deepEqual(outros.map((b) => b.categoria), [
       "9.1",
       "9.2",

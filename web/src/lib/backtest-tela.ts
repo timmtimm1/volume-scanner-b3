@@ -117,6 +117,8 @@ export const ORDEM_DOS_SETUPS: readonly string[] = [
   "pfr_suporte",
   "mma20",
   "pullback",
+  "contracao",
+  "rompimento",
   "suporte",
   "media",
   "forca",
@@ -167,6 +169,15 @@ export const SETUPS: Record<string, { nome: string; regra: string }> = {
   pullback: {
     nome: "Pullback",
     regra: `Uma resistência de 3 ou mais toques foi rompida no fechamento (vira suporte); o preço volta até ela em até 20 pregões e o fechamento segura o nível. ${COMPRA}`,
+  },
+  contracao: {
+    nome: "Contração",
+    regra:
+      "Contração de volatilidade: três blocos seguidos de 10 pregões, cada um com amplitude (da maior máxima à menor mínima) menor que 70% da do bloco anterior, e o último a até 1 ATR da máxima de 60 pregões. Compra 1 centavo acima da máxima do último bloco (não a do dia); stop 1 centavo abaixo da mínima dele.",
+  },
+  rompimento: {
+    nome: "Rompimento",
+    regra: `Rompimento de resistência: o dia fecha acima de uma resistência de 3 ou mais toques (o nível das linhas da ficha), com volume de 1,5× ou mais. ${COMPRA}`,
   },
   suporte: {
     nome: "Suporte",

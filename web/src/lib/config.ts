@@ -41,6 +41,8 @@ export const CATEGORIAS_DE_SETUP = [
   "pfr_suporte",
   "mma20",
   "pullback",
+  "contracao",
+  "rompimento",
 ] as const;
 export type CategoriaDoSetup = (typeof CATEGORIAS_DE_SETUP)[number];
 export type SaidaDoSetup = "alvo1" | "alvo2" | "alvo3" | "minimas" | "mme9";
@@ -67,4 +69,6 @@ export const PADROES_DOS_SETUPS: Record<
   pfr_suporte: { alerta: false, saida: "alvo3" },
   mma20: { alerta: false, saida: "alvo3" },
   pullback: { alerta: false, saida: "mme9" },
+  contracao: { alerta: true, saida: "alvo3" },
+  rompimento: { alerta: true, saida: "mme9" },
 };

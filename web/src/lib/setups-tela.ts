@@ -44,7 +44,8 @@ export type Setup = {
   tradeDate: string;
   /**
    * reversao: no suporte horizontal; media: na media movel em alta; forca: a
-   * parte; as demais sao os setups classicos (9.1 a 9.4, 123, pfr, mma20, pullback).
+   * parte; as demais sao os setups classicos (9.1 a 9.4, 123, pfr, mma20, pullback)
+   * e os de rompimento (contracao de volatilidade, rompimento de resistencia).
    */
   categoria: CategoriaDoSetup;
   padroes: string[];
@@ -351,6 +352,8 @@ export const NOME_DO_SETUP: Record<CategoriaDoSetup, string> = {
   pfr_suporte: "PFR no suporte",
   mma20: "MMA 20",
   pullback: "Pullback",
+  contracao: "Contração",
+  rompimento: "Rompimento",
 };
 
 /** Ordem fixa de apresentacao: a do Backtest, nunca por resultado. */
@@ -365,6 +368,8 @@ export const ORDEM_DAS_CATEGORIAS: readonly CategoriaDoSetup[] = [
   "pfr_suporte",
   "mma20",
   "pullback",
+  "contracao",
+  "rompimento",
   "reversao",
   "media",
   "forca",

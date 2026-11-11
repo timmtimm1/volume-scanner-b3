@@ -7,14 +7,23 @@ teste da `conftest` e pulam se ele nao estiver de pe.
 from __future__ import annotations
 
 from collections.abc import Iterator
+from pathlib import Path
 
 import numpy as np
 import pandas as pd
 import pytest
 from sqlalchemy import Engine, delete, func, select
 
-from scanner.backtest.envio import amostra_de_trades, enviar, resumo_da_rodada
+from scanner.backtest.envio import (
+    COLUNAS_ESCOLHA,
+    COLUNAS_RESULTADO,
+    _linhas,
+    amostra_de_trades,
+    enviar,
+    resumo_da_rodada,
+)
 from scanner.backtest.metricas import curva, escolher, grade, por_ano
+from scanner.backtest.pacote import gravar_pacote, ler_pacote
 from scanner.backtest.simulador import ABERTO, ALVO, STOP
 from scanner.storage.engine import session_scope
 from scanner.storage.models import (
@@ -116,6 +125,46 @@ def _enviar(engine: Engine, t: pd.DataFrame, manter: int = 2) -> int:
         amostra=amostra_de_trades(t, por_combinacao=50),
         manter=manter,
     )
+
+
+def test_pacote_guarda_a_rodada_como_ela_vai_para_o_banco(tmp_path: Path) -> None:
+    """O pacote (JSON, sem os trades) tem de gerar as MESMAS linhas que a pasta do
+    resultado geraria: e ele que o workflow `backtest-enviar` grava em producao."""
+    t = _trades()
+    g = grade(t)
+    antes = {
+        "rodada": resumo_da_rodada(t, 0.0008, 60),
+        "grade": g,
+        "escolha": escolher(g),
+        "anos": por_ano(t),
+        "curva": curva(t),
+        "amostra": amostra_de_trades(t),
+    }
+    arquivo = tmp_path / "rodada.json.gz"
+    gravar_pacote(arquivo, **antes)
+    depois = ler_pacote(arquivo)
+
+    assert depois["rodada"] == antes["rodada"]
+    # o setup "9.1" continua texto: lido como numero, a rodada perderia a chave
+    assert set(depois["grade"]["setup"]) == {"9.1", "forca"}
+    for nome, colunas in (
+        ("grade", COLUNAS_RESULTADO),
+        ("escolha", COLUNAS_ESCOLHA),
+        ("amostra", ("setup", "ticker", "data_sinal", "data_saida", "entrada", "r", "alta")),
+    ):
+        a, d = _linhas(antes[nome], colunas), _linhas(depois[nome], colunas)
+        assert len(a) == len(d), nome
+        for la, ld in zip(a, d, strict=True):
+            for coluna in colunas:
+                if isinstance(la[coluna], float):
+                    assert ld[coluna] == pytest.approx(la[coluna], rel=1e-9), (nome, coluna)
+                else:
+                    assert ld[coluna] == la[coluna], (nome, coluna)
+
+
+def test_pacote_incompleto_e_recusado(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="faltam tabelas"):
+        gravar_pacote(tmp_path / "x.json.gz", rodada={}, grade=pd.DataFrame())
 
 
 def test_rodada_inteira_vai_para_o_banco(limpo: Engine) -> None:

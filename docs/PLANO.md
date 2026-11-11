@@ -558,3 +558,95 @@ Pedido do usuário: a aba Setups estava confusa, com um bloco por setup e inform
 **Pior fase** (`scanner.backtest.metricas.pior_fase`, migration 0020: `pior_sequencia` e `pior_recuo` em `backtest_resultados`). A curva da suíte soma todos os papéis e não serve para uma pessoa (um setup com dez sinais por dia "perde 40 seguidas" numa semana). A medida nova simula quem opera **um trade por vez**: entra num sinal, espera sair, pega um sinal do primeiro dia seguinte que tiver algum (sorteado entre os daquele dia). São 200 caminhos; de cada um saem a maior sequência de perdas e o maior recuo do R acumulado, e o número gravado é a mediana. No cartão o recuo vira reais (R × a perda do lote). Sobre os trades da rodada de 10/11/2026, no histórico inteiro e na combinação escolhida: Força 8 perdas seguidas e −20,5 R; Suporte 12 e −31 R; 9.4 15 e −31 R; 9.2 27 e −79 R. As colunas antigas da grade não mudaram (diferença zero contra a rodada anterior).
 
 Site: `web/src/lib/entradas.ts` (as contas, com teste), `entradas-dados.ts` (as consultas; sem a migration 0020 a linha da pior fase some do cartão), `components/CartaoDeEntrada.tsx`, `AjustesDosSetups.tsx`, `SecaoRecolhida.tsx` e `app/setups/page.tsx`. Saíram `ListaDeSetups.tsx`, `BlocoDeSetup.tsx` e o cartão armado antigo.
+
+### Varredura de padrões de candle (11/11/2026)
+
+Pedido do usuário: procurar nas bibliotecas abertas algum padrão de candle que passe no critério dos setups. `scripts/estudo_candles.py` detecta os 62 padrões do `pandas-ta-classic` (os 61 do TA-Lib em Python puro, mais `inside`; instalado só para o estudo, fora do `pyproject`) e testa cada um como dois sinais de compra: o sinal de alta (`NOME+`) e a falha do sinal de baixa (`NOME-`, o preço passa da máxima no pregão seguinte). Mesma entrada, stop na menor mínima dos candles do padrão, mesmas cinco saídas, custo e controle da suíte (`trades_dos_sinais`, que saiu de dentro de `rodar_lote` sem mudar o resultado dela). 1.180 papéis, COTAHIST até 09/10/2026.
+
+Resultado, com o protocolo de sempre (escolher em 1995–2015, conferir em 2016–2026): dos 72 sinais com 100 trades ou mais na escolha, **57 falharam, 12 ficaram fracos e 3 firmes**. Com 72 conferências, uns 2 passariam do intervalo de 95% só por acaso; por isso o relatório tem um critério rígido (piso do intervalo com correção de Bonferroni), e **nenhum dos três passa nele**.
+
+| Sinal | Escolhida | 2016–2026 | Piso 95% | Contra o controle | Trades |
+|---|---|---|---|---|---|
+| Advance block, falha | alvo 3R, em alta | +0,18 R | +0,02 | +0,04 R | 922 |
+| Marubozu de alta | MME 9, em alta | +0,12 R | +0,01 | +0,03 R | 5.027 |
+| Closing marubozu de alta | MME 9, em alta | +0,10 R | +0,01 | +0,02 R | 10.817 |
+
+Leitura: nenhum padrão novo merece virar setup. Os dois marubozu são o candle de Força da casa em versão mais frouxa (candle verde cheio, em alta, saída pela MME 9), e ganham do controle por 0,02 a 0,03 R, contra +0,30 R do Força. A varredura confirma por outro caminho o que a suíte já dizia: o que funciona é candle de força em tendência de alta, deixando o lucro correr; desenho de reversão não ganha do papel sorteado. A grade completa fica na máquina (`data/backtest_setups/v7_candles/escolha.csv`).
+
+### Variações do Força: mais sinais e stop mais curto (11/11/2026)
+
+Pedido do usuário, depois da varredura: o Força é o único firme, mas arma pouco (uns 38 trades por ano no mercado inteiro) e o stop na mínima do candle fica a 7% da entrada em média, o que encolhe o lote de quem tem pouco capital. `scripts/estudo_forca.py` cruza 7 versões do sinal com 4 stops (28 combinações), cada uma com as cinco saídas, o controle e o protocolo de sempre. A regra de hoje com o stop de hoje reproduz a suíte (404 trades, +0,31 R em 2016–2026).
+
+**Stop** (sinal de hoje, saída pela MME 9, em alta; a mesma combinação seria a escolhida em 1995–2015 nos três primeiros):
+
+| Stop | 1995–2015 | 2016–2026 [piso 95%] | Contra o controle | Acerto | Distância do stop | Dura |
+|---|---|---|---|---|---|---|
+| mínima do candle (hoje) | +0,21 R | +0,31 R [+0,09] | +0,25 R | 39% | 7,2% | 10 pregões |
+| meio do candle | +0,30 R | +0,47 R [+0,12] | +0,40 R | 32% | 3,8% | 7 pregões |
+| 1 ATR abaixo da entrada | +0,26 R | +0,38 R [+0,04] | +0,30 R | 31% | 3,6% | 7 pregões |
+| 0,5 ATR abaixo da entrada | +0,10 R | −0,10 R | −0,17 R | 17% | 2,0% | 3 pregões |
+
+O stop no meio do candle é melhor nos dois períodos, corta a distância pela metade e é o único cuja vantagem sobre o controle tem intervalo de 95% acima de zero (+0,06 R). O de 1 ATR conta a mesma história; o de 0,5 ATR é apertado demais e vira prejuízo. O acerto cai de 39% para 32%: perde-se mais vezes, com perda menor.
+
+**Mais sinais** (melhor combinação de cada versão, em 2016–2026):
+
+| Versão | Trades por ano | Resultado | Contra o controle | Nível |
+|---|---|---|---|---|
+| de hoje, stop no meio | 38 | +0,47 R | +0,40 R | firme |
+| corpo ≥ 1,0 ATR, stop no meio | 51 | +0,30 R | +0,22 R | firme |
+| nível de 2 toques, stop no meio | 66 | +0,24 R | +0,19 R | firme |
+| sem exigir nível, alvo 3R | 218 | +0,15 R | +0,09 R | firme |
+| sem nível e sem volume, alvo 3R | 308 | +0,16 R | +0,05 R | firme |
+| acima da máxima de 20, alvo 3R | 162 | +0,17 R | +0,05 R | firme |
+
+Afrouxar o sinal dá mais trades e menos vantagem em cada um, na mesma proporção: o nível de 3 toques e o corpo de 1,2 ATR são o que separa o Força do mercado. Nenhuma das 28 combinações passa no critério rígido (Bonferroni), nem a regra de hoje: são 400 trades em dez anos, pouco para esse rigor. A leitura que fica é de direção, coerente nos dois períodos: **stop mais curto (meio do candle) melhora; sinal mais frouxo dilui.**
+
+### Padrões de estrutura com entrada clara (11/11/2026)
+
+Pedido do usuário: modelos de padrão com definição fechada e entrada clara, testados. `scripts/estudo_estrutura.py` escreve dez modelos como regra mecânica (as ideias vêm dos projetos abertos pesquisados; nenhum código foi copiado) e roda cada um com o stop próprio e com 1 ATR abaixo da entrada: 20 combinações pelo protocolo da suíte. As definições completas estão no cabeçalho do script.
+
+Melhor combinação de cada modelo com o stop próprio, em 2016–2026:
+
+| Modelo | Escolhida | 1995–2015 | 2016–2026 [piso 95%] | Contra o controle | Trades/ano | Stop | Dura | Nível |
+|---|---|---|---|---|---|---|---|---|
+| Contração de volatilidade | alvo 3R, todos | +0,44 R | +0,34 R [+0,06] | +0,19 R | 27 | 6,1% | 21 | firme |
+| Rompimento da máxima de 20 | alvo 3R, em alta | +0,24 R | +0,21 R [+0,08] | +0,04 R | 521 | 6,6% | 21 | firme |
+| Rompimento da máxima de 55 | alvo 3R, em alta | +0,23 R | +0,19 R [+0,06] | +0,07 R | 424 | 6,4% | 20 | firme |
+| Rompimento de resistência (3+ toques, volume) | MME 9, em alta | +0,15 R | +0,17 R [−0,01] | +0,12 R | 121 | 5,6% | 9 | fraco |
+| Gap com volume | MME 9, em alta | +0,70 R | +0,18 R [−0,02] | +0,07 R | 94 | 5,1% | 8 | fraco |
+| Gap de valor justo | alvo 3R, em alta | +0,25 R | +0,12 R [−0,03] | +0,04 R | 129 | 5,9% | 17 | fraco |
+| Quebra de estrutura | alvo 3R, em alta | +0,20 R | +0,11 R [−0,03] | +0,03 R | 121 | 11,0% | 36 | fraco |
+| Bandeira | MME 9, contra | +0,25 R | +0,03 R | +0,06 R | 24 | 6,7% | 8 | fraco |
+| Fundo duplo | alvo 3R, em alta | +0,27 R | +0,26 R [+0,08] | 0,00 R | 63 | 9,1% | 34 | falhou |
+| NR7 | MME 9, em alta | −0,08 R | −0,12 R | −0,26 R | 1.522 | 2,3% | 3 | falhou |
+
+Leitura:
+
+- **Contração de volatilidade** é o único modelo novo que ganha do controle com folga nos dois períodos (+0,27 R e +0,19 R). São poucos trades (289 na conferência) e o intervalo da vantagem sobre o controle ainda cruza o zero.
+- **Rompimento da máxima de 20** é o único das 120 conferências dos três estudos que passa no critério rígido pelo resultado bruto, mas ganha do controle por só 0,04 R: o lucro é estar comprado em papel em alta com alvo longo, não o rompimento. O fundo duplo é o mesmo caso, mais claro: +0,26 R, igual ao controle.
+- **Rompimento de resistência de 3+ toques com volume** é o mais consistente entre os frequentes: positivo e acima do controle nos dois períodos, 121 trades por ano, 9 pregões. É o nível da casa sem exigir o candle de Força.
+- **O stop de 1 ATR piora quase todos** (ao contrário do Força): nesses padrões o stop natural é parte do padrão.
+
+Este estudo não mexeu no app; o que entrou depois está na seção seguinte.
+
+### Contração e rompimento viram setups (11/11/2026)
+
+O usuário abriu o app, viu os mesmos setups de antes e cobrou: os estudos tinham ficado só no papel. Entraram os dois modelos que passaram, como setups de verdade (cartão, alerta, acompanhamento, nota do backtest):
+
+- **Contração de volatilidade** (`contracao`): três blocos seguidos de 10 pregões, cada um com amplitude menor que 70% da do anterior, e o último a até 1 ATR da máxima de 60 pregões. Compra 1 centavo acima da **máxima do último bloco** (é o primeiro setup cujo gatilho não é a máxima do dia: a coluna `maxima` da linha guarda a do bloco, e o alerta e a confirmação saem dela como sempre); stop 1 centavo abaixo da mínima do bloco. Padrão: alerta ligado, alvo de 3R.
+- **Rompimento de resistência** (`rompimento`): o dia fecha acima de uma resistência de 3+ toques (o motor de níveis), com volume de 1,5× ou mais. Compra acima da máxima do dia, stop abaixo da mínima. Padrão: alerta ligado, saída pela MME 9.
+
+Os padrões de candle das bibliotecas não entraram: todos falharam na varredura, e pela regra da casa entrariam só para encher a lista de cartões vermelhos.
+
+Rodada da suíte com os dois (COTAHIST até 09/10/2026, 1,11 milhão de trades), que reproduz o estudo:
+
+| Setup | Escolhida | 1995–2015 | 2016–2026 [IC 95%] | Contra o controle | Pior fase (30 anos) | |
+|---|---|---|---|---|---|---|
+| Contração | alvo 3R, todos | +0,44 R | +0,34 R [+0,05; +0,61] | +0,32 R | 9 perdas seguidas, −12 R | firme |
+| Força | MME 9, em alta | +0,21 R | +0,31 R [+0,09; +0,54] | +0,30 R | 8 perdas seguidas, −21 R | firme |
+| Rompimento | MME 9, em alta | +0,15 R | +0,17 R [−0,02; +0,36] | +0,06 R | 12 perdas seguidas, −48 R | fraco |
+
+O Suporte caiu de fraco para falhou nesta rodada sem a regra dele mudar: o resultado é o mesmo (+0,03 R), mas o controle sorteado mudou de −0,02 R para +0,11 R porque dois setups novos entraram antes dele na ordem do sorteio. Estava na fronteira; o alerta padrão dele ficou como estava, à espera de decisão do usuário.
+
+**Envio da rodada pelo GitHub** (`backtest-enviar.yml`, `scanner/backtest/pacote.py`). O endereço do banco de produção vive só nos segredos do GitHub, e pedir para o usuário achar a credencial no painel travou o envio da pior fase. Agora `scripts/backtest_setups.py empacotar` grava a rodada num JSON compactado, sem os trades; o arquivo sobe cifrado (chave no segredo `BACKTEST_CHAVE`) numa release, e o workflow abre, aplica as migrations e grava. Migration 0021: só a lista de categorias.
+

@@ -381,6 +381,67 @@ def test_pullback_fechando_abaixo_do_nivel_nao_vale() -> None:
     assert not s.armado[-1, 0]
 
 
+def _contracao() -> list[Barra]:
+    """Sobe de 10 a 20, depois tres blocos de 10 pregoes cada vez mais apertados no topo."""
+    barras = _barras_de(list(np.linspace(10.0, 20.0, 60)))
+    for fundo, topo in ((18.0, 22.0), (20.0, 22.0), (21.0, 22.0)):
+        for i in range(10):
+            o, c = (fundo, topo) if i % 2 == 0 else (topo, fundo)
+            barras.append((o, topo, fundo, c))
+    return barras
+
+
+def test_contracao_de_volatilidade() -> None:
+    s = _sinais(_contracao())["contracao"]
+    _so_no_ultimo(s, "contracao")
+    # o gatilho e a maxima do ultimo bloco, e o stop a minima dele
+    assert s.gatilho[-1, 0] == pytest.approx(22.0 + 0.01)
+    assert s.stop[-1, 0] == pytest.approx(21.0 - 0.01)
+
+
+def test_contracao_sem_encolher_nao_vale() -> None:
+    barras = _contracao()[:-10]
+    # o terceiro bloco tao largo quanto o segundo
+    for i in range(10):
+        o, c = (20.0, 22.0) if i % 2 == 0 else (22.0, 20.0)
+        barras.append((o, 22.0, 20.0, c))
+    assert not _sinais(barras)["contracao"].armado[-1, 0]
+
+
+def test_contracao_longe_do_topo_nao_vale() -> None:
+    """Os mesmos tres blocos, mas depois de uma queda: longe da maxima de 60 pregoes."""
+    barras = _barras_de(list(np.linspace(40.0, 24.0, 30)))
+    barras += _contracao()[60:]
+    assert not _sinais(barras)["contracao"].armado[-1, 0]
+
+
+def _rompe(fech: float) -> list[Barra]:
+    """Serra entre 10 e 12 (resistencia em ~12,05) e um ultimo pregao fechando em `fech`."""
+    barras = _barras_de(serra(10.0, 12.0, 200))
+    o = barras[-1][3]
+    barras.append((o, max(o, fech) + 0.05, min(o, fech) - 0.05, fech))
+    return barras
+
+
+def test_rompimento_de_resistencia_com_volume() -> None:
+    barras = _rompe(12.6)
+    volume = [1e6] * (len(barras) - 1) + [2e6]
+    s = _sinais(barras, volume)["rompimento"]
+    _so_no_ultimo(s, "rompimento")
+    assert s.gatilho[-1, 0] == pytest.approx(12.65 + 0.01)
+    assert s.stop[-1, 0] == pytest.approx(barras[-1][2] - 0.01)
+
+
+def test_rompimento_sem_volume_nao_vale() -> None:
+    assert not _sinais(_rompe(12.6))["rompimento"].armado[-1, 0]
+
+
+def test_fechar_abaixo_da_resistencia_nao_e_rompimento() -> None:
+    barras = _rompe(11.9)
+    volume = [1e6] * (len(barras) - 1) + [2e6]
+    assert not _sinais(barras, volume)["rompimento"].armado[-1, 0]
+
+
 def test_tendencia_de_alta() -> None:
     sobe = np.array(_alta_longa())[:, None]
     desce = sobe[::-1].copy()

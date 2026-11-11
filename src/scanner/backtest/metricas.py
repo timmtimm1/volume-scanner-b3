@@ -39,6 +39,8 @@ FIRME, FRACO, FALHOU = "firme", "fraco", "falhou"
 # Combinacao com menos trades que isso no periodo de escolha nao pode ser escolhida.
 MINIMO_PARA_ESCOLHER = 100
 REPETICOES = 1000
+# Caminhos sorteados de "um trade por vez" para medir a pior fase.
+CAMINHOS = 200
 
 
 def bootstrap(
@@ -61,6 +63,54 @@ def bootstrap(
     return (float(lo), float(hi))
 
 
+def pior_fase(
+    entrada: npt.NDArray[Any],
+    saida: npt.NDArray[Any],
+    r: F64,
+    caminhos: int = CAMINHOS,
+    semente: int = 7,
+) -> tuple[float, float]:
+    """A pior fase de quem opera o setup um trade por vez: (perdas seguidas, recuo em R).
+
+    A grade soma todos os papeis: um setup com dez sinais por dia "perde 40
+    seguidas" numa semana ruim, e ninguem faz dez trades por dia. Aqui cada
+    caminho e uma pessoa: entra num sinal, espera ele sair, e pega um dos sinais
+    do primeiro dia seguinte que tiver algum (sorteado entre os daquele dia).
+    De cada caminho saem a maior sequencia de perdas (R <= 0) e o maior recuo do
+    R acumulado desde o topo; o numero gravado e a MEDIANA dos caminhos -- a pior
+    fase de um caminho tipico, nao a do mais azarado.
+    """
+    if r.size == 0:
+        return (float("nan"), float("nan"))
+    ordem = np.argsort(entrada, kind="stable")
+    ent, sai, rr = entrada[ordem], saida[ordem], r[ordem]
+    dias, inicio, quantos = np.unique(ent, return_index=True, return_counts=True)
+    rng = np.random.default_rng(semente)
+    # todo caminho comeca livre antes do primeiro sinal
+    livre = np.full(caminhos, dias[0] - np.timedelta64(1, "D"), dtype=dias.dtype)
+    seguidas = np.zeros(caminhos, dtype=np.int64)
+    pior_seq = np.zeros(caminhos, dtype=np.int64)
+    acumulado = np.zeros(caminhos)
+    topo = np.zeros(caminhos)
+    recuo = np.zeros(caminhos)
+    while True:
+        pos = np.searchsorted(dias, livre, side="right")
+        vivo = pos < dias.size
+        if not vivo.any():
+            break
+        p = np.where(vivo, pos, 0)
+        escolhido = inicio[p] + (rng.random(caminhos) * quantos[p]).astype(np.int64)
+        ganho = rr[escolhido]
+        seguidas = np.where(vivo, np.where(ganho <= 0, seguidas + 1, 0), seguidas)
+        pior_seq = np.maximum(pior_seq, seguidas)
+        acumulado = np.where(vivo, acumulado + ganho, acumulado)
+        topo = np.maximum(topo, acumulado)
+        recuo = np.minimum(recuo, acumulado - topo)
+        # a saida nunca e antes da entrada, entao `pos` sempre anda
+        livre = np.where(vivo, np.maximum(sai[escolhido], ent[escolhido]), dias[-1])
+    return (float(np.median(pior_seq)), float(np.median(recuo)))
+
+
 def fechados(trades: pd.DataFrame) -> pd.DataFrame:
     """So trades que sairam (o que ainda esta aberto no fim dos dados nao conta)."""
     return cast(pd.DataFrame, trades[(trades["motivo"] != ABERTO) & np.isfinite(trades["r"])])
@@ -80,6 +130,11 @@ def resumo(t: pd.DataFrame) -> dict[str, float | int]:
     dlo, dhi = bootstrap(dif, mes)
     dias = t["dias"].to_numpy(dtype=np.float64)
     soma_perdas = -perdas.sum()
+    seq, rec = pior_fase(
+        pd.to_datetime(t["data_entrada"]).to_numpy(dtype="datetime64[D]"),
+        pd.to_datetime(t["data_saida"]).to_numpy(dtype="datetime64[D]"),
+        r,
+    )
     out: dict[str, float | int] = {
         "n": n,
         "acerto": float(ganhos.size / n),
@@ -98,6 +153,8 @@ def resumo(t: pd.DataFrame) -> dict[str, float | int]:
         "diferenca": float(np.nanmean(dif)) if np.isfinite(dif).any() else float("nan"),
         "dif_ic_baixo": dlo,
         "dif_ic_alto": dhi,
+        "pior_sequencia": seq,
+        "pior_recuo": rec,
     }
     contagem = t["motivo"].value_counts()
     for codigo, nome in MOTIVOS.items():

@@ -916,6 +916,10 @@ class BacktestResultado(Base):
     pct_alvo: Mapped[float | None] = mapped_column(Float)
     pct_mme9: Mapped[float | None] = mapped_column(Float)
     pct_teto: Mapped[float | None] = mapped_column(Float)
+    # A pior fase de quem opera um trade por vez (mediana de caminhos sorteados):
+    # perdas seguidas e recuo do R acumulado. Null nas rodadas antes da 0020.
+    pior_sequencia: Mapped[float | None] = mapped_column(Float)
+    pior_recuo: Mapped[float | None] = mapped_column(Float)
 
 
 class BacktestEscolha(Base):

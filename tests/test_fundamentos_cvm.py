@@ -528,3 +528,98 @@ def test_baixar_desiste_apos_tentativas_esgotadas(
 
     with pytest.raises(CvmIndisponivelError):
         baixar("http://exemplo/arquivo.zip", tmp_path / "arquivo.zip", tentativas=2, espera=0)
+
+
+# --- O cache da CVM (incidente de 15/11/2026) --------------------------------
+
+
+def test_sem_cache_muda_a_url_a_cada_chamada_e_preserva_o_resto() -> None:
+    from scanner.fundamentos.cvm import sem_cache
+
+    url = "https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/ITR/DADOS/itr_cia_aberta_2026.zip"
+    a, b = sem_cache(url, agora=1000.0), sem_cache(url, agora=1000.5)
+    assert a == f"{url}?v=1000000" and b == f"{url}?v=1000500"
+    assert a != b
+    assert sem_cache("http://exemplo/arquivo?x=1", agora=1.0) == "http://exemplo/arquivo?x=1&v=1000"
+
+
+class _CacheDesatualizado:
+    """Como o cache da frente da CVM em 15/11/2026.
+
+    Para a URL "limpa" ele ainda guarda a copia da semana passada, e responde
+    304 a quem pergunta se ela mudou. So um pedido com parametro novo chega a
+    origem, onde o arquivo ja e outro.
+    """
+
+    def __init__(self) -> None:
+        self.pedidos: list[str] = []
+
+    def __call__(self, _metodo: str, url: str, **_: object) -> _RespostaFalsa:
+        self.pedidos.append(url)
+        if "?v=" not in url:
+            return _RespostaFalsa(304)
+        return _RespostaFalsa(
+            200, {"ETag": '"novo"', "Last-Modified": "Sun, 15 Nov 2026 10:48:31 GMT"}
+        )
+
+
+def test_download_condicional_nao_aceita_304_do_cache(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """A regressao do incidente: com a versao antiga em maos, o arquivo novo TEM de vir."""
+    cache = _CacheDesatualizado()
+    monkeypatch.setattr(httpx, "stream", cache)
+
+    resultado = baixar(
+        "http://exemplo/itr_cia_aberta_2026.zip",
+        tmp_path / "itr_cia_aberta_2026.zip",
+        etag='"velho"',
+        last_modified="Sun, 08 Nov 2026 10:48:31 GMT",
+    )
+
+    assert resultado.alterado is True
+    assert resultado.etag == '"novo"'
+    assert resultado.modificado_em is not None and resultado.modificado_em.day == 15
+    assert len(cache.pedidos) == 1 and "?v=" in cache.pedidos[0]
+
+
+def test_304_da_origem_continua_sendo_sem_mudanca(
+    monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """Furar o cache nao pode virar "baixa tudo sempre": a origem tambem responde 304."""
+    monkeypatch.setattr(httpx, "stream", lambda *a, **k: _RespostaFalsa(304))
+    resultado = baixar(
+        "http://exemplo/itr_cia_aberta_2022.zip",
+        tmp_path / "itr_cia_aberta_2022.zip",
+        etag='"igual"',
+        last_modified="Sun, 15 Nov 2026 11:50:00 GMT",
+    )
+    assert resultado.alterado is False
+    assert not (tmp_path / "itr_cia_aberta_2022.zip").exists()
+
+
+def test_data_na_cvm_pergunta_a_origem_sem_condicao() -> None:
+    from scanner.fundamentos.cvm import CvmIndisponivelError, data_na_cvm
+
+    vistos: list[httpx.Request] = []
+
+    def responder(request: httpx.Request) -> httpx.Response:
+        vistos.append(request)
+        if "dfp" in request.url.path:
+            return httpx.Response(404)
+        if "erro" in request.url.path:
+            return httpx.Response(503)
+        return httpx.Response(200, headers={"Last-Modified": "Sun, 15 Nov 2026 10:48:31 GMT"})
+
+    with httpx.Client(transport=httpx.MockTransport(responder)) as cliente:
+        quando = data_na_cvm("http://exemplo/itr_cia_aberta_2026.zip", cliente=cliente)
+        assert quando is not None and (quando.day, quando.hour, quando.minute) == (15, 10, 48)
+        assert data_na_cvm("http://exemplo/dfp_cia_aberta_2026.zip", cliente=cliente) is None
+        with pytest.raises(CvmIndisponivelError):
+            data_na_cvm("http://exemplo/erro.zip", cliente=cliente)
+
+    primeiro = vistos[0]
+    assert primeiro.method == "HEAD"
+    assert "v" in primeiro.url.params  # sem cache
+    assert "if-none-match" not in primeiro.headers  # e sem condicao
+    assert "if-modified-since" not in primeiro.headers

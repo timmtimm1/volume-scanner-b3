@@ -26,13 +26,16 @@ const COLUNAS = `setup, saida, grupo, periodo, n, acerto, ganho_medio, dias_medi
  * As colunas da pior fase sao da migration 0020: num banco que ainda nao a
  * recebeu, a consulta cai para a versao sem elas e o cartao esconde a linha.
  */
-export async function linhasDoBacktest(rodadaId: number): Promise<LinhaDoBacktest[]> {
+export async function linhasDoBacktest(
+  rodadaId: number,
+  periodoDaNota = "2016-2026",
+): Promise<LinhaDoBacktest[]> {
   const consulta = (extra: string) =>
     conexaoDeAlertas().query<Record<string, Numero>>(
       `SELECT ${COLUNAS}${extra}
          FROM volume_scanner.backtest_resultados
-        WHERE rodada_id = $1 AND periodo IN ('2016-2026', 'tudo')`,
-      [rodadaId],
+        WHERE rodada_id = $1 AND periodo IN ($2, 'tudo')`,
+      [rodadaId, periodoDaNota],
     );
   let rows: Record<string, Numero>[];
   try {

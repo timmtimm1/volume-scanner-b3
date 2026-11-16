@@ -17,6 +17,7 @@ from typing import Any
 
 import httpx
 
+from scanner import mercado
 from scanner.calendar import FUSO_B3
 
 API_BASE = "https://api.telegram.org"
@@ -348,10 +349,14 @@ def format_resumo(resumo: Mapping[str, Any], base_url: str | None = None) -> str
     """
     dia = resumo["trade_date"].strftime("%d/%m/%Y")
     linhas = list(resumo.get("linhas") or [])
+    # Em cripto (`SCANNER_MERCADO=cripto`) a mensagem e a mesma com outras
+    # palavras: nao ha pregao, o "papel" e uma moeda e o link vai para a aba.
+    cripto = mercado.e_cripto()
+    titulo = "🪙 <b>Resumo das criptos</b>" if cripto else "📊 <b>Resumo do pregão</b>"
     if not linhas:
-        return f"📊 <b>Resumo do pregão</b>\n{dia}\n\nSem dados para este pregão."
+        return f"{titulo}\n{dia}\n\nSem dados para este {'dia' if cripto else 'pregão'}."
 
-    cabecalho = f"{'Desvio':>6} {'Papel':<6}{'Var.':>7}{'Volume':>11}"
+    cabecalho = f"{'Desvio':>6} {'Moeda' if cripto else 'Papel':<6}{'Var.':>7}{'Volume':>11}"
     corpo = "\n".join(
         _linha_do_resumo(
             str(linha["ticker"]),
@@ -363,12 +368,12 @@ def format_resumo(resumo: Mapping[str, Any], base_url: str | None = None) -> str
     )
 
     partes = [
-        "📊 <b>Resumo do pregão</b>",
-        dia,
+        titulo,
+        f"{dia} · candle diário, volume em dólar" if cripto else dia,
         "",
         f"<pre>{cabecalho}\n{corpo}</pre>",
     ]
-    if base_url:
+    if base_url and not cripto:
         partes.append(f'<a href="{base_url.rstrip("/")}">abrir o scanner</a>')
 
     trades = list(resumo.get("trades") or [])
@@ -601,7 +606,13 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
         partes += [item(s) for s in armados]
     if outros:
         contagem = " · ".join(f"{NOME_DO_SETUP.get(c, c)} {n}" for c, n in outros.items())
-        partes.append(f"<i>Outros armados hoje, sem alerta:</i> {contagem}")
+        if mercado.e_cripto():
+            # Em cripto nenhum setup tem alerta de preco: a lista com a nota de
+            # cada entrada mora na aba, e aqui vai quantas armaram de cada.
+            total = sum(int(n) for n in outros.values())
+            partes.append(f"<b>Entradas armadas hoje: {total}</b>\n{contagem}")
+        else:
+            partes.append(f"<i>Outros armados hoje, sem alerta:</i> {contagem}")
     if confirmados:
         nomes = ", ".join(
             f"{papel(s)} {_o_que(s)} ({money_simples(_numero(s.get('entrada')))})"
@@ -609,7 +620,10 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
         )
         partes.append(f"<b>Confirmados hoje:</b> {nomes}")
     if base_url:
-        partes.append(f'<a href="{base_url.rstrip("/")}/setups/">abrir setups</a>')
+        if mercado.e_cripto():
+            partes.append(f'<a href="{base_url.rstrip("/")}/cripto/">abrir a aba Cripto</a>')
+        else:
+            partes.append(f'<a href="{base_url.rstrip("/")}/setups/">abrir setups</a>')
     return partes
 
 

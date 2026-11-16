@@ -1798,3 +1798,27 @@ def trocar_niveis(engine: Engine, frame: pd.DataFrame) -> int:
         if linhas:
             conn.execute(insert(Nivel), linhas)
     return len(linhas)
+
+
+def cobertura_do_trimestre(engine: Engine, dt_refer: date, anterior: date) -> tuple[int, int]:
+    """Das empresas com documento em `anterior`, quantas ja tem o de `dt_refer`.
+
+    Devolve (com o novo, com o anterior). So conta empresa ligada a algum
+    ticker: as outras a carga nem le. E a medida da conferencia dos fundamentos
+    (`scanner.fundamentos.conferencia`): o denominador sao as empresas que
+    estavam entregando, e nao todas as do cadastro.
+    """
+    ligadas = select(EmpresaTicker.cd_cvm).distinct().scalar_subquery()
+    com_anterior = (
+        select(CvmDocumento.cd_cvm)
+        .where(CvmDocumento.dt_refer == anterior, CvmDocumento.cd_cvm.in_(ligadas))
+        .distinct()
+    )
+    com_novo = (
+        select(func.count(func.distinct(CvmDocumento.cd_cvm)))
+        .where(CvmDocumento.dt_refer == dt_refer)
+        .where(CvmDocumento.cd_cvm.in_(com_anterior))
+    )
+    total = select(func.count()).select_from(com_anterior.subquery())
+    with engine.connect() as conn:
+        return int(conn.execute(com_novo).scalar_one()), int(conn.execute(total).scalar_one())

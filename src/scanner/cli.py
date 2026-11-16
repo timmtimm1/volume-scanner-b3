@@ -752,6 +752,31 @@ def fundamentos_atualizar(
         raise typer.Exit(code=1)
 
 
+@fundamentos_app.command("conferir")
+def fundamentos_conferir() -> None:
+    """Confere se o banco esta em dia com a CVM. Nao grava nada; sai com 1 se nao estiver.
+
+    Duas perguntas, feitas sem confiar na carga: cada zip da CVM e mais novo do
+    que o que o banco processou? E, passado o prazo de entrega do trimestre, a
+    maioria das empresas ja tem o balanco novo? Ver
+    `scanner.fundamentos.conferencia`.
+    """
+    from scanner.fundamentos.conferencia import conferir
+    from scanner.storage.engine import build_engine
+
+    resultado = conferir(build_engine(), load_config().fundamentos)
+    for linha in resultado.linhas:
+        typer.echo(f"[conferencia] {linha}")
+    if not resultado.em_dia:
+        typer.secho(
+            f"[conferencia] fundamentos ATRASADOS: {len(resultado.problemas)} problema(s). "
+            "Rode `scanner fundamentos atualizar --sem-b3`.",
+            fg=typer.colors.RED,
+        )
+        raise typer.Exit(code=1)
+    typer.echo("[conferencia] fundamentos em dia")
+
+
 @fundamentos_app.command("status")
 def fundamentos_status() -> None:
     """Empresas, documentos por tipo/ano e tickers ainda sem empresa ligada."""

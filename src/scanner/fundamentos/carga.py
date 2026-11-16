@@ -62,6 +62,11 @@ def _url_fca(ano: int) -> str:
     return f"https://dados.cvm.gov.br/dados/CIA_ABERTA/DOC/FCA/DADOS/fca_cia_aberta_{ano}.zip"
 
 
+def url_do_zip(tipo: str, ano: int) -> str:
+    """Endereco do zip anual de ITR ou DFP -- a chave dele em `arquivos_externos`."""
+    return _url_zip(tipo, ano)
+
+
 def _url_zip(tipo: str, ano: int) -> str:
     pasta = tipo.upper()
     return (

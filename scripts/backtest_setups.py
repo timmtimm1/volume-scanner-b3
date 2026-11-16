@@ -91,7 +91,9 @@ SEMENTE = 20261105
 
 def processar(barras_pkl: Path, pasta: Path) -> None:
     pasta.mkdir(parents=True, exist_ok=True)
-    cfg = load_config(Path(__file__).resolve().parents[1] / "config.yaml").setups
+    # O config do mercado do processo: `config.yaml`, ou `config-cripto.yaml` com
+    # SCANNER_MERCADO=cripto (as barras entao vem de `scripts/cripto_historico.py`).
+    cfg = load_config().setups
     b = pd.read_pickle(barras_pkl)
     b["ticker"] = b["ticker"].astype(str)
     sessoes = pd.DatetimeIndex(sorted(pd.to_datetime(b["trade_date"].unique())))

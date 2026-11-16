@@ -1,0 +1,62 @@
+# Configuracao do scanner para o mercado de CRIPTO (SCANNER_MERCADO=cripto).
+# Mesmas secoes do config.yaml da B3; os valores em "brl" aqui sao em DOLAR
+# (USDT), que e a moeda em que as criptos sao cotadas -- o nome do campo e
+# herdado. Segredos NAO ficam aqui.
+
+alert:
+  metric: z_log
+  threshold: 6.0
+  windows: [30, 45, 60]
+  require_all_windows: false
+  min_volume_brl: 1000000     # US$ 1 milhao no dia
+
+digest:
+  # Resumo diario no Telegram, depois que o candle fecha (21h de Brasilia).
+  enabled: true
+  top_n: 10
+  window: 30
+
+universe:
+  min_median_volume_brl: 1000000   # US$ 1 milhao de mediana em 60 dias
+  lookback_sessions: 60
+  min_session_coverage: 0.8
+
+retention:
+  keep_sessions: 400
+
+cripto:
+  # As 50 maiores por valor de mercado com par em dolar (USDT) na Binance.
+  top: 50
+  categorias_excluidas: [stablecoins, tokenized-products, tokenized-btc, liquid-staking-tokens]
+  dias_iniciais: 400
+
+setups:
+  # As mesmas regras da B3, sem mudar corte nenhum: o que muda e a nota de cada
+  # setup, que vem do backtest proprio de cripto (scripts/backtest_cripto.py).
+  enabled: true
+  volume_minimo: 1.5
+  volume_destaque: 2.5
+  espaco_minimo_r: 2.0
+  toques_gatilho: 3
+  toques_nivel: 2
+  prazo_pregoes: 20
+  # Sem alerta de preco durante o dia: a checagem de rompimento e da B3 (brapi
+  # e Yahoo). Em cripto o aviso e o resumo das 21h com as entradas armadas.
+  alerta: false
+  medias: [[MME, 9], [MMA, 20]]
+  padroes:
+    reversao: {alerta: false, saida: alvo3}
+    media: {alerta: false, saida: alvo3}
+    forca: {alerta: false, saida: mme9}
+    "9.1": {alerta: false, saida: mme9}
+    "9.2": {alerta: false, saida: mme9}
+    "9.3": {alerta: false, saida: mme9}
+    "9.4": {alerta: false, saida: mme9}
+    "123": {alerta: false, saida: alvo3}
+    pfr: {alerta: false, saida: alvo3}
+    "123_suporte": {alerta: false, saida: alvo3}
+    pfr_suporte: {alerta: false, saida: alvo3}
+    mma20: {alerta: false, saida: alvo3}
+    pullback: {alerta: false, saida: mme9}
+    contracao: {alerta: false, saida: alvo3}
+    rompimento: {alerta: false, saida: mme9}

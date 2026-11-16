@@ -58,6 +58,8 @@ def test_nomes_das_tabelas() -> None:
     # para cada setup: alerta ligado ou nao e a saida depois de confirmado.
     # `perfil_de_risco` (migration 0018) e o capital e o risco por trade do
     # usuario, para a calculadora de lote dos setups.
+    # `moedas` (migration 0023) e o ranking das criptomoedas; so tem linha no
+    # schema de cripto (`SCANNER_MERCADO=cripto`), na B3 fica vazia.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -89,6 +91,7 @@ def test_nomes_das_tabelas() -> None:
         "backtest_trades",
         "setup_preferencias",
         "perfil_de_risco",
+        "moedas",
     }
 
 

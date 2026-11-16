@@ -23,11 +23,11 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from scanner import mercado
 from scanner.backtest.simulador import SAIDAS, Precos, Saida, entrar, simular
 from scanner.config import SetupsConfig
 from scanner.gatilhos.candles import padroes
 from scanner.gatilhos.classicos import (
-    CENTAVO,
     RegrasClassicas,
     Sinal,
     classicos,
@@ -44,11 +44,12 @@ F64 = npt.NDArray[np.float64]
 I64 = npt.NDArray[np.int64]
 B = npt.NDArray[np.bool_]
 
-# 0,03% de taxas da B3 + 0,05% de derrapagem, por lado.
-CUSTO = 0.0008
+# Por lado, conforme o mercado do processo: 0,03% de taxas da B3 + 0,05% de
+# derrapagem; em cripto, 0,10% da Binance + 0,05% (`scanner.mercado`).
+CUSTO = mercado.custo()
 # Risco menor que 0,2% do preco nao vira trade: o R minusculo explode o resultado.
 RISCO_MIN = 0.002
-PISO_HOJE = 500_000.0
+PISO_HOJE = mercado.piso_de_liquidez()
 JANELA_LIQUIDEZ = 60
 MINIMO_DE_PREGOES = 48
 # Categorias da regra dos Setups de hoje, com o nome que tem na suite.
@@ -162,7 +163,7 @@ def rodar_lote(
     m = montar(barras, tickers, sessoes)
     o, h, low, c = m.abertura, m.maxima, m.minima, m.fechamento
     ajuste = ajuste_acumulado(m.fator)
-    tick = CENTAVO * ajuste
+    tick = mercado.tick(c, ajuste)
     atr = atr_wilder(h, low, c)
     ctx = calcular(h, c, m.volume)
     retrato, eventos = detectar(h, low, c, atr, Regras(toques_min=cfg.toques_nivel))

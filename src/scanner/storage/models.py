@@ -32,7 +32,11 @@ from sqlalchemy import (
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column
 
-SCHEMA = "volume_scanner"
+from scanner import mercado
+
+# O schema depende do mercado do processo (`SCANNER_MERCADO`): `volume_scanner`
+# para a B3, `cripto_scanner` para as criptos. Ver `scanner.mercado`.
+SCHEMA = mercado.schema()
 
 
 class Base(DeclarativeBase):
@@ -52,11 +56,11 @@ class DailyBar(Base):
 
     ticker: Mapped[str] = mapped_column(Text, primary_key=True)
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    open: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
-    high: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
-    low: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
-    close: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
-    avg_price: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    open: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
+    high: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
+    low: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
+    close: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    avg_price: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
     volume_shares: Mapped[int | None] = mapped_column(BigInteger)
     volume_financial: Mapped[Decimal] = mapped_column(Numeric(20, 2), nullable=False)
     trades_count: Mapped[int | None] = mapped_column(Integer)
@@ -300,7 +304,7 @@ class TradeSnapshot(Base):
     custo_comprado: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     realizado: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     # Mesma precisao de DailyBar.close: e de onde este valor vem.
-    fechamento: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    fechamento: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
     valor_posicao: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     resultado: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     sem_negocio: Mapped[bool] = mapped_column(Boolean, nullable=False, server_default=text("false"))
@@ -747,22 +751,22 @@ class Setup(Base):
     rvol: Mapped[Decimal] = mapped_column(Numeric(10, 4), nullable=False)
     destaque: Mapped[bool] = mapped_column(Boolean, nullable=False)
     contexto: Mapped[list[str]] = mapped_column(ARRAY(Text), nullable=False)
-    fechamento: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
-    maxima: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
-    minima: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
-    suporte: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    fechamento: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    maxima: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    minima: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    suporte: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
     # O que segurou o candle: `nivel` (suporte horizontal) ou as medias tocadas
     # (`mme9`, `mma20`, `mme9,mma20`) na categoria `media`.
     suporte_tipo: Mapped[str] = mapped_column(Text, nullable=False, server_default="nivel")
-    resistencia: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    resistencia: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
     espaco_r: Mapped[Decimal | None] = mapped_column(Numeric(10, 2))
     risco_pct: Mapped[Decimal] = mapped_column(Numeric(8, 3), nullable=False)
     ao_vivo: Mapped[bool] = mapped_column(Boolean, nullable=False)
     estado: Mapped[str] = mapped_column(Text, nullable=False, server_default="armado")
     confirmado_em: Mapped[date | None] = mapped_column(Date)
-    entrada: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    entrada: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
     encerrado_em: Mapped[date | None] = mapped_column(Date)
-    saida: Mapped[Decimal | None] = mapped_column(Numeric(18, 4))
+    saida: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
     r5: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
     r10: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
     r20: Mapped[Decimal | None] = mapped_column(Numeric(12, 6))
@@ -832,7 +836,7 @@ class Nivel(Base):
     id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
     ticker: Mapped[str] = mapped_column(Text, nullable=False)
     lado: Mapped[str] = mapped_column(Text, nullable=False)
-    preco: Mapped[Decimal] = mapped_column(Numeric(18, 4), nullable=False)
+    preco: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
     de: Mapped[date] = mapped_column(Date, nullable=False)
     ate: Mapped[date] = mapped_column(Date, nullable=False)
     vale_desde: Mapped[date | None] = mapped_column(Date)
@@ -845,10 +849,35 @@ class Nivel(Base):
     )
 
 
+class Moeda(Base):
+    """Uma criptomoeda acompanhada (aba Cripto, migration 0023).
+
+    So tem linha no schema de cripto; na B3 a tabela existe e fica vazia, porque
+    as migrations sao as mesmas nos dois mercados. `ticker` e a moeda (`BTC`),
+    `par` o que a Binance negocia (`BTCUSDT`). `no_top` diz se ela esta entre as
+    maiores hoje: quem saiu continua sendo carregado enquanto tiver barra, para
+    um setup aberto conseguir encerrar, mas nao entra na lista da aba.
+    """
+
+    __tablename__ = "moedas"
+
+    ticker: Mapped[str] = mapped_column(Text, primary_key=True)
+    par: Mapped[str] = mapped_column(Text, nullable=False)
+    nome: Mapped[str] = mapped_column(Text, nullable=False)
+    posicao: Mapped[int | None] = mapped_column(SmallInteger)
+    valor_de_mercado: Mapped[Decimal | None] = mapped_column(Numeric(24, 2))
+    no_top: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 # --- Suite de backtest (secao 14 do plano, migration 0016) -------------------
 
 _SAIDAS = "saida IN ('alvo1', 'alvo2', 'alvo3', 'minimas', 'mme9')"
 _GRUPOS = "grupo IN ('todos', 'alta', 'contra')"
+# Os periodos da B3 e os de cripto (migration 0024): a tabela e a mesma.
+_PERIODOS_DO_BACKTEST = ", ".join(f"'{r}'" for r in mercado.rotulos_de_periodo())
 
 
 def _rodada_fk() -> Mapped[int]:
@@ -887,7 +916,7 @@ class BacktestResultado(Base):
         CheckConstraint(_SAIDAS, name="ck_backtest_resultados_saida"),
         CheckConstraint(_GRUPOS, name="ck_backtest_resultados_grupo"),
         CheckConstraint(
-            "periodo IN ('1995-2015', '2016-2026', 'tudo')", name="ck_backtest_resultados_periodo"
+            f"periodo IN ({_PERIODOS_DO_BACKTEST})", name="ck_backtest_resultados_periodo"
         ),
     )
 

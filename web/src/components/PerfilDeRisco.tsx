@@ -2,14 +2,16 @@
 
 import { useRouter } from "next/navigation";
 import { useId, useState } from "react";
-import { numero, reais } from "@/lib/formato";
+import { numero } from "@/lib/formato";
+import { type Mercado, valor } from "@/lib/mercado";
 import { numeroDoTexto, RISCO_PADRAO_PCT, type Perfil } from "@/lib/lote";
 
-type Props = { inicial: Perfil | null };
+/** `mercado`: em cripto o capital e em dolares e fica guardado a parte do da B3. */
+type Props = { inicial: Perfil | null; mercado?: Mercado };
 
 /** "R$ 10.000" sem centavos redondos, "R$ 10.000,50" com. */
-function capitalEmTexto(capital: number): string {
-  return reais(capital, Number.isInteger(capital) ? 0 : 2);
+function capitalEmTexto(capital: number, mercado: Mercado): string {
+  return valor(mercado, capital, Number.isInteger(capital) ? 0 : 2);
 }
 
 /** O numero no campo de edicao: sem "R$" e com virgula, como a pessoa digita. */
@@ -25,7 +27,8 @@ function paraCampo(v: number): string {
  * Salvar grava em `/api/perfil` e recarrega a pagina: os cartoes da aba Setups
  * vem do servidor com o perfil e recalculam o lote sozinhos.
  */
-export function PerfilDeRisco({ inicial }: Props) {
+export function PerfilDeRisco({ inicial, mercado = "b3" }: Props) {
+  const moeda = mercado === "b3" ? "reais" : "dólares";
   const id = useId();
   const router = useRouter();
   const [perfil, setPerfil] = useState<Perfil | null>(inicial);
@@ -46,7 +49,7 @@ export function PerfilDeRisco({ inicial }: Props) {
     const c = numeroDoTexto(capital);
     const r = numeroDoTexto(risco);
     if (c === null || c <= 0) {
-      setErro("Digite o capital em reais, maior que zero.");
+      setErro(`Digite o capital em ${moeda}, maior que zero.`);
       return;
     }
     if (r === null || r <= 0 || r > 10) {
@@ -56,7 +59,7 @@ export function PerfilDeRisco({ inicial }: Props) {
     setSalvando(true);
     setErro(null);
     try {
-      const resposta = await fetch("/api/perfil/", {
+      const resposta = await fetch(mercado === "b3" ? "/api/perfil/" : "/api/perfil/?mercado=cripto", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ capital: c, riscoPct: r }),
@@ -86,7 +89,7 @@ export function PerfilDeRisco({ inicial }: Props) {
       {!editando && perfil ? (
         <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
           <p className="num min-w-0 flex-1 text-[14px] font-bold">
-            Capital {capitalEmTexto(perfil.capital)}
+            Capital {capitalEmTexto(perfil.capital, mercado)}
             <span className="font-semibold text-tinta-3">
               {" "}
               · risco {numero(perfil.riscoPct, Number.isInteger(perfil.riscoPct) ? 0 : 2)}% por trade
@@ -107,7 +110,7 @@ export function PerfilDeRisco({ inicial }: Props) {
           </p>
           <div className="grid grid-cols-2 gap-3">
             <label className="flex min-w-0 flex-col gap-1" htmlFor={`${id}-capital`}>
-              <span className="rotulo">Capital (R$)</span>
+              <span className="rotulo">Capital ({mercado === "b3" ? "R$" : "US$"})</span>
               <input
                 id={`${id}-capital`}
                 type="text"
@@ -133,7 +136,7 @@ export function PerfilDeRisco({ inicial }: Props) {
           </div>
           <p className="text-[12px] font-semibold text-tinta-3">
             O risco é quanto do capital você aceita perder se o stop for atingido. O lote sai dessa
-            conta, em ações inteiras.
+            conta, {mercado === "b3" ? "em ações inteiras" : "em frações da moeda"}.
           </p>
           <div className="flex gap-2">
             <button

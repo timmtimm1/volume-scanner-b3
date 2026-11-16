@@ -16,12 +16,14 @@ from collections.abc import Sequence
 
 from alembic import op
 
+from scanner import mercado
+
 revision: str = "0021"
 down_revision: str | None = "0020"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-SCHEMA = "volume_scanner"
+SCHEMA = mercado.schema()
 ANTES = (
     "'reversao', 'forca', 'media', '9.1', '9.2', '9.3', '9.4', '123', 'pfr', "
     "'123_suporte', 'pfr_suporte', 'mma20', 'pullback'"

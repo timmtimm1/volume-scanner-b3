@@ -25,7 +25,8 @@ export type LinhaDoBacktest = {
   setup: string;
   saida: Saida;
   grupo: Grupo;
-  periodo: "2016-2026" | "tudo";
+  /** O periodo da nota ("2016-2026" na B3, "2022-2026" em cripto) ou "tudo". */
+  periodo: string;
   n: number;
   acerto: number | null;
   /** Ganho medio dos trades que terminaram no lucro, em R. */
@@ -126,7 +127,6 @@ export type Entrada = BaseDaEntrada & {
 
 const MULTIPLO: Partial<Record<Saida, number>> = { alvo1: 1, alvo2: 2, alvo3: 3 };
 
-const centavos = (v: number): number => Math.round(v * 100) / 100;
 
 function achar(
   linhas: readonly LinhaDoBacktest[],
@@ -141,9 +141,29 @@ function achar(
 }
 
 /** Junta o setup armado com os numeros do backtest da combinacao dele. */
-export function montarEntrada(b: BaseDaEntrada, linhas: readonly LinhaDoBacktest[]): Entrada {
+const centavos = (v: number): number => Math.round(v * 100) / 100;
+
+/**
+ * O que muda na conta de um mercado para o outro (`mercado.ts`). O padrao e a
+ * B3: nota medida em 2016-2026 e preco com centavos. Vem por parametro, e nao
+ * por import, porque os testes rodam este arquivo direto no Node.
+ */
+export type RegrasDoMercado = {
+  /** O periodo da grade do backtest de onde sai a nota do semaforo. */
+  periodoDaNota: string;
+  /** Arredonda um PRECO para as casas que o mercado usa. */
+  arredondarPreco: (v: number) => number;
+};
+
+const REGRAS_DA_B3: RegrasDoMercado = { periodoDaNota: "2016-2026", arredondarPreco: centavos };
+
+export function montarEntrada(
+  b: BaseDaEntrada,
+  linhas: readonly LinhaDoBacktest[],
+  regras: RegrasDoMercado = REGRAS_DA_B3,
+): Entrada {
   const grupo = grupoDoPapel(b.setup.alta);
-  const conferencia = achar(linhas, b.chave, b.saida, grupo, "2016-2026");
+  const conferencia = achar(linhas, b.chave, b.saida, grupo, regras.periodoDaNota);
   const tudo = achar(linhas, b.chave, b.saida, grupo, "tudo");
   const porAcao = b.gatilho - b.stop;
   const riscoPct = b.gatilho > 0 ? porAcao / b.gatilho : 0;
@@ -155,7 +175,8 @@ export function montarEntrada(b: BaseDaEntrada, linhas: readonly LinhaDoBacktest
     ...b,
     riscoPct,
     multiplo,
-    alvo: multiplo === null ? null : centavos(b.gatilho + multiplo * porAcao),
+    // O alvo e um PRECO: na B3 tem centavos; em cripto, as casas da moeda.
+    alvo: multiplo === null ? null : regras.arredondarPreco(b.gatilho + multiplo * porAcao),
     alvoPct: multiplo === null ? null : multiplo * riscoPct,
     ganhoMedioPct: ganhoMedio === null ? null : ganhoMedio * riscoPct,
     perdaEmReais: perda,
@@ -200,10 +221,13 @@ export function contarPorCor(entradas: readonly Entrada[]): { cor: Cor; n: numbe
 }
 
 /** "dura ~6 pregões", com o singular certo; null sem numero. */
-export function textoDaDuracao(dias: number | null): string | null {
+export function textoDaDuracao(
+  dias: number | null,
+  [um, varios]: readonly [string, string] = ["pregão", "pregões"],
+): string | null {
   if (dias === null || !Number.isFinite(dias)) return null;
   const n = Math.max(1, Math.round(dias));
-  return `dura ~${n} ${n === 1 ? "pregão" : "pregões"}`;
+  return `dura ~${n} ${n === 1 ? um : varios}`;
 }
 
 /** Um candle do mini grafico. */

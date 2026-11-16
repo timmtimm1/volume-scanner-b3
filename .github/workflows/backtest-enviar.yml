@@ -21,6 +21,12 @@ on:
         description: "Tag da release que tem o arquivo rodada.json.gz.enc"
         required: false
         default: "backtest-rodada"
+      mercado:
+        description: "De qual mercado e a rodada: b3 (rodada.json.gz.enc) ou cripto (rodada-cripto.json.gz.enc)"
+        type: choice
+        options: [b3, cripto]
+        required: false
+        default: "b3"
 
 permissions:
   contents: read
@@ -36,6 +42,10 @@ jobs:
       SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
       BACKTEST_CHAVE: ${{ secrets.BACKTEST_CHAVE }}
       RELEASE: ${{ inputs.release || 'backtest-rodada' }}
+      # O mercado decide o schema do banco onde a rodada e gravada
+      # (src/scanner/mercado.py) e qual arquivo da release e lido.
+      SCANNER_MERCADO: ${{ inputs.mercado || 'b3' }}
+      ARQUIVO: ${{ inputs.mercado == 'cripto' && 'rodada-cripto.json.gz.enc' || 'rodada.json.gz.enc' }}
     steps:
       - uses: actions/checkout@v5
 
@@ -58,9 +68,9 @@ jobs:
         run: |
           mkdir -p /tmp/rodada
           gh release download "$RELEASE" --repo "$GITHUB_REPOSITORY" \
-            --pattern rodada.json.gz.enc --dir /tmp/rodada
+            --pattern "$ARQUIVO" --dir /tmp/rodada
           openssl enc -d -aes-256-cbc -pbkdf2 -pass env:BACKTEST_CHAVE \
-            -in /tmp/rodada/rodada.json.gz.enc -out /tmp/rodada/rodada.json.gz
+            -in "/tmp/rodada/$ARQUIVO" -out /tmp/rodada/rodada.json.gz
 
       - name: Migrations
         # --no-sync: sem ele o `uv run` ressincroniza com o grupo dev.

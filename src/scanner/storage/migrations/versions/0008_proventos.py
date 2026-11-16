@@ -25,12 +25,14 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from scanner import mercado
+
 revision: str = "0008"
 down_revision: str | None = "0007"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-SCHEMA = "volume_scanner"
+SCHEMA = mercado.schema()
 
 _COLUNAS_EMPRESA = (
     ("emissor_b3", sa.Text()),

@@ -16,6 +16,8 @@ from pydantic import BaseModel, Field, SecretStr, field_validator
 from pydantic_core.core_schema import ValidationInfo
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
+from scanner import mercado
+
 PROJECT_ROOT = Path(__file__).resolve().parents[2]
 DEFAULT_CONFIG_PATH = PROJECT_ROOT / "config.yaml"
 
@@ -319,6 +321,32 @@ class SemanaConfig(BaseModel):
         return value
 
 
+class CriptoConfig(BaseModel):
+    """Carga das criptomoedas (so usada com `SCANNER_MERCADO=cripto`)."""
+
+    # Quantas moedas, por valor de mercado, entre as que tem par em dolar (USDT).
+    top: int = 50
+    # Categorias da CoinGecko que nao sao "cripto que se mexe": as mesmas do
+    # resumo da semana.
+    categorias_excluidas: list[str] = Field(
+        default_factory=lambda: [
+            "stablecoins",
+            "tokenized-products",
+            "tokenized-btc",
+            "liquid-staking-tokens",
+        ]
+    )
+    # Historico baixado para uma moeda que acabou de entrar na lista, em dias.
+    dias_iniciais: int = 400
+
+    @field_validator("top", "dias_iniciais")
+    @classmethod
+    def _validate_positivos(cls, value: int, info: ValidationInfo) -> int:
+        if value < 1:
+            raise ValueError(f"cripto.{info.field_name} precisa ser ao menos 1")
+        return value
+
+
 class ScannerConfig(BaseModel):
     """Conteudo completo de `config.yaml`."""
 
@@ -330,6 +358,7 @@ class ScannerConfig(BaseModel):
     fundamentos: FundamentosConfig = Field(default_factory=FundamentosConfig)
     semana: SemanaConfig = Field(default_factory=SemanaConfig)
     setups: SetupsConfig = Field(default_factory=SetupsConfig)
+    cripto: CriptoConfig = Field(default_factory=CriptoConfig)
 
 
 class Settings(BaseSettings):
@@ -366,6 +395,9 @@ def get_settings() -> Settings:
 def load_config(path: Path | None = None) -> ScannerConfig:
     """Le e valida `config.yaml`."""
     resolved = path if path is not None else get_settings().config_path
+    if path is None and resolved == DEFAULT_CONFIG_PATH:
+        # Cada mercado tem o seu arquivo; `SCANNER_CONFIG_PATH` continua mandando.
+        resolved = PROJECT_ROOT / mercado.arquivo_de_config()
     if not resolved.is_file():
         raise FileNotFoundError(f"config.yaml nao encontrado em {resolved}")
 

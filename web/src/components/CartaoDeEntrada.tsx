@@ -8,8 +8,18 @@ import {
   TEXTO_DA_COR,
   textoDaDuracao,
 } from "@/lib/entradas";
-import { numero, percentual, reais, reaisComSinal } from "@/lib/formato";
-import { type ContextoDoDiario, linkDaFicha, NOME_DO_SETUP } from "@/lib/setups-tela";
+import { numero as numeroBr, percentual } from "@/lib/formato";
+import {
+  casasDoPreco,
+  linkDaFichaNoMercado,
+  type Mercado,
+  preco,
+  quantidade,
+  textos,
+  valor,
+  valorComSinal,
+} from "@/lib/mercado";
+import { type ContextoDoDiario, NOME_DO_SETUP } from "@/lib/setups-tela";
 import { BotaoEntrei } from "./FormularioEntrei";
 
 /**
@@ -83,7 +93,9 @@ function MiniGrafico({ candles, e }: { candles: Candle[]; e: Entrada }) {
  * alvo, na proporcao certa. Sem alvo fixo, o verde vai ate o ganho medio
  * historico e termina esmaecido -- nao ha um preco de saida marcado.
  */
-function Regua({ e }: { e: Entrada }) {
+function Regua({ e, mercado }: { e: Entrada; mercado: Mercado }) {
+  // Em cripto o preco tem as casas da moeda (0,0000042); na B3, centavos.
+  const numero = (v: number) => numeroBr(v, mercado === "b3" ? 2 : casasDoPreco(v));
   const ganhoEmR =
     e.multiplo ?? (e.ganhoMedioPct !== null && e.riscoPct > 0 ? e.ganhoMedioPct / e.riscoPct : 1);
   // teto de 4: um ganho medio muito alto nao pode espremer o vermelho ate sumir
@@ -119,8 +131,15 @@ const LUZ: Record<Cor, string> = {
 const ORDEM_DAS_LUZES: readonly Cor[] = ["vermelho", "amarelo", "verde"];
 
 /** As tres luzes, so a da nota acesa, com a palavra e a explicacao de uma linha. */
-export function Semaforo({ cor }: { cor: Cor }) {
-  const texto = TEXTO_DA_COR[cor];
+export function Semaforo({ cor, mercado = "b3" }: { cor: Cor; mercado?: Mercado }) {
+  const t = textos(mercado);
+  // O texto da B3 e a base; em cripto trocam os anos da nota e o que e sorteado.
+  const texto = {
+    nome: TEXTO_DA_COR[cor].nome,
+    explicacao: TEXTO_DA_COR[cor].explicacao
+      .replace("2016–2026", t.periodoDaNotaTexto)
+      .replace("um papel sorteado", t.sorteado),
+  };
   return (
     <div className="flex items-center gap-3 rounded-xl bg-painel px-3 py-2.5">
       <span className="flex shrink-0 gap-1.5 rounded-full bg-painel-2 p-1.5" aria-hidden>
@@ -146,12 +165,15 @@ function Cenario({
   pct,
   emReais,
   cor,
+  mercado,
   children,
 }: {
   rotulo: string;
   pct: number | null;
+  /** Na moeda do mercado: reais na B3, dolares em cripto. */
   emReais: number | null;
   cor: string;
+  mercado: Mercado;
   children?: React.ReactNode;
 }) {
   return (
@@ -163,7 +185,7 @@ function Cenario({
           {emReais !== null && (
             <span className="whitespace-nowrap text-[13px] font-bold">
               {" "}
-              ({reaisComSinal(emReais)})
+              ({valorComSinal(mercado, emReais)})
             </span>
           )}
         </span>
@@ -176,14 +198,17 @@ function Cenario({
 }
 
 /** "9 perdas seguidas (−R$ 150,00)": a pior fase do setup, ou nada sem o numero. */
-function PiorFase({ e }: { e: Entrada }) {
+function PiorFase({ e, mercado }: { e: Entrada; mercado: Mercado }) {
   if (e.piorSequencia === null) return null;
   const n = Math.round(e.piorSequencia);
   return (
     <>
-      pior fase em 30 anos: {n} {n === 1 ? "perda seguida" : "perdas seguidas"}
+      pior fase em {textos(mercado).historico}: {n} {n === 1 ? "perda seguida" : "perdas seguidas"}
       {e.piorRecuoEmReais !== null && (
-        <span className="whitespace-nowrap"> (−{reais(Math.abs(e.piorRecuoEmReais), 0)})</span>
+        <span className="whitespace-nowrap">
+          {" "}
+          (−{valor(mercado, Math.abs(e.piorRecuoEmReais), 0)})
+        </span>
       )}
     </>
   );
@@ -214,14 +239,15 @@ type Props = { e: Entrada; candles: Candle[]; diario: ContextoDoDiario };
 
 export function CartaoDeEntrada({ e, candles, diario }: Props) {
   const s = e.setup;
+  const mercado = diario.mercado ?? "b3";
   const temAlvo = e.alvoPct !== null;
-  const duracao = textoDaDuracao(e.dias);
+  const duracao = textoDaDuracao(e.dias, textos(mercado).dia);
   const lote = e.lote && e.lote.quantidade > 0 ? e.lote : null;
   return (
     <article className="flex min-w-0 flex-col gap-3 rounded-2xl bg-painel-2 p-4">
       <header className="flex items-baseline gap-2">
         <Link
-          href={linkDaFicha(s)}
+          href={linkDaFichaNoMercado(mercado, s.ticker, s.tradeDate)}
           className="text-[20px] font-extrabold transition-colors hover:text-acento"
         >
           {s.ticker}
@@ -242,17 +268,29 @@ export function CartaoDeEntrada({ e, candles, diario }: Props) {
 
       <p className="flex items-baseline justify-between gap-3">
         <span className="text-[14px] font-bold text-tinta-2">Compra acima de</span>
-        <span className="num text-[22px] font-extrabold text-acento">{reais(e.gatilho)}</span>
+        <span className="num text-[22px] font-extrabold text-acento">{preco(mercado, e.gatilho)}</span>
       </p>
 
-      <Regua e={e} />
+      <Regua e={e} mercado={mercado} />
 
-      <Cenario rotulo="Se der errado" pct={-e.riscoPct} emReais={e.perdaEmReais === null ? null : -e.perdaEmReais} cor="text-baixa">
-        <PiorFase e={e} />
+      <Cenario
+        rotulo="Se der errado"
+        pct={-e.riscoPct}
+        emReais={e.perdaEmReais === null ? null : -e.perdaEmReais}
+        cor="text-baixa"
+        mercado={mercado}
+      >
+        <PiorFase e={e} mercado={mercado} />
       </Cenario>
 
       {temAlvo ? (
-        <Cenario rotulo="Se der certo" pct={e.alvoPct} emReais={e.alvoEmReais} cor="text-alta">
+        <Cenario
+          rotulo="Se der certo"
+          pct={e.alvoPct}
+          emReais={e.alvoEmReais}
+          cor="text-alta"
+          mercado={mercado}
+        >
           {e.ganhoMedioPct !== null && (
             <>quem ganhou, ganhou em média {percentual(e.ganhoMedioPct)}</>
           )}
@@ -263,19 +301,20 @@ export function CartaoDeEntrada({ e, candles, diario }: Props) {
           pct={e.ganhoMedioPct}
           emReais={e.ganhoMedioEmReais}
           cor="text-alta"
+          mercado={mercado}
         >
           sem alvo fixo: {COMO_SAI[e.saida] ?? "sai pela regra do setup"}
         </Cenario>
       )}
 
-      <Semaforo cor={e.cor} />
+      <Semaforo cor={e.cor} mercado={mercado} />
 
       <footer className="flex flex-wrap items-center gap-3">
         <span className="num min-w-0 flex-1 text-[12px] font-semibold text-tinta-3">
           {[
             duracao,
             lote &&
-              `${numero(lote.quantidade, 0)} ${lote.quantidade === 1 ? "ação" : "ações"} (${reais(lote.valorPosicao, 0)})`,
+              `${quantidade(mercado, lote.quantidade, s.ticker)} (${valor(mercado, lote.valorPosicao, 0)})`,
           ]
             .filter(Boolean)
             .join(" · ")}
@@ -285,11 +324,12 @@ export function CartaoDeEntrada({ e, candles, diario }: Props) {
               <a href="#perfil" className="font-bold text-acento hover:underline">
                 defina seu capital
               </a>{" "}
-              para ver em reais
+              para ver {textos(mercado).naMoeda}
             </>
           )}
         </span>
-        <BotaoEntrei s={s} diario={diario} />
+        {/* o diario de trades ainda e so da B3 (quantidade inteira, preco em centavos) */}
+        {mercado === "b3" && <BotaoEntrei s={s} diario={diario} />}
       </footer>
     </article>
   );

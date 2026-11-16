@@ -31,9 +31,10 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from scanner import mercado
 from scanner.config import SetupsConfig, UniverseConfig
 from scanner.gatilhos.candles import padroes
-from scanner.gatilhos.classicos import CENTAVO, classicos, tendencia_de_alta
+from scanner.gatilhos.classicos import classicos, tendencia_de_alta
 from scanner.gatilhos.contexto import atr_wilder, calcular
 from scanner.gatilhos.matrizes import Matrizes, ajuste_acumulado, montar
 from scanner.gatilhos.medias import RegrasDaMedia, media_movel, toques_na_media
@@ -304,7 +305,7 @@ def setups_classicos(a: Analise, cfg: SetupsConfig) -> pd.DataFrame:
     """
     m, ret, ctx = a.m, a.retrato, a.contexto
     c = m.fechamento
-    tick = CENTAVO * a.ajuste
+    tick = mercado.tick(c, a.ajuste)
     rvol = np.asarray(ctx["rvol"], dtype=np.float64)
     sinais = classicos(m.abertura, m.maxima, m.minima, c, tick, ret, a.eventos, rvol, a.atr)
     alta = tendencia_de_alta(c)

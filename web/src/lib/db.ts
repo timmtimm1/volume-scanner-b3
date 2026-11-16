@@ -23,6 +23,7 @@
 import { cache } from "react";
 import { Pool } from "pg";
 import { PISO_DE_VOLUME, UNIVERSO, Z_MINIMO_DO_SITE } from "./config";
+import { mercadoDoPedido, sqlDoMercado } from "./mercado-servidor";
 import type {
   Barra,
   EdicaoDaSemana,
@@ -61,7 +62,37 @@ export function conexaoDeAlertas(): Pool {
   return conexao();
 }
 
+type ComQuery = { query: (...args: unknown[]) => unknown };
+
+/** A mesma conexao, com o schema de cripto no lugar do da B3 em cada consulta. */
+function emCripto<T extends ComQuery>(alvo: T): T {
+  return new Proxy(alvo, {
+    get(obj, nome, receptor) {
+      if (nome === "query") {
+        return (texto: unknown, ...resto: unknown[]) =>
+          obj.query(typeof texto === "string" ? sqlDoMercado(texto, "cripto") : texto, ...resto);
+      }
+      if (nome === "connect") {
+        // Transacao (BEGIN ... COMMIT) usa um cliente tirado do pool: ele tambem troca.
+        return async () =>
+          emCripto((await (obj as unknown as Pool).connect()) as unknown as ComQuery);
+      }
+      const valor = Reflect.get(obj, nome, receptor);
+      return typeof valor === "function" ? valor.bind(obj) : valor;
+    },
+  });
+}
+
+/**
+ * A conexao do pedido. Dentro de `noMercado("cripto", ...)` devolve a que le o
+ * schema de cripto (`mercado-servidor.ts`); fora, a de sempre.
+ */
 function conexao(): Pool {
+  const real = conexaoReal();
+  return mercadoDoPedido() === "cripto" ? emCripto(real as unknown as ComQuery) as unknown as Pool : real;
+}
+
+function conexaoReal(): Pool {
   if (pool) return pool;
   const url = process.env.SCANNER_DATABASE_URL;
   if (!url) {

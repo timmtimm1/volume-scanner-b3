@@ -650,3 +650,75 @@ O Suporte caiu de fraco para falhou nesta rodada sem a regra dele mudar: o resul
 
 **Envio da rodada pelo GitHub** (`backtest-enviar.yml`, `scanner/backtest/pacote.py`). O endereço do banco de produção vive só nos segredos do GitHub, e pedir para o usuário achar a credencial no painel travou o envio da pior fase. Agora `scripts/backtest_setups.py empacotar` grava a rodada num JSON compactado, sem os trades; o arquivo sobe cifrado (chave no segredo `BACKTEST_CHAVE`) numa release, e o workflow abre, aplica as migrations e grava. Migration 0021: só a lista de categorias.
 
+## 15. Cripto (16/11/2026)
+
+Pedido do usuário: uma aba de criptomoedas com os mesmos setups. Decisões dele, em três rodadas de perguntas:
+
+| Pergunta | Escolha |
+|---|---|
+| Quais moedas | As 50 maiores por valor de mercado com par em dólar (USDT), sem stablecoin |
+| Direção | Só compra, como na B3 |
+| Tempo gráfico | Diário (o candle fecha às 21h de Brasília) |
+| Semáforo | Backtest próprio de cripto |
+| Moeda | Dólar (USDT) |
+| Lugar | Aba Cripto própria; ações e criptos não se misturam |
+| Na primeira entrega | Aviso no Telegram, volume anômalo, diário de trades e página de backtest |
+
+### Como foi feito
+
+O pipeline inteiro roda uma segunda vez, com `SCANNER_MERCADO=cripto`, num schema próprio do mesmo banco (`cripto_scanner`). Misturar moedas nas tabelas das ações faria o universo, o z-score, a média do mercado e o sorteio do controle enxergarem os dois mercados; com schema separado, carga, métricas, setups, níveis, backtest e resumo são o mesmo código, sem nenhum `WHERE mercado = ...`.
+
+O que muda fica em `src/scanner/mercado.py`:
+
+- **Dado**: candles diários da Binance pela API pública (`scanner/cripto/binance.py`). O candle é o dia UTC; o do dia em andamento nunca é gravado.
+- **Universo**: ranking da CoinGecko cruzado com os pares que a Binance negocia (`scanner/cripto/universo.py`). Moeda que sai das 50 continua sendo carregada enquanto tiver barra, para um setup aberto conseguir encerrar.
+- **Passo de preço**: na B3 é 1 centavo. Em cripto é a quinta casa significativa do preço (1 dólar para o BTC a 65 mil, 0,00001 para uma moeda a 0,52): de 1 a 10 pontos-base. É o "1 centavo acima da máxima" das regras.
+- **Custo do backtest**: 0,15% por lado (0,10% de taxa da Binance + 0,05% de derrapagem), contra 0,08% na B3.
+- **Calendário**: todo dia é dia de negociação.
+- **Preço no banco**: as colunas passaram de 4 para 10 casas decimais (migration 0022).
+
+Roda todo dia pelo workflow `cripto.yml`, disparado pelo cron externo às 21:10 e às 00:10 de Brasília (`.github/cron-externo.yml`); ele aplica as migrations no schema de cripto, carrega, calcula e manda o resumo.
+
+### O backtest de cripto: todos os setups falharam
+
+`scripts/cripto_historico.py` baixou o diário de 684 moedas (todos os pares contra USDT que a Binance já listou, inclusive os deslistados que a API ainda conhece; stablecoins e ativos embrulhados de fora), de 17/08/2017 a 15/11/2026. A suíte é a mesma das ações, sem mudar regra nem corte: 189 mil trades em 413 moedas que foram líquidas em algum dia, escolhendo a saída de cada setup em 2017–2021 e conferindo em 2022–2026.
+
+| Setup | Escolhida | 2017–2021 | 2022–2026 [IC 95%] | Contra o controle | Trades | |
+|---|---|---|---|---|---|---|
+| 123 | MME 9, em alta | +0,28 R | +0,01 R [−0,22; +0,35] | −0,10 R | 3.447 | falhou |
+| PFR | MME 9, em alta | +0,47 R | −0,01 R [−0,26; +0,36] | −0,07 R | 1.803 | falhou |
+| MMA 20 | MME 9, em alta | +0,75 R | −0,02 R [−0,29; +0,37] | −0,05 R | 1.296 | falhou |
+| Rompimento | alvo 3R, em alta | +0,56 R | −0,05 R [−0,45; +0,34] | −0,14 R | 181 | falhou |
+| 9.1 | MME 9, todos | +0,20 R | −0,05 R [−0,28; +0,27] | −0,23 R | 249 | falhou |
+| Força | alvo 1R, todos | +0,23 R | −0,10 R [−0,30; +0,06] | −0,09 R | 111 | falhou |
+| PFR no suporte | MME 9, em alta | +0,37 R | −0,11 R [−0,27; +0,11] | −0,09 R | 572 | falhou |
+| Na média | MME 9, em alta | +0,40 R | −0,12 R [−0,41; +0,22] | −0,27 R | 100 | falhou |
+| 9.4 | MME 9, em alta | +0,47 R | −0,21 R [−0,50; +0,03] | −0,15 R | 144 | falhou |
+| Pullback | MME 9, em alta | +0,41 R | −0,22 R [−0,47; +0,02] | −0,28 R | 511 | falhou |
+| 123 no suporte | alvo 3R, em alta | +0,26 R | −0,27 R [−0,52; −0,02] | −0,26 R | 806 | falhou |
+| 9.3 | MME 9, em alta | +1,19 R | −0,28 R [−0,46; −0,09] | −0,41 R | 422 | falhou |
+| 9.2 | MME 9, todos | +0,18 R | −0,72 R [−0,84; −0,55] | −1,24 R | 124 | falhou |
+
+Contração e reversão no suporte não chegaram a 100 trades em 2017–2021, e ficam sem nota.
+
+Leitura:
+
+- **Nenhum setup de compra das ações ganha da moeda sorteada em cripto.** Todos foram bem em 2017–2021 (o ciclo de alta) e nenhum se manteve em 2022–2026.
+- **Não é efeito de moeda pequena.** Refazendo a conta só com as 50 moedas de maior volume em cada dia (137 mil dos 189 mil trades), o quadro é o mesmo; dois setups passam de falhou para fraco (MMA 20, +0,07 R; Na média, +0,05 R), nenhum fica firme.
+- **O setup perde do controle em todos os anos, não só nos ruins.** Com a saída pela MME 9, a média anual do setup ficou abaixo da do controle de 2018 a 2026 sem exceção (em 2024: +0,06 R contra +0,20 R). A diferença entre os dois é a entrada: o setup compra acima da máxima do dia, o controle compra na abertura seguinte. No diário de cripto, comprar o rompimento da máxima custa caro com consistência.
+- Esse último ponto é a pista para um estudo próprio de cripto (inclusive do lado da venda, que o usuário mencionou): se entrar no rompimento perde sempre, o padrão que funciona ali pode ser o contrário. Não foi estudado; é hipótese.
+
+Pela regra da casa, setup que falha continua visível, com aviso: a aba Cripto mostra todas as entradas com o semáforo vermelho, e nenhum setup de cripto tem alerta ligado.
+
+### Site
+
+`/cripto` (entradas de hoje, volume fora do normal, em andamento, encerrados e o capital em dólar), `/cripto/[moeda]` (gráfico diário com níveis e setups) e `/cripto/backtest`. As consultas são as mesmas das ações: a página roda a leitura dentro de `noMercado("cripto", ...)` e a conexão troca o schema no SQL. O lote é em fração de moeda (`calcularLoteFracionado`), com mínimo de US$ 5 de posição.
+
+### O que ficou para a próxima fase
+
+- **Diário de trades em cripto**: as tabelas de trades guardam quantidade inteira e preço com duas casas. Precisam de migration própria e de revisão das contas do diário.
+- **Alerta de preço durante o dia** (o "confirmou" na hora): a checagem de rompimento usa brapi e Yahoo, que não cotam cripto.
+- **Ajustes por setup** (alerta e saída) na aba Cripto: hoje vale o `config-cripto.yaml`.
+- **Página de backtest completa** (curva, ano a ano, lista de trades), como a das ações: a de cripto mostra o resumo por setup.
+- **Estudo de padrões próprio de cripto**, compra e venda.
+

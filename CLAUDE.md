@@ -48,6 +48,14 @@ A lista acima vale para o alerta de 6σ. Os setups e a suíte de backtest são e
 - A aba Setups é uma lista só, "Entradas de hoje", do verde ao vermelho. Nenhuma entrada some por causa da nota; só fica escondida (com aviso e botão para abrir) a que não cabe no risco do perfil do usuário.
 - O site usa só os 400 pregões do banco. Os 30 anos ficam na máquina do usuário.
 
+## Dois mercados, um motor
+
+`SCANNER_MERCADO` escolhe o mercado do processo: `b3` (padrão) ou `cripto`. Tudo que muda de um para o outro mora em `src/scanner/mercado.py` (schema, arquivo de config, passo de preço, custo, piso de liquidez, anos do backtest, calendário) e, no site, em `web/src/lib/mercado.ts`. Não espalhe `if cripto` pelo código: acrescente a diferença nesses dois arquivos.
+
+- As migrations valem para os dois schemas. Tabela nova nasce nos dois; a de cripto roda pelo workflow `cripto`.
+- No site, página de cripto lê o banco dentro de `noMercado("cripto", ...)` (`web/src/lib/mercado-servidor.ts`), que troca o schema no SQL. Componente filho que busca dado sozinho não herda isso: leia tudo na página e desça por prop.
+- Os setups de cripto são as regras da B3 sem mudar corte. A nota vem do backtest próprio (`scripts/cripto_historico.py` + `scripts/backtest_setups.py`), escolhendo em 2017–2021 e conferindo em 2022–2026.
+
 ## Padrões de código
 
 - Python 3.11+, type hints obrigatórios, `mypy --strict` limpo.
@@ -65,6 +73,8 @@ Fora disso, duas fontes entram só para o que o COTAHIST não tem, e nenhuma del
 
 - **Cotação durante o pregão** (brapi e Yahoo), para os alertas de rompimento e o candle do dia.
 - **Balanços e cadastro de empresas** (dados abertos da CVM), para a aba Fundamentos da ficha. A CVM publica uma vez por semana. O código de negociação de cada empresa vem do FCA da CVM; o que faltar é procurado no site da B3 e só é aceito quando a própria B3 lista aquele papel para aquela empresa. **Nunca ligue ticker a empresa pelo prefixo de 4 letras** — o emissor "EMBR" na B3 é a EMBRAST, não a Embraer.
+
+- **Criptomoedas** (pedido do usuário em 16/11/2026): candles diários da Binance (par com USDT) para a aba Cripto, e o ranking de valor de mercado da CoinGecko para escolher as 50 maiores. É outro mercado, não outra fonte para as ações: roda o mesmo pipeline com `SCANNER_MERCADO=cripto`, num schema separado (`cripto_scanner`). Nada de cripto entra nas tabelas, no universo ou no alerta da B3. Seção 15 do plano.
 
 Validação obrigatória do parser: `VOLTOT ≈ PREMED × QUATOT`, tolerância 1%. Falhando em mais de 0,5% das linhas, abortar a carga.
 

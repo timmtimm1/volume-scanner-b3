@@ -12,6 +12,7 @@
 // valor sem extensao.
 import type { CategoriaDoSetup, SaidaDoSetup } from "./config";
 import type { Perfil } from "./lote";
+import type { Mercado } from "./mercado";
 import type { LinhaDeSetup } from "./types";
 
 export type { CategoriaDoSetup, SaidaDoSetup };
@@ -398,6 +399,8 @@ export function categoriaDaChave(chave: string): CategoriaDoSetup | null {
  * risco (null = capital nao definido) e quais setups ja viraram trade.
  */
 export type ContextoDoDiario = {
+  /** Ausente = B3. Em cripto o cartao fala em dolar e nao oferece o diario (outra fase). */
+  mercado?: Mercado;
   perfil: Perfil | null;
   /** `setups.id` -> id do trade que nasceu dele. */
   tradePorSetup: Record<number, number>;

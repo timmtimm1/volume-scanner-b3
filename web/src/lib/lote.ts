@@ -127,3 +127,42 @@ export function validarPerfil(entrada: { capital?: unknown; riscoPct?: unknown }
 
   return { capital: r2(capital), riscoPct: r2(risco) };
 }
+
+/** Casas da quantidade de moeda: as corretoras aceitam ate 8. */
+const CASAS_DA_MOEDA = 8;
+
+/**
+ * O lote em cripto: a mesma regra do risco, com quantidade FRACIONADA.
+ *
+ * Na B3 a conta arredonda para acoes inteiras e a distancia ate o stop para
+ * centavos. Em cripto compra-se 0,0153 BTC e ha moeda de 0,000004 dolar:
+ * nada disso pode ser arredondado para centavo, senao o risco some. A
+ * quantidade e truncada (nunca arredondada para cima) na oitava casa.
+ *
+ * Abaixo de US$ 5 de posicao a corretora nem aceita a ordem: vira "nao cabe".
+ */
+export const POSICAO_MINIMA_EM_CRIPTO = 5;
+
+export function calcularLoteFracionado(e: EntradaDoLote): Lote {
+  const { capital, riscoPct, entrada, stop } = e;
+  if (!positivo(capital) || !positivo(riscoPct) || !positivo(entrada) || !positivo(stop)) {
+    return SEM_LOTE;
+  }
+  const porUnidade = entrada - stop;
+  if (!(porUnidade > 0)) return SEM_LOTE;
+
+  const pelaRegraDoRisco = (capital * riscoPct) / 100 / porUnidade;
+  const pelaRegraDoCapital = capital / entrada;
+  const fator = 10 ** CASAS_DA_MOEDA;
+  const quantidade =
+    Math.floor(Math.min(pelaRegraDoRisco, pelaRegraDoCapital) * fator + 1e-6) / fator;
+  if (!(quantidade > 0) || quantidade * entrada < POSICAO_MINIMA_EM_CRIPTO) return SEM_LOTE;
+  const perdaMaxima = r2(quantidade * porUnidade);
+  return {
+    quantidade,
+    perdaMaxima,
+    valorPosicao: r2(quantidade * entrada),
+    pctDoCapital: perdaMaxima / capital,
+    limitadoPeloCapital: pelaRegraDoCapital < pelaRegraDoRisco,
+  };
+}

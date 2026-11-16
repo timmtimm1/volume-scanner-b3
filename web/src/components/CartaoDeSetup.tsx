@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { fmtR } from "@/lib/backtest-tela";
-import { diaCurto, percentual, reais } from "@/lib/formato";
+import { diaCurto, percentual } from "@/lib/formato";
+import { linkDaFichaNoMercado, type Mercado, preco, stopNoMercado } from "@/lib/mercado";
 import {
   alvoDoSetup,
   contraOMercado,
   etiquetasDoSetup,
-  linkDaFicha,
   NOME_DO_SETUP,
   resultadoEmR,
   rotuloDoEstado,
@@ -28,6 +28,7 @@ function ResultadoEmR({ r }: { r: number | null }) {
  * saida pela MME 9 chega a ter duas dezenas abertas ao mesmo tempo.
  */
 export function LinhaEmAndamento({ s, diario }: { s: Setup; diario: ContextoDoDiario }) {
+  const mercado = diario.mercado ?? "b3";
   const alvo = alvoDoSetup(s);
   // Duas linhas: em cima o que se le de relance (papel, quando, R, Entrei);
   // embaixo os precos e as etiquetas. Numa linha so, com o botao, os precos
@@ -36,7 +37,7 @@ export function LinhaEmAndamento({ s, diario }: { s: Setup; diario: ContextoDoDi
     <li className="flex flex-col gap-1.5 py-2.5">
       <div className="flex items-center gap-3">
         <Link
-          href={linkDaFicha(s)}
+          href={linkDaFichaNoMercado(mercado, s.ticker, s.tradeDate)}
           className="w-16 text-[14px] font-extrabold transition-colors hover:text-acento"
         >
           {s.ticker}
@@ -48,12 +49,13 @@ export function LinhaEmAndamento({ s, diario }: { s: Setup; diario: ContextoDoDi
         <span className="num ml-auto text-right text-[13px] font-bold">
           <ResultadoEmR r={resultadoEmR(s)} />
         </span>
-        <BotaoEntrei s={s} diario={diario} />
+        {mercado === "b3" && <BotaoEntrei s={s} diario={diario} />}
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="num text-[12px] font-semibold text-tinta-2">
-          entrada {reais(s.entrada)} · stop {reais(stopDoSetup(s))}
-          {alvo !== null && <> · alvo {reais(alvo)}</>}
+          entrada {preco(mercado, s.entrada)} · stop{" "}
+          {preco(mercado, mercado === "b3" ? stopDoSetup(s) : stopNoMercado(mercado, s.minima))}
+          {alvo !== null && mercado === "b3" && <> · alvo {preco(mercado, alvo)}</>}
         </span>
         <span className="flex flex-wrap gap-1.5 text-[11px] font-semibold text-tinta-3">
           {etiquetasDoSetup(s).map((e) => (
@@ -68,12 +70,12 @@ export function LinhaEmAndamento({ s, diario }: { s: Setup; diario: ContextoDoDi
 }
 
 /** Um encerrado numa linha: o dia, o papel, como terminou e o resultado. */
-export function LinhaDeEncerrado({ s }: { s: Setup }) {
+export function LinhaDeEncerrado({ s, mercado = "b3" }: { s: Setup; mercado?: Mercado }) {
   const contra = contraOMercado(s, 20);
   return (
     <li className="flex flex-wrap items-center gap-x-3 gap-y-1 py-2.5">
       <Link
-        href={linkDaFicha(s)}
+        href={linkDaFichaNoMercado(mercado, s.ticker, s.tradeDate)}
         className="w-16 text-[14px] font-extrabold transition-colors hover:text-acento"
       >
         {s.ticker}

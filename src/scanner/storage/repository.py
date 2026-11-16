@@ -50,6 +50,7 @@ from scanner.storage.models import (
     Event,
     FundamentoTrimestre,
     JurosHistorico,
+    Moeda,
     Nivel,
     PriceAlert,
     ResumoSemanal,
@@ -1822,3 +1823,65 @@ def cobertura_do_trimestre(engine: Engine, dt_refer: date, anterior: date) -> tu
     total = select(func.count()).select_from(com_anterior.subquery())
     with engine.connect() as conn:
         return int(conn.execute(com_novo).scalar_one()), int(conn.execute(total).scalar_one())
+# --- Criptomoedas (aba Cripto, migration 0023) --------------------------------
+
+
+def gravar_moedas(engine: Engine, maiores: Sequence[Mapping[str, Any]]) -> int:
+    """Troca o ranking: quem veio fica `no_top`, quem nao veio perde a posicao.
+
+    Ninguem e apagado: moeda que saiu das maiores continua na tabela (com o
+    nome dela, que a ficha mostra) ate as barras serem podadas.
+    """
+    if not maiores:
+        return 0
+    linhas = [
+        {
+            "ticker": str(m["ticker"]),
+            "par": str(m["par"]),
+            "nome": str(m["nome"]),
+            "posicao": int(m["posicao"]),
+            "valor_de_mercado": m.get("valor_de_mercado"),
+            "no_top": True,
+        }
+        for m in maiores
+    ]
+    comando = insert(Moeda)
+    comando = comando.on_conflict_do_update(
+        index_elements=["ticker"],
+        set_={
+            "par": comando.excluded.par,
+            "nome": comando.excluded.nome,
+            "posicao": comando.excluded.posicao,
+            "valor_de_mercado": comando.excluded.valor_de_mercado,
+            "no_top": True,
+            "atualizado_em": func.now(),
+        },
+    )
+    with engine.begin() as conn:
+        conn.execute(
+            update(Moeda)
+            .where(Moeda.ticker.not_in([linha["ticker"] for linha in linhas]))
+            .values(no_top=False, posicao=None)
+        )
+        conn.execute(comando, linhas)
+    return len(linhas)
+
+
+def moedas_para_carregar(engine: Engine) -> pd.DataFrame:
+    """Moedas que a carga atualiza: as do ranking e as que ainda tem barra.
+
+    Colunas: ticker, par, no_top e `ultima` (data da ultima barra; NaT se nunca
+    teve).
+    """
+    consulta = select(
+        Moeda.ticker,
+        Moeda.par,
+        Moeda.no_top,
+        select(func.max(DailyBar.trade_date))
+        .where(DailyBar.ticker == Moeda.ticker)
+        .scalar_subquery()
+        .label("ultima"),
+    ).order_by(Moeda.posicao.nulls_last(), Moeda.ticker)
+    with engine.connect() as conn:
+        frame = pd.read_sql(consulta, conn)
+    return frame[frame["no_top"] | frame["ultima"].notna()].reset_index(drop=True)

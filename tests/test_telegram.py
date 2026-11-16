@@ -297,3 +297,29 @@ def test_erro_do_telegram_nao_leva_o_token(monkeypatch: pytest.MonkeyPatch) -> N
     with pytest.raises(TelegramError) as info:
         notifier.send_text("oi")
     assert segredo not in str(info.value)
+
+
+def test_resumo_de_cripto_troca_as_palavras_e_o_link(monkeypatch: pytest.MonkeyPatch) -> None:
+    """Em cripto nao ha pregao nem papel, e o link vai para a aba Cripto."""
+    from datetime import date as _date
+
+    from scanner import mercado
+
+    resumo = {
+        "trade_date": _date(2026, 11, 15),
+        "linhas": [{"ticker": "ASTER", "desvios": 4.11, "variacao": 0.033, "volume": 53.0e6}],
+        "setups": {"armados": [], "outros": {"123": 27, "pfr": 17}, "confirmados": []},
+    }
+    from scanner.notify.telegram import format_resumo
+
+    b3 = format_resumo(resumo, "https://exemplo.app")
+    assert "Resumo do pregão" in b3 and "Papel" in b3 and "/setups/" in b3
+
+    monkeypatch.setenv(mercado.VARIAVEL, "cripto")
+    texto = format_resumo(resumo, "https://exemplo.app")
+    assert "Resumo das criptos" in texto
+    assert "pregão" not in texto and "Papel" not in texto
+    assert "Moeda" in texto and "ASTER" in texto
+    assert "<b>Entradas armadas hoje: 44</b>" in texto
+    assert 'href="https://exemplo.app/cripto/"' in texto
+    assert "/setups/" not in texto and "abrir o scanner" not in texto

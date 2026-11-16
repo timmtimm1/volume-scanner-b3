@@ -13,9 +13,13 @@ name: fundamentos b3
 # sem a ficha ficar desatualizada: dividend yield 12m atrasado alguns dias nao
 # muda a leitura.
 #
-# Sem rebuild na Vercel aqui de proposito: o pregao roda pelo menos uma vez por
-# dia util e ja dispara o rebuild dele, entao o dado que este workflow grava
-# aparece no site na proxima passada normal, sem precisar de um gatilho extra.
+# Rebuild na Vercel so quando um zip da CVM mudou (desde 16/11/2026). Esta e a
+# primeira passada depois de a CVM republicar os balancos, no domingo de
+# manha; sem o rebuild, o que ela grava so aparecia no site na noite de
+# segunda, com o pregao. Provento e cadastro continuam sem rebuild proprio.
+#
+# No fim, `scanner fundamentos conferir` pergunta a origem da CVM se o banco
+# ficou em dia e avisa no Telegram se nao ficou (ver o passo no pregao.yml).
 on:
   workflow_dispatch:
     inputs:
@@ -46,6 +50,7 @@ jobs:
       SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
       SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
       SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
+      VERCEL_DEPLOY_HOOK: ${{ secrets.VERCEL_DEPLOY_HOOK }}
 
     steps:
       - uses: actions/checkout@v5
@@ -81,6 +86,46 @@ jobs:
         run: |
           set -o pipefail
           uv run --no-sync scanner fundamentos atualizar $FORCAR 2>&1 | tee /tmp/fundamentos.log
+
+      - name: Rebuild na Vercel com os balancos novos
+        id: vercel
+        if: ${{ env.VERCEL_DEPLOY_HOOK != '' }}
+        shell: bash
+        run: |
+          # So um zip novo da CVM muda o que o site mostra.
+          if grep -q ': atualizado' /tmp/fundamentos.log; then
+            curl -sS -f --retry 3 --retry-delay 2 --retry-connrefused \
+              -X POST "$VERCEL_DEPLOY_HOOK" -o /dev/null
+          else
+            echo "nenhum zip da CVM mudou; sem rebuild"
+          fi
+
+      - name: Conferir se os fundamentos estao em dia
+        id: conferencia
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run --no-sync scanner fundamentos conferir 2>&1 | tee /tmp/conferencia.log
+
+      - name: Avisar no Telegram se os fundamentos ficaram para tras
+        if: ${{ steps.conferencia.outcome == 'failure' && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
+        shell: bash
+        run: |
+          detalhe=$(grep -E '^\[conferencia\] (ATRASADO|INCOMPLETO) ' /tmp/conferencia.log 2>/dev/null | sed 's/^\[conferencia\] //' | head -6 | cut -c1-220 || true)
+          if [ -z "$detalhe" ]; then
+            detalhe="A conferencia nao terminou (CVM lenta ou fora do ar)."
+          fi
+          detalhe=$(printf '%s' "$detalhe" | tr -d '<>&' | iconv -c -f UTF-8 -t UTF-8 2>/dev/null || true)
+          texto=$(printf '⚠️ <b>Fundamentos atrás da CVM</b>\nA CVM tem balanços que ainda não estão no site.\n\n%s\n\nA carga do próximo pregão tenta de novo; para carregar agora: Actions → pregao manual → Run workflow.\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$detalhe" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
+            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$texto"
 
       - name: Avisar no Telegram se algo falhou
         # `cancelled()` junto de `failure()`: com `--forcar` o job passa a poder

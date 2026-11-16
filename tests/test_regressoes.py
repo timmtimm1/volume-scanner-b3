@@ -95,3 +95,25 @@ def test_nenhum_workflow_tem_agendador_nativo_do_github(arquivo: Path) -> None:
     assert "schedule" not in nomes, f"{arquivo.name} voltou a ter schedule nativo"
     if arquivo.name != "ci.yml":
         assert nomes & {"workflow_dispatch", "workflow_call"}, f"{arquivo.name} sem como disparar"
+
+
+@pytest.mark.parametrize("nome", ["pregao.yml", "fundamentos-b3.yml"])
+def test_toda_carga_de_fundamentos_e_seguida_da_conferencia(nome: str) -> None:
+    """15/11/2026: a carga ouviu "sem mudanca" de um cache e o site ficou sem o 3T26.
+
+    A carga confia na resposta da CVM; quem pega o erro e a conferencia, que
+    pergunta a origem por conta propria. Falha se um workflow carregar os
+    fundamentos e nao conferir depois, ou se a conferencia puder derrubar o job
+    (ela so avisa: o pregao nao depende dos fundamentos).
+    """
+    arquivo = PROJECT_ROOT / ".github" / "workflows" / nome
+    dados: dict[Any, Any] = yaml.safe_load(arquivo.read_text(encoding="utf-8"))
+    passos = next(iter(dados["jobs"].values()))["steps"]
+    comandos = [str(p.get("run", "")) for p in passos]
+    carga = next(i for i, c in enumerate(comandos) if "fundamentos atualizar" in c)
+    conferencia = next((i for i, c in enumerate(comandos) if "fundamentos conferir" in c), None)
+    assert conferencia is not None, f"{nome} carrega os fundamentos e nao confere"
+    assert conferencia > carga, f"{nome} confere antes de carregar"
+    assert passos[conferencia].get("continue-on-error") is True
+    aviso = [p for p in passos if "steps.conferencia.outcome == 'failure'" in str(p.get("if", ""))]
+    assert aviso, f"{nome}: a conferencia falha e ninguem e avisado"

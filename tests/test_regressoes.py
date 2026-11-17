@@ -117,3 +117,17 @@ def test_toda_carga_de_fundamentos_e_seguida_da_conferencia(nome: str) -> None:
     assert passos[conferencia].get("continue-on-error") is True
     aviso = [p for p in passos if "steps.conferencia.outcome == 'failure'" in str(p.get("if", ""))]
     assert aviso, f"{nome}: a conferencia falha e ninguem e avisado"
+
+
+@pytest.mark.parametrize("arquivo", WORKFLOWS, ids=lambda p: p.name)
+def test_nenhuma_expressao_devolve_texto_vazio_no_meio_do_e_ou(arquivo: Path) -> None:
+    """17/11/2026: `inputs.refazer && '' || '--so-se-faltar'` ignorava o refazer.
+
+    No GitHub Actions o texto vazio e falso: `x && '' || y` vale sempre `y`.
+    O jeito certo e negar antes (`!x && y || ''`), com o texto vazio no fim.
+    """
+    for numero, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), 1):
+        codigo = linha.split("#", 1)[0]
+        assert not re.search(r"&&\s*''\s*\|\|", codigo), (
+            f"{arquivo.name}:{numero}: `&& '' ||` sempre cai no lado do ||"
+        )

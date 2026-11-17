@@ -57,6 +57,7 @@ from scanner.storage.models import (
     Setup,
     SetupPreferencia,
     SinalEstudo,
+    Tendencia,
     Trade,
     TradeOperacao,
     TradeSnapshot,
@@ -1970,3 +1971,20 @@ def gravar_sinais_estudo(
             if r.inserido:
                 novos.add((r.moeda, r.setup, pd.Timestamp(r.sinal_em).tz_convert("UTC")))
     return novos
+
+
+def gravar_tendencias(engine: Engine, frame: pd.DataFrame) -> int:
+    """Troca a tabela de tendencias inteira pela do pregao. Devolve linhas gravadas.
+
+    Apaga e insere na mesma transacao: quem le no meio da troca ve a tabela
+    velha inteira ou a nova inteira, nunca metade de cada.
+    """
+    linhas = frame.copy()
+    linhas["trade_date"] = pd.to_datetime(linhas["trade_date"]).dt.date
+    linhas = linhas.astype(object).where(linhas.notna(), None)
+    rows = _to_rows(linhas)
+    with engine.begin() as conn:
+        conn.execute(delete(Tendencia))
+        if rows:
+            conn.execute(insert(Tendencia), rows)
+    return len(rows)

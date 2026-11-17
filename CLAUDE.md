@@ -66,6 +66,14 @@ Pedido do usuário em 16/11/2026: três contas simples de "preço justo" para to
 - Método que não se aplica (prejuízo, sem proventos, contagem de ações reprovada) aparece como "não se aplica", com o motivo. Não some e não vira zero.
 - Não alimenta alerta, setup nem ranking de nada fora da própria página.
 
+## A exceção escrita: tendência
+
+Pedido do usuário em 17/11/2026: ver, no scanner e na aba Cripto, os ativos em alta, lateral ou baixa pela inclinação das médias móveis que ele escolher. Seção 17 do plano.
+
+- É a direção das médias no último fechamento (`scanner/tendencia.py` grava, `web/src/lib/tendencia.ts` combina), com o texto à vista. Não diz "compre" nem prevê nada.
+- Não alimenta alerta, setup, semáforo nem backtest. A etiqueta "em alta / contra a tendência" dos setups continua sendo a da MMA 200.
+- Nas ações, só papéis líquidos (a regra do backtest); em cripto, as 50 maiores, com etiqueta nas pouco líquidas. O padrão é MME 20 + 80, sem a 9 (o 9.4 é a 9 virando para baixo dentro da tendência); o usuário escolhe outras na tela.
+
 ## Padrões de código
 
 - Python 3.11+, type hints obrigatórios, `mypy --strict` limpo.

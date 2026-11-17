@@ -382,7 +382,7 @@ def daily(
         ),
     ] = False,
 ) -> None:
-    """O pregao inteiro num comando: carga, metricas, alerta, trades, setups, resumo e poda.
+    """O pregao inteiro num comando, da carga a poda: alerta, trades, setups, tendencia, resumo.
 
     Os comandos separados continuam existindo e fazem exatamente o mesmo. A
     diferenca esta em quantas vezes o trabalho e feito: rodando um a um, cada
@@ -418,6 +418,7 @@ def daily(
         retention_cutoff,
         tamanho_do_banco,
     )
+    from scanner.tendencia import run_tendencias
     from scanner.trades import run_snapshots
 
     dia = parse_trade_date(trade_date)
@@ -442,7 +443,7 @@ def daily(
 
     def etapa(numero: int, texto: str) -> None:
         """Uma linha por etapa: sem isto, um comando so vira uma caixa preta."""
-        typer.echo(f"[{numero}/8] {texto}")
+        typer.echo(f"[{numero}/9] {texto}")
 
     if dry_run:
         # A carga grava; num ensaio ela fica de fora e vale o que ja esta la.
@@ -504,17 +505,21 @@ def daily(
     relatorio_setups = run_setups(engine, config, dia, bars=contexto.bars, dry_run=dry_run)
     etapa(6, relatorio_setups.summary())
 
+    # Tambem lente separada: a inclinacao das medias de cada ativo, para o
+    # painel de tendencia do scanner e da aba Cripto.
+    etapa(7, run_tendencias(engine, dia, bars=contexto.bars, dry_run=dry_run).summary())
+
     if not config.digest.enabled:
-        etapa(7, "resumo desligado no config")
+        etapa(8, "resumo desligado no config")
     else:
         saida = run_resumo(
             engine, config, dia, notifier=notifier, contexto=contexto, dry_run=dry_run
         )
         if saida.repetido:
-            etapa(7, f"resumo de {dia.isoformat()} ja enviado antes; nao reenviado")
+            etapa(8, f"resumo de {dia.isoformat()} ja enviado antes; nao reenviado")
         else:
             etapa(
-                7,
+                8,
                 f"resumo: {len(saida.linhas)} papeis, {saida.avaliados} avaliados, "
                 f"{saida.cruzaram} acima do limiar",
             )
@@ -535,7 +540,7 @@ def daily(
     # do plano gratuito do Neon, sem precisar abrir o painel.
     total, tabelas = tamanho_do_banco(engine)
     maiores = ", ".join(f"{nome} {mb(tam)}" for nome, tam in list(tabelas.items())[:3])
-    etapa(8, f"{poda_texto}; banco com {mb(total)} ({maiores})")
+    etapa(9, f"{poda_texto}; banco com {mb(total)} ({maiores})")
 
 
 @app.command("setups")
@@ -554,6 +559,23 @@ def setups_cmd(
     engine = build_engine()
     relatorio = run_setups(engine, load_config(), dia, bars=load_bars(engine), dry_run=dry_run)
     typer.echo(relatorio.summary())
+
+
+@app.command("tendencia")
+def tendencia_cmd(
+    trade_date: Annotated[str, typer.Option("--date", help="Pregao a processar.")] = "ultimo",
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Calcula e mostra, sem gravar.")
+    ] = False,
+) -> None:
+    """So a etapa de tendencia do `daily`: a inclinacao das medias de cada ativo."""
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import load_bars
+    from scanner.tendencia import run_tendencias
+
+    dia = parse_trade_date(trade_date)
+    engine = build_engine()
+    typer.echo(run_tendencias(engine, dia, bars=load_bars(engine), dry_run=dry_run).summary())
 
 
 cripto_app = typer.Typer(help="Criptomoedas (SCANNER_MERCADO=cripto).", no_args_is_help=True)

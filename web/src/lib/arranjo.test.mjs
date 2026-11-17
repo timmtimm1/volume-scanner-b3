@@ -386,11 +386,12 @@ describe("paginas", () => {
   });
 
   it("Inicio e ficha padrao: as tres colunas de hoje, cada uma empilhando a sua", () => {
+    // a Tendencia (17/11/2026) entra embaixo dos eventos, na coluna do meio
     const pilhas = (pagina) =>
       planejar(arranjoPadrao(PAGINAS_DE_CAIXAS[pagina]), 3).partes.map((p) => [p.inicio, p.no.ids]);
     assert.deepEqual(pilhas("inicio"), [
       [0, ["resumo", "distribuicao", "leitura"]],
-      [1, ["eventos"]],
+      [1, ["eventos", "tendencia"]],
       [2, ["previa"]],
     ]);
     assert.deepEqual(pilhas("ficha"), [

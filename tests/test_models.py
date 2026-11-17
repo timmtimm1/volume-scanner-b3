@@ -62,6 +62,8 @@ def test_nomes_das_tabelas() -> None:
     # schema de cripto (`SCANNER_MERCADO=cripto`), na B3 fica vazia.
     # `sinais_estudo` (migration 0026) sao os sinais dos dois setups do estudo
     # de cripto (entrada na abertura); tambem so tem linha no schema de cripto.
+    # `tendencias` (migration 0028) e a inclinacao das medias de cada ativo no
+    # ultimo pregao, trocada a cada noite, para o painel de tendencia do site.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -95,6 +97,7 @@ def test_nomes_das_tabelas() -> None:
         "perfil_de_risco",
         "moedas",
         "sinais_estudo",
+        "tendencias",
     }
 
 

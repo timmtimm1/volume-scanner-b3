@@ -117,3 +117,60 @@ def test_toda_carga_de_fundamentos_e_seguida_da_conferencia(nome: str) -> None:
     assert passos[conferencia].get("continue-on-error") is True
     aviso = [p for p in passos if "steps.conferencia.outcome == 'failure'" in str(p.get("if", ""))]
     assert aviso, f"{nome}: a conferencia falha e ninguem e avisado"
+
+
+@pytest.mark.parametrize("arquivo", WORKFLOWS, ids=lambda p: p.name)
+def test_nenhuma_expressao_devolve_texto_vazio_no_meio_do_e_ou(arquivo: Path) -> None:
+    """17/11/2026: `inputs.refazer && '' || '--so-se-faltar'` ignorava o refazer.
+
+    No GitHub Actions o texto vazio e falso: `x && '' || y` vale sempre `y`.
+    O jeito certo e negar antes (`!x && y || ''`), com o texto vazio no fim.
+    """
+    for numero, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), 1):
+        codigo = linha.split("#", 1)[0]
+        assert not re.search(r"&&\s*''\s*\|\|", codigo), (
+            f"{arquivo.name}:{numero}: `&& '' ||` sempre cai no lado do ||"
+        )
+
+
+def _passos_que_rodam_sem_dependencias() -> list[tuple[str, str]]:
+    """(workflow, comando) de todo passo que chama o Python do runner com `PYTHONPATH=src`.
+
+    Esses passos rodam ANTES do `uv sync`: so a biblioteca padrao existe ali.
+    """
+    achados: list[tuple[str, str]] = []
+    for arquivo in WORKFLOWS:
+        dados = yaml.safe_load(arquivo.read_text(encoding="utf-8")) or {}
+        for job in (dados.get("jobs") or {}).values():
+            for passo in job.get("steps") or []:
+                for linha in str(passo.get("run") or "").splitlines():
+                    achou = re.search(r'PYTHONPATH=src python3 -c "(.+)"\s*$', linha.strip())
+                    if achou:
+                        achados.append((arquivo.name, achou.group(1)))
+    return achados
+
+
+def test_passo_sem_dependencias_roda_so_com_a_biblioteca_padrao() -> None:
+    """17/11/2026: o `import numpy` no topo de `scanner.mercado` derrubou o `rompimentos`.
+
+    O passo "Hoje e pregao?" chama `scanner.calendar` com o Python do runner,
+    antes de instalar as dependencias. Desde a aba Cripto o `calendar` importa
+    o `mercado`, que importava o numpy: `ModuleNotFoundError` em toda passada do
+    pregao. Aqui o mesmo comando, tirado do proprio workflow, roda num Python
+    sem site-packages (`-S`): sai 0 (pregao) ou 10 (nao e pregao), nunca erro.
+    """
+    import subprocess
+    import sys
+
+    passos = _passos_que_rodam_sem_dependencias()
+    assert passos, "nenhum passo com PYTHONPATH=src achado nos workflows"
+    for workflow, comando in passos:
+        resultado = subprocess.run(
+            [sys.executable, "-S", "-c", comando.replace('\\"', '"')],
+            cwd=PROJECT_ROOT,
+            env={"PYTHONPATH": "src", "PATH": ""},
+            capture_output=True,
+            text=True,
+            check=False,
+        )
+        assert resultado.returncode in (0, 10), f"{workflow}: {resultado.stderr[-600:]}"

@@ -13,6 +13,11 @@ name: fundamentos b3
 # sem a ficha ficar desatualizada: dividend yield 12m atrasado alguns dias nao
 # muda a leitura.
 #
+# Das tres consultas, so a dos proventos recentes roda toda semana. Cadastro e
+# historico de proventos sao refeitos a cada 4 semanas por empresa
+# (`dias_para_rechecar_empresa: 28`, desde 17/11/2026): eram ~28 dos ~45
+# minutos de uma passada cheia, para um dado que quase nao muda.
+#
 # Rebuild na Vercel so quando um zip da CVM mudou (desde 16/11/2026). Esta e a
 # primeira passada depois de a CVM republicar os balancos, no domingo de
 # manha; sem o rebuild, o que ela grava so aparecia no site na noite de
@@ -74,8 +79,8 @@ jobs:
         id: b3
         # `--forcar` zera os cortes e reconsulta as ~320 empresas nas tres
         # perguntas. E o caminho de uma correcao no parser de proventos chegar
-        # ao dado ja gravado: sem ele, empresa consultada ha menos de uma
-        # semana nunca e relida, e o numero errado fica. Mesma lacuna que o
+        # ao dado ja gravado: sem ele, empresa consultada ha menos de 4
+        # semanas nunca e relida, e o numero errado fica. Mesma lacuna que o
         # pregao manual fechou do lado da CVM.
         #
         # Nao use sem motivo: sao ~930 requisicoes na B3 contra as 0 de uma

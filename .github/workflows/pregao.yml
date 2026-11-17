@@ -2,7 +2,6 @@ name: pregao
 
 # As etapas do pregao, num lugar so. Nao roda sozinho: quem chama e
 # - daily.yml, o disparo agendado pelo cron externo (21:30 e 07:40);
-# - daily-repescagem.yml, as tentativas tardias da noite (22:15 e 23:30);
 # - pregao-manual.yml, o botao para rodar a mao.
 # Todos executam exatamente isto: rodar a mao testa o mesmo caminho da agenda.
 on:
@@ -19,7 +18,7 @@ on:
         required: false
         default: false
       so_se_faltar:
-        description: "Sai sem fazer nada se o resumo do pregao ja foi enviado (repescagem)"
+        description: "Sai sem fazer nada se o resumo do pregao ja foi enviado"
         type: boolean
         required: false
         default: false

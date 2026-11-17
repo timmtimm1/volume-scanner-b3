@@ -813,7 +813,6 @@ mesmas etapas:
 | Workflow | Quem dispara | Pregão |
 |---|---|---|
 | `daily.yml` — **daily (agendado)** | o cron externo, nos horários abaixo | sempre `ultimo` |
-| `daily-repescagem.yml` — **daily (repescagem)** | o cron externo, mais tarde na mesma noite | sempre `ultimo`, e só se ainda faltar |
 | `pregao-manual.yml` — **pregao manual** | você, se quiser | `ultimo` ou uma data |
 
 O manual é opcional: se ninguém rodar, a agenda faz o serviço.
@@ -821,33 +820,23 @@ O manual é opcional: se ninguém rodar, a agenda faz o serviço.
 Quem dispara é um cron externo ([cron-job.org](https://cron-job.org)), via
 `workflow_dispatch`: o agendador nativo do GitHub, em repositório público
 gratuito, entregou cerca de 11% dos horários. A agenda versionada fica em
-`.github/cron-externo.yml`, e são quatro disparos, todos pedindo o pregão
+`.github/cron-externo.yml`, e são dois disparos, os dois pedindo o pregão
 encerrado mais recente no relógio de Brasília:
 
 | Quando (Brasília) | Dias | O que acontece |
 |---|---|---|
 | **21:30** | seg a sex | Processa o pregão do dia. Se a B3 ainda não publicou, termina como **adiado**: sem aviso de falha e sem rebuild |
-| **22:15** | seg a sex | Repescagem. Se as 21:30 já resolveram, sai em um segundo sem fazer nada; se adiaram, processa o pregão |
-| **23:30** | seg a sex | Segunda repescagem, para o atraso de horas. Mesma regra |
 | **07:40** | ter a sáb | Reserva. Processa o pregão da véspera se a noite não conseguiu; se conseguiu, nada se repete |
 
-As repescagens existem porque a passada das 21:30 espera o arquivo por 15
-minutos e desiste às 21:45 — e a B3 gosta de publicar logo depois. A data que a
-própria B3 carimba em cada arquivo mostra quando ele saiu. Nos 24 pregões de
-08/09 a 09/10/2026:
+A passada das 21:30 espera o arquivo por 15 minutos e desiste às 21:45. Nos 24
+pregões de 08/09 a 09/10/2026, a B3 publicou depois disso em 4 (três entre
+21:44 e 21:51, um às 23:17): nesses, o resumo chega às 07:40 do dia seguinte.
 
-| Quando o arquivo saiu | Pregões | Quem pegava antes | Quem pega agora |
-|---|---|---|---|
-| até 21:05 | 20 | 21:30 | 21:30 |
-| 21:44 a 21:51 | 3 (25/09, 30/09, 09/10) | 07:40 do dia seguinte | 22:15 |
-| 23:17 | 1 (11/09) | 07:40 do dia seguinte | 23:30 |
-
-Em um pregão a cada seis, o resumo da noite chegava na manhã seguinte por uma
-diferença de minutos. A repescagem pede `--so-se-faltar`: nas outras cinco
-noites ela consulta o carimbo do resumo, vê que já saiu e termina ali — sem
-baixar, recalcular, reconstruir o site nem consultar a CVM de novo. A segunda
-não pode ser mais tarde que 23:40: com a espera de 15 minutos ela atravessaria
-a meia-noite, e `ultimo` deixaria de ser o pregão do dia.
+Até 17/11/2026 havia duas repescagens na mesma noite (22:15 e 23:30, #65), para
+o resumo desses quatro chegar ainda na noite. Elas nunca chegaram a ser criadas
+no cron-job.org (zero execuções em um mês) e saíram, junto com o workflow
+`daily-repescagem.yml`. **A reserva das 07:40 é a única: sem ela no painel, o
+pregão que a B3 atrasar fica sem processar.**
 
 Alerta, resumo e carga são idempotentes: rodar duas vezes o mesmo pregão não
 manda mensagem duplicada.
@@ -1158,7 +1147,7 @@ e uma linha na tabela abaixo. Os testes novos sem outro lugar para morar ficam e
 | Telegram 429 (16/09/2026) | Excesso de mensagens perdia o resumo | `test_telegram.py::test_429_espera_o_que_o_telegram_pede_e_tenta_de_novo` e `test_429_persistente_vira_erro` |
 | Rompimentos em feriado (14/09/2026, #34) | O cron de segunda a sexta rodava em feriado da B3 | `test_retention.py::test_rompimentos_em_feriado_nao_instala_nem_conecta` |
 | Pregão adiado contado como falha (14/09/2026, #33) | A B3 atrasava o arquivo e o job avisava erro | `test_retention.py::test_pregao_adiado_nao_e_falha_nem_reconstroi_o_site` |
-| Repescagens da noite (10/10/2026, #65) | O resumo só chegava no dia seguinte quando a B3 atrasava | `test_retention.py::test_repescagens_rodam_depois_das_21h30_e_terminam_antes_da_meia_noite` e `test_cli.py::test_repescagem_processa_o_pregao_que_as_21h30_adiaram` |
+| Repescagens da noite (10/10/2026, #65; removidas em 17/11/2026, nunca rodaram) | O resumo só chegava no dia seguinte quando a B3 atrasava | `test_retention.py::test_a_reserva_da_manha_continua_na_agenda` e `test_cli.py::test_repescagem_processa_o_pregao_que_as_21h30_adiaram` |
 | Rompimentos precisando de passo de migração (10/10/2026, #66) | Passo à parte falhava antes da checagem | `test_retention.py::test_rompimentos_migra_dentro_da_checagem_e_nao_num_passo_a_parte` |
 | Ticker com dígito, B3SA3 (24/09/2026, #60) | O formato aceito recusava o emissor com número | `test_rompimentos.py` (ticker válido) e `web/src/lib/ticker.test.mjs` |
 | Hora da brapi (23/09/2026, #57) | Valia a hora da resposta, não a do negócio | `test_cotacoes.py::test_hora_nao_confiavel_nao_ganha_de_quem_respondeu` |

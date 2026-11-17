@@ -1,56 +1,14 @@
 "use client";
 
 import Link from "next/link";
-import { useMemo, useState, useSyncExternalStore } from "react";
+import { useState } from "react";
 import { diaCurto, percentual } from "@/lib/formato";
 import { linkDaFichaNoMercado, preco, textos, type Mercado } from "@/lib/mercado";
-import {
-  ESTADOS,
-  INCLINACAO,
-  PERIODOS,
-  alternar,
-  classificar,
-  contar,
-  escolhaDoTexto,
-  nomeDaEscolha,
-  type EscolhaDeMedias,
-  type Estado,
-} from "@/lib/tendencia";
+import { INCLINACAO, PERIODOS, classificar, contar, nomeDaEscolha, passaNoFiltro } from "@/lib/tendencia";
 import type { LinhaDeTendencia } from "@/lib/tendencias";
+import { EtiquetaDeTendencia, SeletorDeTendencia, useFiltroDeTendencia } from "./SeletorDeTendencia";
 
-const NOME_DO_ESTADO: Record<Estado, string> = { alta: "Alta", lateral: "Lateral", baixa: "Baixa" };
-const POR_PAGINA = 40;
-
-// A escolha guardada por mercado. A memoria vale quando o navegador nao deixa
-// gravar (aba anonima, previa): a escolha so nao sobrevive ao recarregar.
-const memoria = new Map<string, string>();
-const assinantes = new Set<() => void>();
-
-function assinar(avisar: () => void): () => void {
-  assinantes.add(avisar);
-  return () => {
-    assinantes.delete(avisar);
-  };
-}
-
-function lerGuardado(chave: string): string | null {
-  if (memoria.has(chave)) return memoria.get(chave) ?? null;
-  try {
-    return window.localStorage.getItem(chave);
-  } catch {
-    return null;
-  }
-}
-
-function gravar(chave: string, texto: string): void {
-  memoria.set(chave, texto);
-  try {
-    window.localStorage.setItem(chave, texto);
-  } catch {
-    // fica so na memoria
-  }
-  for (const avisar of assinantes) avisar();
-}
+const POR_PAGINA = 50;
 
 type Props = {
   mercado: Mercado;
@@ -61,33 +19,27 @@ type Props = {
 };
 
 /**
- * Os ativos em alta, lateral ou baixa pelas medias que o usuario escolher (pedido
- * de 17/11/2026), no scanner e na aba Cripto. A conta de cada media vem pronta
- * do pipeline; aqui so a combinacao, que muda na hora. A escolha fica guardada
- * no navegador, por mercado.
+ * As moedas da aba Cripto com o filtro de tendencia (pedido de 17/11/2026):
+ * Todas / Alta / Lateral / Baixa pelas medias que o usuario escolher, com a
+ * etiqueta em cada uma. A conta de cada media vem pronta do pipeline; aqui so
+ * a combinacao, que muda na hora. Nas acoes o mesmo filtro fica na tabela do
+ * Historico.
  */
 export function PainelDeTendencia({ mercado, dia, linhas, nomes }: Props) {
-  const chave = `tendencia:${mercado}`;
-  // No servidor e na hidratacao nao ha escolha guardada: o HTML sai com o
-  // padrao (MME 20 + 80, alta) e a guardada entra logo depois, sem erro de hidratacao.
-  const texto = useSyncExternalStore(assinar, () => lerGuardado(chave), () => null);
-  const { escolha, estado } = useMemo(() => escolhaDoTexto(texto), [texto]);
+  const { escolha, filtro, mudar } = useFiltroDeTendencia(mercado);
   const [todos, setTodos] = useState(false);
 
-  function guardar(e: EscolhaDeMedias, s: Estado) {
-    setTodos(false);
-    gravar(chave, JSON.stringify({ ...e, estado: s }));
-  }
-
   const t = textos(mercado);
-  const contagem = contar(linhas, escolha);
-  const doEstado = linhas.filter((l) => classificar(l.inclinacoes, escolha) === estado);
-  const visiveis = todos ? doEstado : doEstado.slice(0, POR_PAGINA);
+  const n = contar(linhas, escolha);
+  const contagem = { todas: linhas.length, alta: n.alta, lateral: n.lateral, baixa: n.baixa };
+  const comEstado = linhas.map((l) => ({ ...l, estado: classificar(l.inclinacoes, escolha) }));
+  const doFiltro = comEstado.filter((l) => passaNoFiltro(l.estado, filtro));
+  const visiveis = todos ? doFiltro : doFiltro.slice(0, POR_PAGINA);
 
   return (
     <section className="cartao flex min-w-0 flex-col gap-3 p-4 md:p-5">
       <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
-        <h2 className="text-[18px] font-extrabold">Tendência</h2>
+        <h2 className="text-[18px] font-extrabold">Moedas por tendência</h2>
         {dia && (
           <span className="num text-[12px] font-semibold text-tinta-3">
             {t.dia[0]} de {diaCurto(dia)} · pela {nomeDaEscolha(escolha)}
@@ -97,68 +49,22 @@ export function PainelDeTendencia({ mercado, dia, linhas, nomes }: Props) {
 
       {linhas.length === 0 ? (
         <p className="text-[13px] font-semibold text-tinta-3">
-          A tendência aparece depois da próxima rodada da noite.
+          A tendência é calculada na rodada da noite (21h10) e aparece aqui depois dela.
         </p>
       ) : (
         <>
-          <div role="group" aria-label="Tendência" className="grid grid-cols-3 rounded-full border border-linha-2 p-0.5">
-            {ESTADOS.map((s) => (
-              <button
-                key={s}
-                type="button"
-                onClick={() => guardar(escolha, s)}
-                aria-pressed={estado === s}
-                className={`toque h-9 rounded-full text-[13px] font-bold transition-colors ${
-                  estado === s ? "bg-painel text-acento shadow-sm" : "text-tinta-3 hover:text-tinta"
-                }`}
-              >
-                {NOME_DO_ESTADO[s]} <span className="num font-semibold">{contagem[s]}</span>
-              </button>
-            ))}
-          </div>
+          <SeletorDeTendencia
+            escolha={escolha}
+            filtro={filtro}
+            contagem={contagem}
+            mudar={(e, f) => {
+              setTodos(false);
+              mudar(e, f);
+            }}
+          />
 
-          <div className="flex flex-wrap items-center gap-1.5">
-            <span className="rotulo mr-1">Médias</span>
-            {PERIODOS.map((p) => {
-              const ligada = escolha.periodos.includes(p);
-              return (
-                <button
-                  key={p}
-                  type="button"
-                  onClick={() => guardar(alternar(escolha, p), estado)}
-                  aria-pressed={ligada}
-                  className={`num toque h-8 min-w-10 rounded-full border px-2.5 text-[12px] font-bold transition-colors ${
-                    ligada
-                      ? "border-acento bg-selecao text-acento"
-                      : "border-linha-2 text-tinta-3 hover:text-tinta"
-                  }`}
-                >
-                  {p}
-                </button>
-              );
-            })}
-            <div role="group" aria-label="Tipo de média" className="ml-auto flex rounded-xl border border-linha-2 p-0.5">
-              {(["MME", "MMA"] as const).map((tipo) => (
-                <button
-                  key={tipo}
-                  type="button"
-                  onClick={() => guardar({ ...escolha, tipo }, estado)}
-                  aria-pressed={escolha.tipo === tipo}
-                  title={tipo === "MME" ? "média exponencial" : "média simples"}
-                  className={`toque h-7 rounded-[10px] px-2.5 text-[11px] font-bold transition-colors ${
-                    escolha.tipo === tipo ? "bg-painel text-acento shadow-sm" : "text-tinta-3"
-                  }`}
-                >
-                  {tipo}
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {doEstado.length === 0 ? (
-            <p className="text-[13px] font-semibold text-tinta-3">
-              Nenhum ativo em {NOME_DO_ESTADO[estado].toLowerCase()} com essas médias.
-            </p>
+          {doFiltro.length === 0 ? (
+            <p className="text-[13px] font-semibold text-tinta-3">Nenhuma moeda nessa tendência com essas médias.</p>
           ) : (
             <ul className="flex flex-col divide-y divide-linha">
               {visiveis.map((l) => (
@@ -169,10 +75,13 @@ export function PainelDeTendencia({ mercado, dia, linhas, nomes }: Props) {
                   >
                     {l.ticker}
                   </Link>
-                  <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-tinta-3">
-                    {nomes[l.ticker] ?? ""}
+                  <span className="flex min-w-0 flex-1 items-center gap-1.5">
+                    <EtiquetaDeTendencia estado={l.estado} />
+                    <span className="min-w-0 truncate text-[12px] font-semibold text-tinta-3">
+                      {nomes[l.ticker] ?? ""}
+                    </span>
                     {!l.liquido && (
-                      <span className="ml-1.5 whitespace-nowrap rounded-md bg-painel-2 px-1.5 py-0.5 text-[10px] font-bold text-tinta-3">
+                      <span className="whitespace-nowrap rounded-md bg-painel-2 px-1.5 py-0.5 text-[10px] font-bold text-tinta-3">
                         pouca liquidez
                       </span>
                     )}
@@ -191,13 +100,13 @@ export function PainelDeTendencia({ mercado, dia, linhas, nomes }: Props) {
               ))}
             </ul>
           )}
-          {!todos && doEstado.length > POR_PAGINA && (
+          {!todos && doFiltro.length > POR_PAGINA && (
             <button
               type="button"
               onClick={() => setTodos(true)}
               className="toque h-9 self-start rounded-full px-1 text-[13px] font-bold text-acento hover:underline"
             >
-              Ver todos ({doEstado.length})
+              Ver todas ({doFiltro.length})
             </button>
           )}
 
@@ -206,7 +115,7 @@ export function PainelDeTendencia({ mercado, dia, linhas, nomes }: Props) {
             Subindo é acima do valor de alguns {t.dia[1]} atrás (
             {PERIODOS.map((p) => `${p}: ${INCLINACAO[p]}`).join(", ")}). Mostra a direção das médias
             no último fechamento, não para onde o preço vai. {t.universoDaTendencia}
-            {contagem.sem > 0 && ` ${contagem.sem} ficam de fora por não terem histórico para essas médias.`}
+            {n.sem > 0 && ` ${n.sem} sem histórico para essas médias ficam só em Todas.`}
           </p>
         </>
       )}

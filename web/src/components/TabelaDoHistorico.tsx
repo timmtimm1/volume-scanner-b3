@@ -33,6 +33,8 @@ import type { LinhaDoHistorico } from "@/lib/types";
 import { carregarBarras } from "@/lib/useBarrasDoPapel";
 import { useComputador } from "@/lib/useComputador";
 import { ArranjoDaPagina, GradeDeCaixas } from "./OrganizarCaixas";
+import { classificar, passaNoFiltro, type Estado, type Inclinacoes } from "@/lib/tendencia";
+import { EtiquetaDeTendencia, SeletorDeTendencia, useFiltroDeTendencia } from "./SeletorDeTendencia";
 
 /**
  * A previa so existe no computador, e e ela que traz o grafico. Carregada a
@@ -58,6 +60,13 @@ type Props = {
   eventos: LinhaDoHistorico[];
   limiarDoAlerta: number;
   minimo: number;
+  /**
+   * A inclinacao das medias de cada papel no ultimo pregao (tabela
+   * `tendencias`), para o filtro de tendencia. Vazio antes da primeira rodada.
+   */
+  tendencias: Record<string, Inclinacoes>;
+  /** O pregao da tendencia; null sem nenhuma. */
+  diaDaTendencia: string | null;
 };
 
 function lerDaSessao(): string | null {
@@ -138,6 +147,8 @@ function Tabela({
   eventos,
   limiarDoAlerta,
   minimo,
+  tendencias,
+  diaDaTendencia,
   inicial,
   podeGravar,
 }: Props & { inicial: EstadoDoHistorico | null; podeGravar: boolean }) {
@@ -162,9 +173,11 @@ function Tabela({
   // Um clique no cabecalho "Desvio (z)" liga a ordenacao por esse valor;
   // outro clique inverte; o terceiro volta a ordem padrao.
   const [ordemZ, setOrdemZ] = useState<OrdemDoZ>(inicial?.ordemZ ?? null);
+  // O filtro de tendencia, guardado no navegador (o mesmo hook da aba Cripto).
+  const { escolha, filtro, mudar: mudarTendencia } = useFiltroDeTendencia("b3");
   // Quantas linhas mostrar, amarrado aos filtros: mudou um filtro, volta a
   // mostrar a primeira leva sem precisar zerar estado dentro de efeito.
-  const chaveDosFiltros = `${corte}|${busca}|${desde}|${atePeriodo}|${ordemZ}`;
+  const chaveDosFiltros = `${corte}|${busca}|${desde}|${atePeriodo}|${ordemZ}|${filtro}|${escolha.tipo}${escolha.periodos.join("+")}`;
   const [leva, setLeva] = useState({
     chave: chaveDosFiltros,
     linhas: inicial?.linhas ?? LINHAS_POR_VEZ,
@@ -174,9 +187,21 @@ function Tabela({
   // o primeiro da lista -- o mesmo criterio da previa do scanner.
   const [selecionado, setSelecionado] = useState<string | null>(inicial?.selecionado ?? null);
 
-  const visiveis = useMemo(() => {
+  // A tendencia de HOJE de cada papel (nao a do dia do evento), pelas medias
+  // escolhidas. Papel sem linha na tabela (sem negocio no ultimo pregao) e
+  // papel sem historico para as medias ficam fora de Alta, Lateral e Baixa.
+  const estadoDoPapel = useMemo(() => {
+    const m = new Map<string, Estado | null>();
+    for (const [ticker, inc] of Object.entries(tendencias)) m.set(ticker, classificar(inc, escolha));
+    return m;
+  }, [tendencias, escolha]);
+  const estadoDe = (ticker: string): Estado | null => estadoDoPapel.get(ticker) ?? null;
+
+  // Os outros filtros, sem o de tendencia: e sobre eles que a contagem de cada
+  // botao (Alta 340...) e feita.
+  const semTendencia = useMemo(() => {
     const alvo = busca.trim().toUpperCase();
-    const filtrados = eventos.filter(
+    return eventos.filter(
       (e) =>
         e.zLog >= corte &&
         // Procurar "petrobras" tem de achar PETR3 e PETR4: quem nao decorou o
@@ -188,10 +213,25 @@ function Tabela({
         (!desde || e.tradeDate >= desde) &&
         (!atePeriodo || e.tradeDate <= atePeriodo),
     );
+  }, [eventos, corte, busca, desde, atePeriodo]);
+
+  const contagemDaTendencia = useMemo(() => {
+    const n = { todas: semTendencia.length, alta: 0, lateral: 0, baixa: 0 };
+    for (const e of semTendencia) {
+      const s = estadoDoPapel.get(e.ticker) ?? null;
+      if (s) n[s]++;
+    }
+    return n;
+  }, [semTendencia, estadoDoPapel]);
+
+  const visiveis = useMemo(() => {
+    const filtrados = semTendencia.filter((e) =>
+      passaNoFiltro(estadoDoPapel.get(e.ticker) ?? null, filtro),
+    );
     if (!ordemZ) return filtrados;
     const sinal = ordemZ === "desc" ? -1 : 1;
     return [...filtrados].sort((a, b) => sinal * (a.zLog - b.zLog));
-  }, [eventos, corte, busca, desde, atePeriodo, ordemZ]);
+  }, [semTendencia, estadoDoPapel, filtro, ordemZ]);
 
   const indiceDaPrevia = useMemo(() => {
     const i =
@@ -211,6 +251,7 @@ function Tabela({
     setDesde("");
     setAtePeriodo("");
     setOrdemZ(null);
+    mudarTendencia(escolha, "todas");
   }
 
   /*
@@ -340,7 +381,8 @@ function Tabela({
   // pregao, papel, z, rvol e variacao. O resto esta no cabecalho da previa.
   const colunas =
     "md:grid-cols-[104px_176px_92px_72px_84px_120px_110px_1fr] lg:grid-cols-[92px_minmax(0,1fr)_64px_60px_72px]";
-  const filtrado = temFiltro({ corte, busca, desde, ate: atePeriodo, ordemZ }, minimo);
+  const filtrado =
+    temFiltro({ corte, busca, desde, ate: atePeriodo, ordemZ }, minimo) || filtro !== "todas";
 
   const caixaTabela = (
     <section className="cartao overflow-hidden p-2 md:p-3">
@@ -404,7 +446,10 @@ function Tabela({
               }`}
             >
               <span className="order-1 flex min-w-0 flex-col md:order-2">
-                <span className="text-[15px] font-extrabold md:text-[14px]">{e.ticker}</span>
+                <span className="flex items-center gap-1.5">
+                  <span className="text-[15px] font-extrabold md:text-[14px]">{e.ticker}</span>
+                  <EtiquetaDeTendencia estado={estadoDe(e.ticker)} />
+                </span>
                 {nomeDaEmpresa(e.empresa) && (
                   <span className="truncate text-[11px] font-semibold text-tinta-3">
                     {nomeDaEmpresa(e.empresa)}
@@ -541,6 +586,32 @@ function Tabela({
               aria-label="z mínimo"
               className="h-11 w-full cursor-pointer bg-transparent"
             />
+          </div>
+
+          <div className="flex flex-col gap-1.5 sm:col-span-2 lg:col-span-4">
+            <span className="rotulo">
+              Tendência do papel hoje
+              {diaDaTendencia && <span className="num normal-case"> · pregão de {fmtData(diaDaTendencia)}</span>}
+            </span>
+            {Object.keys(tendencias).length === 0 ? (
+              <span className="text-[12px] font-semibold text-tinta-3">
+                A tendência é calculada na rodada da noite (21h30) e aparece aqui depois dela.
+              </span>
+            ) : (
+              <>
+                <SeletorDeTendencia
+                  escolha={escolha}
+                  filtro={filtro}
+                  contagem={contagemDaTendencia}
+                  mudar={mudarTendencia}
+                />
+                <span className="text-[11px] font-semibold leading-relaxed text-tinta-3">
+                  A tendência é a do papel no último pregão, não a do dia do evento. Alta: todas as
+                  médias marcadas subindo; baixa: todas caindo; lateral: elas discordam. Mostra a
+                  direção das médias, não para onde o preço vai.
+                </span>
+              </>
+            )}
           </div>
 
           <span className="flex flex-col items-start gap-1 self-center lg:items-end lg:pb-3">

@@ -68,7 +68,7 @@ Pedido do usuário em 16/11/2026: três contas simples de "preço justo" para to
 
 ## A exceção escrita: tendência
 
-Pedido do usuário em 17/11/2026: ver, no scanner e na aba Cripto, os ativos em alta, lateral ou baixa pela inclinação das médias móveis que ele escolher. Seção 17 do plano.
+Pedido do usuário em 17/11/2026: filtrar os ativos em alta, lateral ou baixa pela inclinação das médias móveis que ele escolher — na tabela do Histórico (ações) e na aba Cripto. Seção 17 do plano.
 
 - É a direção das médias no último fechamento (`scanner/tendencia.py` grava, `web/src/lib/tendencia.ts` combina), com o texto à vista. Não diz "compre" nem prevê nada.
 - Não alimenta alerta, setup, semáforo nem backtest. A etiqueta "em alta / contra a tendência" dos setups continua sendo a da MMA 200.

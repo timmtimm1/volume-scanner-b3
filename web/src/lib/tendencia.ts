@@ -20,6 +20,14 @@ export type Inclinacoes = Record<ColunaDeMedia, Inclinacao>;
 export type EscolhaDeMedias = { tipo: TipoDeMedia; periodos: Periodo[] };
 export type Estado = "alta" | "lateral" | "baixa";
 export const ESTADOS: readonly Estado[] = ["alta", "lateral", "baixa"];
+/** O filtro da tela: "todas" nao esconde nada (e o padrao). */
+export type FiltroDeTendencia = "todas" | Estado;
+export const FILTROS: readonly FiltroDeTendencia[] = ["todas", ...ESTADOS];
+
+/** Passa no filtro? "todas" deixa passar ate quem nao tem historico para as medias. */
+export function passaNoFiltro(estado: Estado | null, filtro: FiltroDeTendencia): boolean {
+  return filtro === "todas" || estado === filtro;
+}
 
 /**
  * O ponto de partida: MME 20 + MME 80. A 9 fica de fora de proposito (decisao
@@ -75,20 +83,26 @@ export function nomeDaEscolha(escolha: EscolhaDeMedias): string {
 
 /**
  * Le a escolha guardada no navegador; qualquer coisa fora do formato volta ao
- * padrao (o texto vem do localStorage, que o usuario pode ter mexido).
+ * padrao -- MME 20 + 80, sem filtro (o texto vem do localStorage, que o
+ * usuario pode ter mexido).
  */
-export function escolhaDoTexto(texto: string | null): { escolha: EscolhaDeMedias; estado: Estado } {
-  const padrao = { escolha: ESCOLHA_PADRAO, estado: "alta" as Estado };
+export function escolhaDoTexto(texto: string | null): {
+  escolha: EscolhaDeMedias;
+  filtro: FiltroDeTendencia;
+} {
+  const padrao = { escolha: ESCOLHA_PADRAO, filtro: "todas" as FiltroDeTendencia };
   if (!texto) return padrao;
   try {
-    const d = JSON.parse(texto) as { tipo?: unknown; periodos?: unknown; estado?: unknown };
+    const d = JSON.parse(texto) as { tipo?: unknown; periodos?: unknown; filtro?: unknown };
     const tipo = d.tipo === "MMA" ? "MMA" : d.tipo === "MME" ? "MME" : null;
     const periodos = Array.isArray(d.periodos)
       ? PERIODOS.filter((p) => (d.periodos as unknown[]).includes(p))
       : [];
-    const estado = ESTADOS.includes(d.estado as Estado) ? (d.estado as Estado) : "alta";
-    if (!tipo || periodos.length === 0) return { ...padrao, estado };
-    return { escolha: { tipo, periodos: [...periodos] }, estado };
+    const filtro = FILTROS.includes(d.filtro as FiltroDeTendencia)
+      ? (d.filtro as FiltroDeTendencia)
+      : "todas";
+    if (!tipo || periodos.length === 0) return { ...padrao, filtro };
+    return { escolha: { tipo, periodos: [...periodos] }, filtro };
   } catch {
     return padrao;
   }

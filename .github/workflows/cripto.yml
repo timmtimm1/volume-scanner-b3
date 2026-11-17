@@ -49,7 +49,11 @@ jobs:
       SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
       SCANNER_WEB_BASE_URL: ${{ vars.SCANNER_WEB_BASE_URL }}
       DIA: ${{ inputs.trade_date || 'ultimo' }}
-      SO_SE_FALTAR: ${{ inputs.refazer && '' || '--so-se-faltar' }}
+      # Nao e `inputs.refazer && '' || '--so-se-faltar'`: no Actions o texto
+      # vazio e falso, e a expressao caia sempre no --so-se-faltar (o botao
+      # refazer nao fazia nada, visto em 17/11/2026). Negando antes, o lado
+      # verdadeiro e o texto nao vazio.
+      SO_SE_FALTAR: ${{ !inputs.refazer && '--so-se-faltar' || '' }}
     steps:
       - uses: actions/checkout@v5
 

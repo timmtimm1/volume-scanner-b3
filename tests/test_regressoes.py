@@ -119,6 +119,20 @@ def test_toda_carga_de_fundamentos_e_seguida_da_conferencia(nome: str) -> None:
     assert aviso, f"{nome}: a conferencia falha e ninguem e avisado"
 
 
+@pytest.mark.parametrize("arquivo", WORKFLOWS, ids=lambda p: p.name)
+def test_nenhuma_expressao_devolve_texto_vazio_no_meio_do_e_ou(arquivo: Path) -> None:
+    """17/11/2026: `inputs.refazer && '' || '--so-se-faltar'` ignorava o refazer.
+
+    No GitHub Actions o texto vazio e falso: `x && '' || y` vale sempre `y`.
+    O jeito certo e negar antes (`!x && y || ''`), com o texto vazio no fim.
+    """
+    for numero, linha in enumerate(arquivo.read_text(encoding="utf-8").splitlines(), 1):
+        codigo = linha.split("#", 1)[0]
+        assert not re.search(r"&&\s*''\s*\|\|", codigo), (
+            f"{arquivo.name}:{numero}: `&& '' ||` sempre cai no lado do ||"
+        )
+
+
 def _passos_que_rodam_sem_dependencias() -> list[tuple[str, str]]:
     """(workflow, comando) de todo passo que chama o Python do runner com `PYTHONPATH=src`.
 

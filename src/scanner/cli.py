@@ -566,7 +566,11 @@ def _provedor_de_cotacoes() -> Any:
     dos quatro de teste, e cada passada gastaria uma requisicao por papel so
     para encher o log de recusa.
     """
-    from scanner.cotacoes import BrapiClient, ProvedorMaisRecente, YahooClient
+    from scanner.cotacoes import BinanceDiaClient, BrapiClient, ProvedorMaisRecente, YahooClient
+
+    # Cripto (SCANNER_MERCADO=cripto): so a Binance, com a maxima do dia UTC.
+    if mercado.e_cripto():
+        return BinanceDiaClient()
 
     settings = _settings()
     provedores: list[Any] = []

@@ -165,7 +165,7 @@ def quantidade_curta(quantidade: float) -> str:
     elif q >= 1:
         texto = f"{quantidade:.2f}".rstrip("0").rstrip(".").replace(".", ",")
     elif q > 0:
-        casas = min(5, 2 - int(np.floor(np.log10(q))))
+        casas = min(5, 2 - math.floor(math.log10(q)))
         texto = f"{quantidade:.{casas}f}".rstrip("0").rstrip(".").replace(".", ",")
     else:
         texto = "0"

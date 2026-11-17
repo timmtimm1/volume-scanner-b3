@@ -1,6 +1,7 @@
 import Link from "next/link";
 import { ehDono, signIn, signOut } from "@/auth";
 import { CartaoDeEntrada, ResumoDasCores } from "@/components/CartaoDeEntrada";
+import { CartaoDeSinal, LinhaDeSinalEncerrado } from "@/components/CartaoDeSinal";
 import { LinhaDeEncerrado, LinhaEmAndamento } from "@/components/CartaoDeSetup";
 import { PerfilDeRisco } from "@/components/PerfilDeRisco";
 import { SecaoRecolhida } from "@/components/SecaoRecolhida";
@@ -22,6 +23,7 @@ import { calcularLoteFracionado } from "@/lib/lote";
 import { arredondarPreco, gatilhoNoMercado, preco, stopNoMercado, textos } from "@/lib/mercado";
 import { noMercado } from "@/lib/mercado-servidor";
 import { lerPerfil } from "@/lib/perfil";
+import { sinaisDoEstudo } from "@/lib/sinais-estudo";
 import { listarSetups, preferenciasDosSetups } from "@/lib/setups";
 import {
   type CategoriaDoSetup,
@@ -52,13 +54,14 @@ function volumeCurto(v: number): string {
 }
 
 async function ler() {
-  const [setups, preferencias, rodada, perfil, nomes, volume] = await Promise.all([
+  const [setups, preferencias, rodada, perfil, nomes, volume, sinais] = await Promise.all([
     listarSetups(),
     preferenciasDosSetups(),
     rodadaAtual(),
     lerPerfil(),
     lerMoedas(),
     volumeDoDia(),
+    sinaisDoEstudo(),
   ]);
   const saidasDoBacktest: Partial<Record<CategoriaDoSetup, SaidaDoSetup>> = {};
   let linhas: LinhaDoBacktest[] = [];
@@ -81,7 +84,7 @@ async function ler() {
     candlesDosPapeis(armados.map((s) => s.ticker)),
     diaDeHoje(armados.map((s) => s.ticker)),
   ]);
-  return { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje };
+  return { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais };
 }
 
 export default async function Cripto() {
@@ -129,7 +132,9 @@ export default async function Cripto() {
       </section>
     );
   }
-  const { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje } = dados;
+  const { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais } = dados;
+  const sinaisVivos = sinais.filter((s) => s.estado === "aguardando" || s.estado === "aberto");
+  const sinaisEncerrados = sinais.filter((s) => s.estado !== "aguardando" && s.estado !== "aberto");
   const t = textos(MERCADO);
   const diario: ContextoDoDiario = { mercado: MERCADO, perfil, tradePorSetup: {}, abertoPorTicker: {} };
 
@@ -267,6 +272,50 @@ export default async function Cripto() {
                 />
               ))}
             </div>
+          </details>
+        )}
+      </section>
+
+      <section className="cartao flex flex-col gap-3 p-4 md:p-5">
+        <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">
+          <h2 className="text-[18px] font-extrabold">
+            Setups do estudo
+            <span className="num ml-2 text-[14px] font-bold text-tinta-3">{sinaisVivos.length}</span>
+          </h2>
+          <span className="text-[12px] font-semibold text-tinta-3">
+            reversão no RSI (diário) e compressão na venda (4h)
+          </span>
+        </div>
+        <p className="text-[12px] font-semibold leading-relaxed text-tinta-3">
+          Os dois setups do crypto-trader-skill que se saíram melhor no estudo de 2017 a 2026.
+          Eles entram na abertura do candle seguinte ao sinal, sem esperar passar da máxima, e
+          saem no stop, no alvo de 3R ou no prazo. São conferidos de 15 em 15 minutos, com aviso
+          no Telegram quando aparece um sinal. A cor é a nota do próprio estudo.
+        </p>
+        {sinaisVivos.length === 0 ? (
+          <p className="text-[13px] font-semibold text-tinta-3">Nenhum sinal aberto agora.</p>
+        ) : (
+          <div className={GRADE}>
+            {sinaisVivos.map((s) => (
+              <CartaoDeSinal key={s.id} s={s} perfil={perfil} />
+            ))}
+          </div>
+        )}
+        {sinaisEncerrados.length > 0 && (
+          <details className="group">
+            <summary className="toque flex cursor-pointer list-none items-center text-[13px] font-bold text-tinta-2 [&::-webkit-details-marker]:hidden">
+              {sinaisEncerrados.length === 1
+                ? "1 encerrado nos últimos 30 dias"
+                : `${sinaisEncerrados.length} encerrados nos últimos 30 dias`}
+              <span aria-hidden className="ml-2 transition-transform group-open:rotate-90">
+                ›
+              </span>
+            </summary>
+            <ul className="flex flex-col divide-y divide-linha">
+              {sinaisEncerrados.map((s) => (
+                <LinhaDeSinalEncerrado key={s.id} s={s} />
+              ))}
+            </ul>
           </details>
         )}
       </section>

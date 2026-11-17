@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { calcularLote, calcularLoteFracionado } from "./lote.ts";
+import { calcularLote, calcularLoteFracionado, calcularLoteFracionadoVenda } from "./lote.ts";
 import {
   arredondarPreco,
   casasDoPreco,
@@ -122,5 +122,27 @@ describe("lote fracionado (cripto)", () => {
     assert.equal(calcularLoteFracionado({ ...perfil, entrada: 10, stop: 10 }).quantidade, 0);
     assert.equal(calcularLoteFracionado({ ...perfil, entrada: 10, stop: 11 }).quantidade, 0);
     assert.equal(calcularLoteFracionado({ capital: null, riscoPct: 1, entrada: 10, stop: 9 }).quantidade, 0);
+  });
+});
+
+describe("lote fracionado da venda (cripto, futuros)", () => {
+  const perfil = { capital: 1000, riscoPct: 1 };
+
+  it("o risco e o stop ACIMA da entrada", () => {
+    // vende a 73,50 com stop em 76,20: US$ 2,70 por moeda; risco de US$ 10
+    const lote = calcularLoteFracionadoVenda({ ...perfil, entrada: 73.5, stop: 76.2 });
+    assert.ok(Math.abs(lote.quantidade - 10 / 2.7) < 1e-6);
+    assert.ok(Math.abs(lote.perdaMaxima - 10) < 0.01);
+    assert.equal(lote.limitadoPeloCapital, false);
+  });
+
+  it("sem alavancagem: a posicao vendida nao passa do capital", () => {
+    const lote = calcularLoteFracionadoVenda({ ...perfil, entrada: 100, stop: 100.1 });
+    assert.equal(lote.valorPosicao, 1000);
+    assert.equal(lote.limitadoPeloCapital, true);
+  });
+
+  it("stop abaixo da entrada nao e venda", () => {
+    assert.equal(calcularLoteFracionadoVenda({ ...perfil, entrada: 100, stop: 90 }).quantidade, 0);
   });
 });

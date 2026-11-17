@@ -7,6 +7,7 @@ import {
   nomesDosPapeis,
   ultimoPregao,
 } from "@/lib/db";
+import { tendenciaSoLiquidos } from "@/lib/mercado";
 import { lerTendencias } from "@/lib/tendencias";
 
 /**
@@ -20,7 +21,7 @@ export default async function Scanner() {
   const [eventos, distribuicao, tendencias] = await Promise.all([
     eventosDoPregao(pregao.tradeDate),
     distribuicaoDoPregao(pregao.tradeDate),
-    lerTendencias(),
+    lerTendencias(tendenciaSoLiquidos("b3")),
   ]);
   const comGrafico = [...eventos]
     .sort((a, b) => b.zLog - a.zLog)

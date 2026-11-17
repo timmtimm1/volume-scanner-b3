@@ -17,6 +17,16 @@ const todas = (v) => ({
   mma9: v, mma20: v, mma50: v, mma80: v, mma200: v,
 });
 
+const NOVE_E_80 = { tipo: "MME", periodos: [9, 80] };
+
+describe("o ponto de partida", () => {
+  it("nao exige a MME 9 subindo: o 9.4 e a 9 virando para baixo dentro da tendencia", () => {
+    assert.ok(!ESCOLHA_PADRAO.periodos.includes(9));
+    const correcao = { ...todas(1), mme9: -1 };
+    assert.equal(classificar(correcao, ESCOLHA_PADRAO), "alta");
+  });
+});
+
 describe("classificar", () => {
   it("todas subindo e alta; todas caindo e baixa", () => {
     assert.equal(classificar(todas(1), ESCOLHA_PADRAO), "alta");
@@ -25,14 +35,14 @@ describe("classificar", () => {
 
   it("medias que discordam: lateral", () => {
     const inc = { ...todas(1), mme9: -1 };
-    assert.equal(classificar(inc, ESCOLHA_PADRAO), "lateral");
+    assert.equal(classificar(inc, NOVE_E_80), "lateral");
     // a media que discorda nao foi escolhida: continua alta
     assert.equal(classificar(inc, { tipo: "MME", periodos: [20, 80] }), "alta");
   });
 
   it("sem historico em uma das escolhidas: fica de fora (null)", () => {
     const nova = { ...todas(1), mme80: 0, mme200: 0 };
-    assert.equal(classificar(nova, ESCOLHA_PADRAO), null);
+    assert.equal(classificar(nova, NOVE_E_80), null);
     assert.equal(classificar(nova, { tipo: "MME", periodos: [9, 20] }), "alta");
   });
 
@@ -52,13 +62,13 @@ describe("contar", () => {
       { inclinacoes: { ...todas(1), mme9: -1 } },
       { inclinacoes: { ...todas(1), mme80: 0 } },
     ];
-    assert.deepEqual(contar(linhas, ESCOLHA_PADRAO), { alta: 2, lateral: 1, baixa: 1, sem: 1 });
+    assert.deepEqual(contar(linhas, NOVE_E_80), { alta: 2, lateral: 1, baixa: 1, sem: 1 });
   });
 });
 
 describe("alternar", () => {
   it("liga na ordem dos periodos e desliga", () => {
-    const com20 = alternar(ESCOLHA_PADRAO, 20);
+    const com20 = alternar(NOVE_E_80, 20);
     assert.deepEqual(com20.periodos, [9, 20, 80]);
     assert.deepEqual(alternar(com20, 9).periodos, [20, 80]);
     assert.equal(nomeDaEscolha(com20), "MME 9 + 20 + 80");

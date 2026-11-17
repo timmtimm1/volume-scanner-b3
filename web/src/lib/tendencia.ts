@@ -22,11 +22,14 @@ export type Estado = "alta" | "lateral" | "baixa";
 export const ESTADOS: readonly Estado[] = ["alta", "lateral", "baixa"];
 
 /**
- * O ponto de partida: MME 9 + MME 80. No estudo de 17/11/2026 sobre os trades
- * do backtest, a direcao da MME 9 foi a que mais separou o resultado dos
- * setups nos dois mercados, e a 80 junta a direcao do medio prazo.
+ * O ponto de partida: MME 20 + MME 80. A 9 fica de fora de proposito (decisao
+ * do usuario em 17/11/2026): o 9.4 e a MME 9 virando para baixo e voltando a
+ * subir dentro da tendencia, e o 9.2 e o 9.3 sao correcoes em que ela achata
+ * -- exigir a 9 subindo esconderia justamente os papeis desses setups. A 80 e
+ * a media do filtro de tendencia dos 9.x (`classicos.py`); a 20, a direcao do
+ * medio prazo. O usuario liga a 9 na tela quando quiser.
  */
-export const ESCOLHA_PADRAO: EscolhaDeMedias = { tipo: "MME", periodos: [9, 80] };
+export const ESCOLHA_PADRAO: EscolhaDeMedias = { tipo: "MME", periodos: [20, 80] };
 
 /** Com quantos pregoes atras cada media e comparada (o mesmo do Python). */
 export const INCLINACAO: Record<Periodo, number> = { 9: 1, 20: 5, 50: 10, 80: 20, 200: 20 };

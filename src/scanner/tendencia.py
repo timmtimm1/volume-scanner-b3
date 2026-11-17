@@ -131,7 +131,7 @@ class RelatorioDeTendencias:
     dia: date
     ativos: int = 0
     liquidos: int = 0
-    # pela combinacao padrao do site (MME 9 + MME 80), so para o log
+    # pela combinacao padrao do site (MME 20 + MME 80), so para o log
     alta: int = 0
     baixa: int = 0
     dry_run: bool = False
@@ -144,7 +144,7 @@ class RelatorioDeTendencias:
             lateral = self.liquidos - self.alta - self.baixa
             base = (
                 f"tendencia: {self.ativos} ativos {verbo} ({self.liquidos} liquidos; pela "
-                f"MME 9 + 80: {self.alta} em alta, {self.baixa} em baixa, {lateral} lateral "
+                f"MME 20 + 80: {self.alta} em alta, {self.baixa} em baixa, {lateral} lateral "
                 "ou sem historico)"
             )
         return f"[dry-run] {base}" if self.dry_run else base
@@ -160,8 +160,8 @@ def run_tendencias(
     if frame.empty:
         return RelatorioDeTendencias(dia=dia, dry_run=dry_run)
     liq = frame[frame["liquido"].astype(bool)]
-    alta = int(((liq["mme9"] == 1) & (liq["mme80"] == 1)).sum())
-    baixa = int(((liq["mme9"] == -1) & (liq["mme80"] == -1)).sum())
+    alta = int(((liq["mme20"] == 1) & (liq["mme80"] == 1)).sum())
+    baixa = int(((liq["mme20"] == -1) & (liq["mme80"] == -1)).sum())
     if not dry_run:
         gravar_tendencias(engine, frame)
     return RelatorioDeTendencias(

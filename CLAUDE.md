@@ -72,7 +72,7 @@ Pedido do usuário em 17/11/2026: ver, no scanner e na aba Cripto, os ativos em 
 
 - É a direção das médias no último fechamento (`scanner/tendencia.py` grava, `web/src/lib/tendencia.ts` combina), com o texto à vista. Não diz "compre" nem prevê nada.
 - Não alimenta alerta, setup, semáforo nem backtest. A etiqueta "em alta / contra a tendência" dos setups continua sendo a da MMA 200.
-- Só ativos líquidos (a regra do backtest). O padrão é MME 9 + 80; mudar o padrão pede refazer o estudo da seção 17.
+- Nas ações, só papéis líquidos (a regra do backtest); em cripto, as 50 maiores, com etiqueta nas pouco líquidas. O padrão é MME 20 + 80, sem a 9 (o 9.4 é a 9 virando para baixo dentro da tendência); o usuário escolhe outras na tela.
 
 ## Padrões de código
 

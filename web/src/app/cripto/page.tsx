@@ -21,7 +21,14 @@ import {
 import { candlesDosPapeis, linhasDoBacktest } from "@/lib/entradas-dados";
 import { data, numero, percentual } from "@/lib/formato";
 import { calcularLoteFracionado } from "@/lib/lote";
-import { arredondarPreco, gatilhoNoMercado, preco, stopNoMercado, textos } from "@/lib/mercado";
+import {
+  arredondarPreco,
+  gatilhoNoMercado,
+  preco,
+  stopNoMercado,
+  tendenciaSoLiquidos,
+  textos,
+} from "@/lib/mercado";
 import { noMercado } from "@/lib/mercado-servidor";
 import { lerPerfil } from "@/lib/perfil";
 import { sinaisDoEstudo } from "@/lib/sinais-estudo";
@@ -66,7 +73,7 @@ async function ler() {
     volumeDoDia(),
     sinaisDoEstudo(),
     tradesDosSetups(),
-    lerTendencias(),
+    lerTendencias(tendenciaSoLiquidos(MERCADO)),
   ]);
   const saidasDoBacktest: Partial<Record<CategoriaDoSetup, SaidaDoSetup>> = {};
   let linhas: LinhaDoBacktest[] = [];
@@ -296,7 +303,8 @@ export default async function Cripto() {
       <PainelDeTendencia
         mercado={MERCADO}
         dia={tendencias.dia}
-        linhas={tendencias.linhas}
+        // so as que estao entre as maiores hoje, como as entradas da aba
+        linhas={tendencias.linhas.filter((l) => nomes[l.ticker]?.noTop ?? true)}
         nomes={Object.fromEntries(Object.values(nomes).map((m) => [m.ticker, m.nome]))}
       />
 

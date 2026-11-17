@@ -135,6 +135,8 @@ export type Textos = {
   notaDaData: string;
   /** Por que nao ha lote, depois de "com 1% de risco sobre o seu capital, " */
   semLote: string;
+  /** Quem entra na lista de tendencia, para o rodape do painel. */
+  universoDaTendencia: string;
 };
 
 const TEXTOS: Record<Mercado, Textos> = {
@@ -152,6 +154,7 @@ const TEXTOS: Record<Mercado, Textos> = {
     exemploDoAtivo: "PETR4",
     notaDaData: "",
     semLote: "não dá nem para 1 ação a esse preço e esse stop.",
+    universoDaTendencia: "Só papéis com liquidez (mediana de R$ 500 mil por dia em 60 pregões).",
   },
   cripto: {
     naMoeda: "em dólares",
@@ -167,6 +170,8 @@ const TEXTOS: Record<Mercado, Textos> = {
     exemploDoAtivo: "BTC",
     notaDaData: "o dia do candle, em UTC: depois das 21h de Brasília já é o dia seguinte",
     semLote: "a posição ficaria abaixo de US$ 5, o mínimo da corretora.",
+    universoDaTendencia:
+      "As 50 maiores moedas por valor de mercado; “pouca liquidez” é a que negocia menos de US$ 5 milhões por dia na Binance.",
   },
 };
 
@@ -259,6 +264,17 @@ const MOEDA = /^[A-Z0-9]{1,15}$/;
 /** O ticker tem o formato do mercado? "PETR4" na B3; "BTC", "1INCH" em cripto. */
 export function tickerValido(mercado: Mercado, ticker: string): boolean {
   return (mercado === "b3" ? TICKER_DA_B3 : MOEDA).test(ticker);
+}
+
+/**
+ * A lista de tendencia so com os ativos liquidos? Na B3 sim: sao centenas de
+ * papeis, e uma centena quase sem negocio. Em cripto o universo ja e o das 50
+ * maiores por valor de mercado, e o piso do backtest (US$ 5 mi por dia, feito
+ * para o stop ser realista) tirava 14 delas -- entre elas as poucas em alta em
+ * 16/11/2026. Em cripto entram todas, com etiqueta nas pouco liquidas.
+ */
+export function tendenciaSoLiquidos(mercado: Mercado): boolean {
+  return mercado === "b3";
 }
 
 /** `?mercado=cripto` para as rotas e paginas que servem os dois mercados; nada na B3. */

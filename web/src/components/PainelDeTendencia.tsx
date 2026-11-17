@@ -69,7 +69,7 @@ type Props = {
 export function PainelDeTendencia({ mercado, dia, linhas, nomes }: Props) {
   const chave = `tendencia:${mercado}`;
   // No servidor e na hidratacao nao ha escolha guardada: o HTML sai com o
-  // padrao (MME 9 + 80, alta) e a guardada entra logo depois, sem erro de hidratacao.
+  // padrao (MME 20 + 80, alta) e a guardada entra logo depois, sem erro de hidratacao.
   const texto = useSyncExternalStore(assinar, () => lerGuardado(chave), () => null);
   const { escolha, estado } = useMemo(() => escolhaDoTexto(texto), [texto]);
   const [todos, setTodos] = useState(false);
@@ -171,6 +171,11 @@ export function PainelDeTendencia({ mercado, dia, linhas, nomes }: Props) {
                   </Link>
                   <span className="min-w-0 flex-1 truncate text-[12px] font-semibold text-tinta-3">
                     {nomes[l.ticker] ?? ""}
+                    {!l.liquido && (
+                      <span className="ml-1.5 whitespace-nowrap rounded-md bg-painel-2 px-1.5 py-0.5 text-[10px] font-bold text-tinta-3">
+                        pouca liquidez
+                      </span>
+                    )}
                   </span>
                   <span className="num shrink-0 text-right text-[13px] font-semibold text-tinta-2">
                     {preco(mercado, l.fechamento)}
@@ -200,7 +205,7 @@ export function PainelDeTendencia({ mercado, dia, linhas, nomes }: Props) {
             Alta: todas as médias marcadas subindo; baixa: todas caindo; lateral: elas discordam.
             Subindo é acima do valor de alguns {t.dia[1]} atrás (
             {PERIODOS.map((p) => `${p}: ${INCLINACAO[p]}`).join(", ")}). Mostra a direção das médias
-            no último fechamento, não para onde o preço vai. Só ativos com liquidez.
+            no último fechamento, não para onde o preço vai. {t.universoDaTendencia}
             {contagem.sem > 0 && ` ${contagem.sem} ficam de fora por não terem histórico para essas médias.`}
           </p>
         </>

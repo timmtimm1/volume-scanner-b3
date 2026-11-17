@@ -1823,6 +1823,8 @@ def cobertura_do_trimestre(engine: Engine, dt_refer: date, anterior: date) -> tu
     total = select(func.count()).select_from(com_anterior.subquery())
     with engine.connect() as conn:
         return int(conn.execute(com_novo).scalar_one()), int(conn.execute(total).scalar_one())
+
+
 # --- Criptomoedas (aba Cripto, migration 0023) --------------------------------
 
 

@@ -140,6 +140,7 @@ class _EtapasFalsas:
 
         from scanner import alerts, digest, recompute
         from scanner import setups as setups_mod
+        from scanner import tendencia as tendencia_mod
         from scanner import trades as trades_mod
         from scanner.alerts import ScanReport
         from scanner.digest import Resumo
@@ -148,6 +149,7 @@ class _EtapasFalsas:
         from scanner.setups import RelatorioDeSetups
         from scanner.storage import engine as engine_mod
         from scanner.storage import repository
+        from scanner.tendencia import RelatorioDeTendencias
         from scanner.trades import RelatorioSnapshots
 
         self.chamadas: list[str] = []
@@ -200,6 +202,12 @@ class _EtapasFalsas:
 
         monkeypatch.setattr(setups_mod, "run_setups", setups)
 
+        def tendencias(*a: object, **k: object) -> RelatorioDeTendencias:
+            anota("tendencia", None)
+            return RelatorioDeTendencias(dia=date(2026, 9, 4), dry_run=bool(k.get("dry_run")))
+
+        monkeypatch.setattr(tendencia_mod, "run_tendencias", tendencias)
+
         def resumo(*a: object, **k: object) -> Resumo:
             self.contextos.append(k.get("contexto"))
             anota("resumo", None)
@@ -219,7 +227,7 @@ class _EtapasFalsas:
         )
 
 
-def test_daily_roda_as_oito_etapas_do_pregao(monkeypatch: pytest.MonkeyPatch) -> None:
+def test_daily_roda_as_nove_etapas_do_pregao(monkeypatch: pytest.MonkeyPatch) -> None:
     etapas = _EtapasFalsas(monkeypatch)
     result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
 
@@ -231,11 +239,12 @@ def test_daily_roda_as_oito_etapas_do_pregao(monkeypatch: pytest.MonkeyPatch) ->
         "scan",
         "snapshots",
         "setups",
+        "tendencia",
         "resumo",
         "poda",
     ]
-    for numero in range(1, 9):
-        assert f"[{numero}/8]" in result.output
+    for numero in range(1, 10):
+        assert f"[{numero}/9]" in result.output
 
 
 def test_daily_calcula_uma_vez_so_e_reusa(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -258,7 +267,7 @@ def test_daily_em_ensaio_nao_grava_nem_carrega(monkeypatch: pytest.MonkeyPatch) 
     assert "ingest" not in etapas.chamadas
     assert "metricas" not in etapas.chamadas
     assert "poda" not in etapas.chamadas
-    assert etapas.chamadas == ["contexto", "scan", "snapshots", "setups", "resumo"]
+    assert etapas.chamadas == ["contexto", "scan", "snapshots", "setups", "tendencia", "resumo"]
 
 
 # --- Repescagem: `--so-se-faltar` ---------------------------------------------
@@ -308,8 +317,8 @@ def test_repescagem_processa_o_pregao_que_as_21h30_adiaram(
     assert "[pronto]" not in result.output
     assert etapas.chamadas[0] == "ingest"
     assert "resumo" in etapas.chamadas
-    for numero in range(1, 9):
-        assert f"[{numero}/8]" in result.output
+    for numero in range(1, 10):
+        assert f"[{numero}/9]" in result.output
 
 
 def test_sem_a_opcao_o_daily_reprocessa_mesmo_com_o_resumo_enviado(
@@ -407,7 +416,7 @@ def test_daily_de_hoje_sem_arquivo_sai_como_adiado(
     result = runner.invoke(app, ["daily", "--date", "2026-09-04"])
 
     assert result.exit_code == cli.SAIDA_ADIADO, result.output
-    assert "[1/8] adiado" in result.output
+    assert "[1/9] adiado" in result.output
     assert etapas.chamadas == [], "adiado nao calcula, nao notifica e nao poda"
 
 

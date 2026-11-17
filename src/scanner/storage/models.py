@@ -1126,3 +1126,36 @@ class PerfilDeRisco(Base):
     atualizado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class Tendencia(Base):
+    """A inclinacao das medias moveis de cada ativo no ultimo pregao (17/11/2026).
+
+    Uma linha por ativo, trocada inteira a cada noite (`scanner.tendencia`).
+    Cada coluna de media vale +1 (subindo), -1 (caindo) ou 0 (sem historico
+    para a conta). O site escolhe a combinacao: alta = todas as escolhidas
+    subindo, baixa = todas caindo, lateral = discordam. Nao alimenta alerta,
+    setup nem backtest.
+    """
+
+    __tablename__ = "tendencias"
+
+    ticker: Mapped[str] = mapped_column(Text, primary_key=True)
+    trade_date: Mapped[date] = mapped_column(Date, nullable=False)
+    fechamento: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    variacao: Mapped[float | None] = mapped_column(Float)
+    volume_mediano: Mapped[float | None] = mapped_column(Float)
+    liquido: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    mme9: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mme20: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mme50: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mme80: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mme200: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mma9: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mma20: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mma50: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mma80: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    mma200: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    gravado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )

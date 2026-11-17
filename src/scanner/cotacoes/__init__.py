@@ -14,11 +14,13 @@ o que os primeiros nao souberam responder. O porque esta em
 """
 
 from scanner.cotacoes.base import Cota, Cotacao, ProvedorDeCotacoes
+from scanner.cotacoes.binance import BinanceDiaClient
 from scanner.cotacoes.brapi import BrapiClient
 from scanner.cotacoes.mais_recente import ProvedorMaisRecente
 from scanner.cotacoes.yahoo import YahooClient
 
 __all__ = [
+    "BinanceDiaClient",
     "BrapiClient",
     "Cota",
     "Cotacao",

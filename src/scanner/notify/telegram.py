@@ -8,6 +8,7 @@ O token e o chat vem do ambiente (`SCANNER_TELEGRAM_*`), nunca do repositorio.
 
 from __future__ import annotations
 
+import math
 import sys
 import time
 from collections.abc import Callable, Mapping
@@ -99,6 +100,12 @@ def _z_por_janela(zs: Mapping[int, float | None]) -> str:
     return "z_log: " + (" | ".join(partes) if partes else "-")
 
 
+def ficha_url(base_url: str, ticker: str) -> str:
+    """A ficha do papel (B3) ou da moeda (cripto), sem dia em foco."""
+    pasta = "cripto" if mercado.e_cripto() else "papel"
+    return f"{base_url.rstrip('/')}/{pasta}/{ticker}"
+
+
 def chart_url(base_url: str, ticker: str, trade_date: date, *, foco: bool = False) -> str:
     """Link da ficha do papel. Do celular, um toque entre o alerta e o grafico.
 
@@ -107,6 +114,9 @@ def chart_url(base_url: str, ticker: str, trade_date: date, *, foco: bool = Fals
     papel, as vezes meses antes (incidente de 21/10/2026).
     """
     parametro = "foco" if foco else "data"
+    # Em cripto a ficha da moeda mora na aba Cripto, e so entende `foco`.
+    if mercado.e_cripto():
+        return f"{base_url.rstrip('/')}/cripto/{ticker}?foco={trade_date.isoformat()}"
     return f"{base_url.rstrip('/')}/papel/{ticker}?{parametro}={trade_date.isoformat()}"
 
 
@@ -420,7 +430,7 @@ def format_rompimento(payload: Mapping[str, Any], base_url: str | None = None) -
         alvo = (
             chart_url(base_url, ticker, trade_date)
             if trade_date is not None
-            else f"{base_url.rstrip('/')}/papel/{ticker}"
+            else ficha_url(base_url, ticker)
         )
         linhas += ["", f'<a href="{alvo}">→ abrir grafico</a>']
     return "\n".join(linhas)
@@ -528,6 +538,16 @@ def _espaco(setup: Mapping[str, Any]) -> str:
     return f"resistência {money_simples(resistencia)}{vezes}"
 
 
+def _linha_do_preco(payload: Mapping[str, Any], quando: str) -> str:
+    """O preco que confirmou. Em cripto e a maxima do dia ate a checagem, e diz isso."""
+    preco = money_simples(payload.get("preco"))
+    if mercado.e_cripto():
+        hora = payload.get("hora")
+        ate = f" (até {hora.astimezone(FUSO_B3):%H:%M})" if hora is not None else ""
+        return f"máxima de hoje {preco}{ate} · Binance"
+    return f"{preco}{quando} · {payload.get('fonte', '-')}"
+
+
 def format_setup_confirmado(payload: Mapping[str, Any], base_url: str | None = None) -> str:
     """Aviso de que um setup armado passou da maxima do candle durante o pregao.
 
@@ -546,7 +566,7 @@ def format_setup_confirmado(payload: Mapping[str, Any], base_url: str | None = N
     linhas = [
         f"🎯 <b>{ticker} confirmou o setup</b>",
         f"passou da máxima do {candle_de}{dia} ({money_simples(_numero(setup.get('maxima')))})",
-        f"{money_simples(payload.get('preco'))}{quando} · {payload.get('fonte', '-')}",
+        _linha_do_preco(payload, quando),
         f"mínima do padrão {money_simples(_numero(setup.get('minima')))}"
         f" · risco {br(_numero(setup.get('risco_pct')) or 0, 1)}%",
         f"{_espaco(setup)} · volume do candle {br(volume or 0, 1)}×{destaque}",
@@ -558,7 +578,7 @@ def format_setup_confirmado(payload: Mapping[str, Any], base_url: str | None = N
         alvo = (
             chart_url(base_url, ticker, candle, foco=True)
             if isinstance(candle, date)
-            else f"{base_url.rstrip('/')}/papel/{ticker}"
+            else ficha_url(base_url, ticker)
         )
         linhas += ["", f'<a href="{alvo}">→ abrir grafico</a>']
     return "\n".join(linhas)
@@ -602,7 +622,12 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
 
     partes = [""]
     if armados:
-        partes.append("<b>Setups armados</b> · confirmam se o próximo pregão passar da máxima")
+        regra = (
+            "confirmam se o preço passar da máxima nas próximas 24 horas"
+            if mercado.e_cripto()
+            else "confirmam se o próximo pregão passar da máxima"
+        )
+        partes.append(f"<b>Setups armados</b> · {regra}")
         partes += [item(s) for s in armados]
     if outros:
         contagem = " · ".join(f"{NOME_DO_SETUP.get(c, c)} {n}" for c, n in outros.items())
@@ -633,4 +658,16 @@ def money_simples(valor: float | None) -> str:
     Diferente de `money`: aqui nunca vira "1,2 mi". Preco de acao vive na casa
     das dezenas, e abreviar 11,50 nao ajuda ninguem.
     """
-    return "-" if valor is None else f"R$ {br(valor)}"
+    if valor is None:
+        return "-"
+    if mercado.e_cripto():
+        # Em dolar e com as casas da moeda: US$ 65.351, US$ 0,71241, US$ 0,0000042.
+        modulo = abs(valor)
+        if modulo >= 1000:
+            casas = 0
+        elif modulo >= 100 or modulo == 0:
+            casas = 2
+        else:
+            casas = min(10, max(2, 4 - math.floor(math.log10(modulo))))
+        return f"US$ {br(valor, casas)}"
+    return f"R$ {br(valor)}"

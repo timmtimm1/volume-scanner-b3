@@ -178,13 +178,13 @@ class PriceAlert(Base):
     # O pregao do evento que motivou o alerta. Serve para a ficha do papel
     # mostrar a linha no contexto certo, e para saber o quanto ele envelheceu.
     trade_date: Mapped[date] = mapped_column(Date, nullable=False)
-    preco: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
+    preco: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
     direcao: Mapped[str] = mapped_column(Text, nullable=False)
     criado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
     disparado_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
-    preco_disparo: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    preco_disparo: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
     # De qual fornecedor veio a cotacao que disparou. Quando um alerta parecer
     # errado, a primeira pergunta e "que dado o sistema viu?".
     fonte_disparo: Mapped[str | None] = mapped_column(Text)

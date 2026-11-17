@@ -323,3 +323,67 @@ def test_resumo_de_cripto_troca_as_palavras_e_o_link(monkeypatch: pytest.MonkeyP
     assert "<b>Entradas armadas hoje: 44</b>" in texto
     assert 'href="https://exemplo.app/cripto/"' in texto
     assert "/setups/" not in texto and "abrir o scanner" not in texto
+
+
+def test_em_cripto_o_preco_e_em_dolar_e_o_link_vai_para_a_aba_cripto(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import date as _date
+
+    from scanner import mercado
+    from scanner.notify.telegram import chart_url, ficha_url, money_simples
+
+    assert money_simples(34.5) == "R$ 34,50"
+    assert chart_url("https://x.app", "PETR4", _date(2026, 11, 13), foco=True).endswith(
+        "/papel/PETR4?foco=2026-11-13"
+    )
+    monkeypatch.setenv(mercado.VARIAVEL, "cripto")
+    assert money_simples(65351.05) == "US$ 65.351"
+    assert money_simples(0.71241) == "US$ 0,71241"
+    assert money_simples(0.0000042) == "US$ 0,0000042000"
+    assert (
+        chart_url("https://x.app", "BTC", _date(2026, 11, 15))
+        == "https://x.app/cripto/BTC?foco=2026-11-15"
+    )
+    assert ficha_url("https://x.app/", "SOL") == "https://x.app/cripto/SOL"
+
+
+def test_aviso_de_entrada_de_cripto_diz_que_e_a_maxima_do_dia(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    from datetime import UTC
+    from datetime import date as _date
+    from datetime import datetime as _dt
+
+    from scanner import mercado
+    from scanner.notify.telegram import format_rompimento
+
+    monkeypatch.setenv(mercado.VARIAVEL, "cripto")
+    texto = format_rompimento(
+        {
+            "ticker": "AAVE",
+            "direcao": "acima",
+            "nivel": 111.05,
+            "preco": 114.29,
+            "fonte": "binance, máxima do dia",
+            "hora": _dt(2026, 11, 17, 12, 47, tzinfo=UTC),
+            "trade_date": _date(2026, 11, 16),
+            "setup": {
+                "categoria": "123",
+                "trade_date": _date(2026, 11, 16),
+                "maxima": 111.04,
+                "minima": 96.6,
+                "risco_pct": 11.0,
+                "rvol": 0.7,
+                "saida_regra": "mme9",
+                "resistencia": 187.54,
+                "espaco_r": 6.6,
+                "padroes": [],
+            },
+        },
+        "https://x.app",
+    )
+    assert "AAVE confirmou o setup" in texto
+    assert "máxima de hoje US$ 114,29 (até 09:47) · Binance" in texto
+    assert "R$" not in texto
+    assert 'href="https://x.app/cripto/AAVE?foco=2026-11-16"' in texto

@@ -6,6 +6,8 @@ import { useMemo, useState } from "react";
 import { AnelDoDesvio } from "@/components/AnelDoDesvio";
 import { FaixaDeVolume, MiniCandles } from "@/components/MiniGraficos";
 import { ArranjoDaPagina, GradeDeCaixas } from "@/components/OrganizarCaixas";
+import { PainelDeTendencia } from "@/components/PainelDeTendencia";
+import type { Tendencias } from "@/lib/tendencias";
 import {
   data as fmtData,
   diaDaSemana,
@@ -35,6 +37,8 @@ type Props = {
   barras: Record<string, Barra[]>;
   limiarDoAlerta: number;
   minimo: number;
+  /** Os papeis por tendencia das medias (a caixa "Tendência"). */
+  tendencia: Tendencias & { nomes: Record<string, string> };
 };
 
 const ROTULO_DA_FAIXA = ["abaixo de 1σ", "1 a 2σ", "2 a 3σ", "3 a 4σ", "4 a 5σ", "5 a 6σ", "6σ ou mais"];
@@ -95,7 +99,15 @@ function BarrasDasJanelas({ evento, limiar }: { evento: Evento; limiar: number }
   );
 }
 
-export function PainelDoScanner({ pregao, eventos, distribuicao, barras, limiarDoAlerta, minimo }: Props) {
+export function PainelDoScanner({
+  pregao,
+  eventos,
+  distribuicao,
+  barras,
+  limiarDoAlerta,
+  minimo,
+  tendencia,
+}: Props) {
   const router = useRouter();
 
   /**
@@ -432,6 +444,14 @@ export function PainelDoScanner({ pregao, eventos, distribuicao, barras, limiarD
           distribuicao: caixaDistribuicao,
           leitura: caixaLeitura,
           eventos: caixaEventos,
+          tendencia: (
+            <PainelDeTendencia
+              mercado="b3"
+              dia={tendencia.dia}
+              linhas={tendencia.linhas}
+              nomes={tendencia.nomes}
+            />
+          ),
           previa: caixaPrevia,
         }}
       />

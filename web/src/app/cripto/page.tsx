@@ -3,6 +3,7 @@ import { ehDono, signIn, signOut } from "@/auth";
 import { CartaoDeEntrada, ResumoDasCores } from "@/components/CartaoDeEntrada";
 import { CartaoDeSinal, LinhaDeSinalEncerrado } from "@/components/CartaoDeSinal";
 import { LinhaDeEncerrado, LinhaEmAndamento } from "@/components/CartaoDeSetup";
+import { PainelDeTendencia } from "@/components/PainelDeTendencia";
 import { PerfilDeRisco } from "@/components/PerfilDeRisco";
 import { SecaoRecolhida } from "@/components/SecaoRecolhida";
 import { escolhasDa, rodadaAtual } from "@/lib/backtest";
@@ -25,6 +26,7 @@ import { noMercado } from "@/lib/mercado-servidor";
 import { lerPerfil } from "@/lib/perfil";
 import { sinaisDoEstudo } from "@/lib/sinais-estudo";
 import { listarSetups, preferenciasDosSetups } from "@/lib/setups";
+import { lerTendencias } from "@/lib/tendencias";
 import { tradesDosSetups } from "@/lib/trades";
 import {
   type CategoriaDoSetup,
@@ -55,7 +57,7 @@ function volumeCurto(v: number): string {
 }
 
 async function ler() {
-  const [setups, preferencias, rodada, perfil, nomes, volume, sinais, trades] = await Promise.all([
+  const [setups, preferencias, rodada, perfil, nomes, volume, sinais, trades, tendencias] = await Promise.all([
     listarSetups(),
     preferenciasDosSetups(),
     rodadaAtual(),
@@ -64,6 +66,7 @@ async function ler() {
     volumeDoDia(),
     sinaisDoEstudo(),
     tradesDosSetups(),
+    lerTendencias(),
   ]);
   const saidasDoBacktest: Partial<Record<CategoriaDoSetup, SaidaDoSetup>> = {};
   let linhas: LinhaDoBacktest[] = [];
@@ -86,7 +89,7 @@ async function ler() {
     candlesDosPapeis(armados.map((s) => s.ticker)),
     diaDeHoje(armados.map((s) => s.ticker)),
   ]);
-  return { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais, trades };
+  return { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais, trades, tendencias };
 }
 
 export default async function Cripto() {
@@ -134,7 +137,7 @@ export default async function Cripto() {
       </section>
     );
   }
-  const { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais, trades } = dados;
+  const { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais, trades, tendencias } = dados;
   const sinaisVivos = sinais.filter((s) => s.estado === "aguardando" || s.estado === "aberto");
   const sinaisEncerrados = sinais.filter((s) => s.estado !== "aguardando" && s.estado !== "aberto");
   const t = textos(MERCADO);
@@ -289,6 +292,13 @@ export default async function Cripto() {
           </details>
         )}
       </section>
+
+      <PainelDeTendencia
+        mercado={MERCADO}
+        dia={tendencias.dia}
+        linhas={tendencias.linhas}
+        nomes={Object.fromEntries(Object.values(nomes).map((m) => [m.ticker, m.nome]))}
+      />
 
       <section className="cartao flex flex-col gap-3 p-4 md:p-5">
         <div className="flex flex-wrap items-baseline gap-x-3 gap-y-1">

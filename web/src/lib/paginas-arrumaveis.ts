@@ -50,6 +50,7 @@ export const PAGINAS_DE_CAIXAS: Record<PaginaArrumavel, PaginaDeCaixas> = {
       { id: "distribuicao", nome: "Quanto cada papel fugiu", coluna: 0, largura: 1, soComputador: true },
       { id: "leitura", nome: "Leitura do mercado", coluna: 0, largura: 1, soComputador: true },
       { id: "eventos", nome: "Eventos do dia", coluna: 1, largura: 1 },
+      { id: "tendencia", nome: "Tendência", coluna: 1, largura: 1 },
       { id: "previa", nome: "Prévia do papel", coluna: 2, largura: 1, soComputador: true, fixa: true },
     ],
   },

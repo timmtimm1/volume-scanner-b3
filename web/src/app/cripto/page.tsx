@@ -7,6 +7,8 @@ import { SecaoRecolhida } from "@/components/SecaoRecolhida";
 import { escolhasDa, rodadaAtual } from "@/lib/backtest";
 import type { SaidaDoSetup } from "@/lib/config";
 import { moedas as lerMoedas, semCripto, volumeDoDia } from "@/lib/cripto";
+import { situacaoDaEntrada } from "@/lib/cripto-hoje";
+import { diaDeHoje } from "@/lib/cripto-hoje-binance";
 import {
   contarPorCor,
   type LinhaDoBacktest,
@@ -74,8 +76,12 @@ async function ler() {
   // So as moedas que estao entre as maiores hoje: quem saiu da lista continua
   // sendo acompanhado ate encerrar, mas nao arma entrada nova na aba.
   const armados = setups.filter((s) => s.estado === "armado" && (nomes[s.ticker]?.noTop ?? true));
-  const candles = await candlesDosPapeis(armados.map((s) => s.ticker));
-  return { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles };
+  // O dia em andamento de cada moeda armada, perguntado a Binance a cada abertura.
+  const [candles, hoje] = await Promise.all([
+    candlesDosPapeis(armados.map((s) => s.ticker)),
+    diaDeHoje(armados.map((s) => s.ticker)),
+  ]);
+  return { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje };
 }
 
 export default async function Cripto() {
@@ -123,7 +129,7 @@ export default async function Cripto() {
       </section>
     );
   }
-  const { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles } = dados;
+  const { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje } = dados;
   const t = textos(MERCADO);
   const diario: ContextoDoDiario = { mercado: MERCADO, perfil, tradePorSetup: {}, abertoPorTicker: {} };
 
@@ -216,7 +222,9 @@ export default async function Cripto() {
             <ResumoDasCores contagem={contarPorCor(cabem)} />
             <p className="text-[12px] font-semibold leading-relaxed text-tinta-3">
               Cada uma só vale se o preço passar do valor de compra até as 21h de amanhã, quando
-              o próximo candle fecha. Preços em dólar (par com USDT na Binance).{" "}
+              o próximo candle fecha. O dia de hoje vem da Binance na hora em que você abre a
+              página, e um aviso chega no Telegram quando uma entrada passa (checagem de 15 em
+              15 minutos). Preços em dólar (par com USDT na Binance).{" "}
               {rodada
                 ? `O semáforo é a nota do setup no backtest de cripto (${t.historico} de Binance): mostra o que ele fez no passado, não o que vai fazer.`
                 : "O semáforo fica cinza até o backtest de cripto ser enviado."}
@@ -228,6 +236,7 @@ export default async function Cripto() {
                   e={e}
                   candles={candles[e.setup.ticker] ?? []}
                   diario={diario}
+                  hoje={situacaoDaEntrada(e.gatilho, e.setup.tradeDate, hoje[e.setup.ticker])}
                 />
               ))}
             </div>
@@ -254,6 +263,7 @@ export default async function Cripto() {
                   e={e}
                   candles={candles[e.setup.ticker] ?? []}
                   diario={diario}
+                  hoje={situacaoDaEntrada(e.gatilho, e.setup.tradeDate, hoje[e.setup.ticker])}
                 />
               ))}
             </div>

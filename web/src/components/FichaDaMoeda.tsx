@@ -5,6 +5,7 @@ import { useMemo } from "react";
 import { Grafico } from "@/components/Grafico";
 import { fmtR } from "@/lib/backtest-tela";
 import { data, diaCurto, percentual } from "@/lib/formato";
+import { horaEmBrasilia } from "@/lib/cripto-hoje";
 import { casasDoPreco, gatilhoNoMercado, preco, stopNoMercado } from "@/lib/mercado";
 import { NOME_DO_SETUP, resultadoEmR, rotuloDoEstado, type Setup } from "@/lib/setups-tela";
 import type { Barra, NivelDoGrafico } from "@/lib/types";
@@ -23,6 +24,8 @@ type Props = {
   setups: Setup[];
   /** Dia a destacar no grafico (vem do cartao da entrada). */
   foco: string | null;
+  /** Hora (ISO) do candle de hoje, quando ele veio da Binance ao abrir; null sem ele. */
+  aoVivo?: string | null;
 };
 
 function volumeCurto(v: number): string {
@@ -39,7 +42,7 @@ function volumeCurto(v: number): string {
  * que so existe para acao (fundamentos, proventos, noticias, alertas de preco
  * e diario de trades, que em cripto sao outra fase).
  */
-export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, setups, foco }: Props) {
+export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, setups, foco, aoVivo = null }: Props) {
   const ultima = barras[barras.length - 1];
   const anterior = barras[barras.length - 2];
   const variacao = anterior && anterior.close > 0 ? ultima.close / anterior.close - 1 : null;
@@ -72,7 +75,11 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
             <span className={variacao === null ? "" : variacao >= 0 ? "text-alta" : "text-baixa"}>
               {percentual(variacao)}
             </span>{" "}
-            no candle de {data(ultima.tradeDate)} · volume {volumeCurto(ultima.volumeFinancial)}
+            {aoVivo ? (
+              <>hoje até {horaEmBrasilia(aoVivo)} · volume {volumeCurto(ultima.volumeFinancial)}</>
+            ) : (
+              <>no candle de {data(ultima.tradeDate)} · volume {volumeCurto(ultima.volumeFinancial)}</>
+            )}
           </span>
         </div>
       </section>
@@ -88,7 +95,8 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           classeDeAltura="h-[320px] md:h-[440px] lg:h-[560px]"
         />
         <p className="px-2 pt-2 text-[12px] font-semibold text-tinta-3">
-          Candle diário da Binance, par {ticker}/USDT. Cada candle vai das 21h às 21h de Brasília.
+          Candle diário da Binance, par {ticker}/USDT. Cada candle vai das 21h às 21h de Brasília
+          {aoVivo ? "; o último é o de hoje, em andamento, lido da Binance ao abrir a página." : "."}
           As linhas são suportes e resistências de 2 ou mais toques; candle dourado é dia de
           volume muito acima do normal.
         </p>

@@ -19,6 +19,7 @@ import {
   valor,
   valorComSinal,
 } from "@/lib/mercado";
+import { horaEmBrasilia, type SituacaoDeHoje } from "@/lib/cripto-hoje";
 import { type ContextoDoDiario, NOME_DO_SETUP } from "@/lib/setups-tela";
 import { BotaoEntrei } from "./FormularioEntrei";
 
@@ -235,9 +236,33 @@ export function ResumoDasCores({ contagem }: { contagem: { cor: Cor; n: number }
   );
 }
 
-type Props = { e: Entrada; candles: Candle[]; diario: ContextoDoDiario };
+type Props = {
+  e: Entrada;
+  candles: Candle[];
+  diario: ContextoDoDiario;
+  /** Cripto: como esta o dia de hoje em relacao ao preco de compra (Binance, ao abrir). */
+  hoje?: SituacaoDeHoje | null;
+};
 
-export function CartaoDeEntrada({ e, candles, diario }: Props) {
+/** "Passou hoje" ou "falta X%": o dia em andamento contra o preco de compra (so cripto). */
+function LinhaDeHoje({ hoje, mercado }: { hoje: SituacaoDeHoje; mercado: Mercado }) {
+  const ate = `até ${horaEmBrasilia(hoje.hora)}`;
+  if (hoje.passou) {
+    return (
+      <p className="num rounded-xl bg-alta-fundo px-3 py-2 text-[12px] font-bold text-alta">
+        Passou hoje: máxima {preco(mercado, hoje.maxima)} ({ate}). Agora {preco(mercado, hoje.ultimo)}.
+      </p>
+    );
+  }
+  return (
+    <p className="num rounded-xl bg-painel px-3 py-2 text-[12px] font-semibold text-tinta-2">
+      Hoje, {ate}: máxima {preco(mercado, hoje.maxima)}, agora {preco(mercado, hoje.ultimo)}. Falta{" "}
+      {percentual(hoje.falta).replace("+", "")} para o preço de compra.
+    </p>
+  );
+}
+
+export function CartaoDeEntrada({ e, candles, diario, hoje = null }: Props) {
   const s = e.setup;
   const mercado = diario.mercado ?? "b3";
   const temAlvo = e.alvoPct !== null;
@@ -270,6 +295,8 @@ export function CartaoDeEntrada({ e, candles, diario }: Props) {
         <span className="text-[14px] font-bold text-tinta-2">Compra acima de</span>
         <span className="num text-[22px] font-extrabold text-acento">{preco(mercado, e.gatilho)}</span>
       </p>
+
+      {hoje && <LinhaDeHoje hoje={hoje} mercado={mercado} />}
 
       <Regua e={e} mercado={mercado} />
 

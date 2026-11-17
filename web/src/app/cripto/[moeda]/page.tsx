@@ -2,6 +2,8 @@ import { notFound, redirect } from "next/navigation";
 import { ehDono } from "@/auth";
 import { FichaDaMoeda } from "@/components/FichaDaMoeda";
 import { MOEDA, moedas, semCripto } from "@/lib/cripto";
+import { comCandleDeHoje } from "@/lib/cripto-hoje";
+import { diaDeHoje } from "@/lib/cripto-hoje-binance";
 import { niveisDoPapel, papel } from "@/lib/db";
 import { noMercado } from "@/lib/mercado-servidor";
 import { listarSetups } from "@/lib/setups";
@@ -43,12 +45,17 @@ export default async function Moeda({ params, searchParams }: Props) {
   if (dados === null) notFound();
 
   const desde = dados.ficha.barras[0].tradeDate;
+  // O candle de hoje, em andamento, direto da Binance a cada abertura.
+  const agora = (await diaDeHoje([ticker]))[ticker];
+  const barras = comCandleDeHoje(dados.ficha.barras, agora);
+  const aoVivo = barras.length > dados.ficha.barras.length && agora ? agora.hora : null;
   return (
     <FichaDaMoeda
       ticker={ticker}
       nome={dados.nome?.nome ?? null}
       posicao={dados.nome?.posicao ?? null}
-      barras={dados.ficha.barras}
+      barras={barras}
+      aoVivo={aoVivo}
       eventos={dados.ficha.eventos.map((e) => ({ tradeDate: e.tradeDate }))}
       niveis={dados.niveis}
       setups={dados.setups.filter((s) => s.tradeDate >= desde)}

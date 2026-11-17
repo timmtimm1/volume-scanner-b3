@@ -45,6 +45,15 @@ export const CATEGORIAS_DE_SETUP = [
   "rompimento",
 ] as const;
 export type CategoriaDoSetup = (typeof CATEGORIAS_DE_SETUP)[number];
+
+/**
+ * Setups do estudo de cripto que podem virar trade no diario (migration 0027):
+ * so a reversao no RSI, de compra. Nao sao setups da aba (nao tem preferencia,
+ * alerta nem backtest da suite); existem so como etiqueta do trade.
+ */
+export const CATEGORIAS_DO_ESTUDO = ["rsi_estudo"] as const;
+/** O setup que um trade do diario declara: um da aba ou um do estudo. */
+export type CategoriaDoDiario = CategoriaDoSetup | (typeof CATEGORIAS_DO_ESTUDO)[number];
 export type SaidaDoSetup = "alvo1" | "alvo2" | "alvo3" | "minimas" | "mme9";
 
 /**

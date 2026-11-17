@@ -106,6 +106,10 @@ export type Textos = {
   sorteado: string;
   /** "o próximo pregão" / "o próximo dia" */
   proximo: string;
+  /** "papel" / "moeda": o ativo de um trade */
+  ativo: string;
+  /** "Ações" / "Qtd.": o titulo da coluna de quantidade */
+  unidades: string;
 };
 
 const TEXTOS: Record<Mercado, Textos> = {
@@ -117,6 +121,8 @@ const TEXTOS: Record<Mercado, Textos> = {
     historico: "30 anos",
     sorteado: "um papel sorteado",
     proximo: "o próximo pregão",
+    ativo: "papel",
+    unidades: "Ações",
   },
   cripto: {
     naMoeda: "em dólares",
@@ -126,6 +132,8 @@ const TEXTOS: Record<Mercado, Textos> = {
     historico: "9 anos",
     sorteado: "uma moeda sorteada",
     proximo: "o próximo dia",
+    ativo: "moeda",
+    unidades: "Qtd.",
   },
 };
 
@@ -133,7 +141,115 @@ export function textos(mercado: Mercado): Textos {
   return TEXTOS[mercado];
 }
 
-/** A ficha do ativo, com o foco no dia do candle. */
-export function linkDaFichaNoMercado(mercado: Mercado, ticker: string, dia: string): string {
-  return mercado === "b3" ? `/papel/${ticker}?foco=${dia}` : `/cripto/${ticker}?foco=${dia}`;
+/** A ficha do ativo, com o foco no dia do candle (sem dia, a ficha como abre). */
+export function linkDaFichaNoMercado(mercado: Mercado, ticker: string, dia?: string): string {
+  const base = mercado === "b3" ? `/papel/${ticker}` : `/cripto/${ticker}`;
+  return dia ? `${base}?foco=${dia}` : base;
+}
+
+// ---------------------------------------------------------------------------
+// Diario de trades
+// ---------------------------------------------------------------------------
+
+/**
+ * As contas do diario de trades em cada mercado. `posicao.ts` e `diario.ts` sao
+ * modulos puros e recebem isto por parametro.
+ *
+ * A taxa da Binance (0,1% por lado, decisao do usuario em 17/11/2026) entra do
+ * jeito que a Binance cobra sem BNB: na COMPRA sai da moeda comprada (compra de
+ * 0,0153 BTC deixa 0,0152847 na conta) e na VENDA sai dos dolares recebidos. Na
+ * B3 o diario nao conta custo nenhum (decisao de 16/09/2026): taxa zero, e as
+ * contas ficam exatamente as de antes.
+ */
+export type RegrasDoDiario = {
+  /** Fracao por lado. */
+  taxa: number;
+  /** Casas da quantidade digitada: 0 = so inteiro (acoes); 8 em cripto, o maximo da Binance. */
+  casasDaQuantidade: number;
+  /** Casas da posicao depois da taxa (a coluna guarda 10). */
+  casasDaPosicao: number;
+  /** Casas do preco digitado e do stop. */
+  casasDoPreco: number;
+  /** Casas do preco medio guardado. */
+  casasDoPrecoMedio: number;
+  /** Todo dia tem negocio (cripto) ou so os pregoes da B3. */
+  todoDia: boolean;
+  /** Setups do estudo que podem virar trade (so o de compra: o diario nao tem venda a descoberto). */
+  categoriasDoEstudo: readonly string[];
+};
+
+const REGRAS_DO_DIARIO: Record<Mercado, RegrasDoDiario> = {
+  b3: {
+    taxa: 0,
+    casasDaQuantidade: 0,
+    casasDaPosicao: 0,
+    casasDoPreco: 2,
+    casasDoPrecoMedio: 6,
+    todoDia: false,
+    categoriasDoEstudo: [],
+  },
+  cripto: {
+    taxa: 0.001,
+    casasDaQuantidade: 8,
+    casasDaPosicao: 10,
+    casasDoPreco: 10,
+    casasDoPrecoMedio: 10,
+    todoDia: true,
+    categoriasDoEstudo: ["rsi_estudo"],
+  },
+};
+
+export function regrasDoDiario(mercado: Mercado): RegrasDoDiario {
+  return REGRAS_DO_DIARIO[mercado];
+}
+
+const DIA_EM_SAO_PAULO = new Intl.DateTimeFormat("en-CA", {
+  timeZone: "America/Sao_Paulo",
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+});
+
+/**
+ * O dia de negociacao em `instante`, AAAA-MM-DD. B3: o dia em Sao Paulo (a
+ * mesma conta de `diaNaB3`). Cripto: o dia UTC, que e o do candle diario da
+ * Binance -- as 22h de Brasilia ja e o candle de amanha.
+ */
+export function diaDoMercado(mercado: Mercado, instante: Date): string {
+  return mercado === "b3" ? DIA_EM_SAO_PAULO.format(instante) : instante.toISOString().slice(0, 10);
+}
+
+/** Mesma regra de `TICKER` (`ticker.ts`); o teste trava a copia. */
+const TICKER_DA_B3 = /^[A-Z][A-Z0-9]{3}\d{1,2}[A-Z]?$/;
+const MOEDA = /^[A-Z0-9]{1,15}$/;
+
+/** O ticker tem o formato do mercado? "PETR4" na B3; "BTC", "1INCH" em cripto. */
+export function tickerValido(mercado: Mercado, ticker: string): boolean {
+  return (mercado === "b3" ? TICKER_DA_B3 : MOEDA).test(ticker);
+}
+
+/** `?mercado=cripto` para as rotas e paginas que servem os dois mercados; nada na B3. */
+export function sufixoDoMercado(mercado: Mercado): string {
+  return mercado === "b3" ? "" : "?mercado=cripto";
+}
+
+/** A pagina de um trade. Os ids repetem de um schema para o outro: o mercado vai junto. */
+export function linkDoTrade(mercado: Mercado, id: number): string {
+  return `/trades/${id}${sufixoDoMercado(mercado)}`;
+}
+
+/** Uma quantidade para o campo de texto do formulario: "0,0153", "100". */
+export function quantidadeParaCampo(mercado: Mercado, q: number): string {
+  const casas = REGRAS_DO_DIARIO[mercado].casasDaPosicao;
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: casas, useGrouping: false }).format(q);
+}
+
+/** Um preco para o campo de texto: "38,20" na B3, "0,52341" ou "65351" em cripto. */
+export function precoParaCampo(mercado: Mercado, v: number): string {
+  const casas = mercado === "b3" ? 2 : Math.max(casasDoPreco(v), 2);
+  return new Intl.NumberFormat("pt-BR", {
+    minimumFractionDigits: mercado === "b3" ? 2 : 0,
+    maximumFractionDigits: casas,
+    useGrouping: false,
+  }).format(v);
 }

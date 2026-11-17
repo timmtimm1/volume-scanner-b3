@@ -8,7 +8,7 @@ import { resultadoEmRDoTrade } from "@/lib/diario";
 import { data as fmtData, numero, percentual, reais } from "@/lib/formato";
 import { marcarAgora } from "@/lib/posicao";
 import { precoDeAgora } from "@/lib/preco-de-agora";
-import { NOME_DO_SETUP } from "@/lib/setups-tela";
+import { NOME_NO_DIARIO } from "@/lib/setups-tela";
 import type { TradeResumo } from "@/lib/trades";
 import { ArranjoDaPagina, GradeDeCaixas } from "./OrganizarCaixas";
 
@@ -39,7 +39,7 @@ function EtiquetaDoSetup({ trade }: { trade: TradeResumo }) {
   if (!trade.categoriaSetup) return null;
   return (
     <span className="rounded-md bg-painel px-2 py-0.5 text-[11px] font-bold text-tinta-2">
-      {NOME_DO_SETUP[trade.categoriaSetup]}
+      {NOME_NO_DIARIO[trade.categoriaSetup]}
     </span>
   );
 }

@@ -10,11 +10,41 @@
  */
 
 import { NextResponse } from "next/server";
+import type { CandleDeHoje } from "@/lib/candle-de-hoje";
 import { candleDeHoje } from "@/lib/cotacao";
+import { diaDeHoje } from "@/lib/cripto-hoje-binance";
+import { mercadoDe, tickerValido } from "@/lib/mercado";
 import { TICKER } from "@/lib/ticker";
 
-export async function GET(_pedido: Request, ctx: RouteContext<"/api/cotacao/[ticker]">) {
+/**
+ * Com `?mercado=cripto`: o dia UTC em andamento da moeda na Binance, no mesmo
+ * formato de candle, para o preco de agora de um trade de cripto aberto. A
+ * Binance nao tem cota a proteger; quem chama ja limita a uma busca por moeda.
+ */
+async function candleDaMoeda(moeda: string): Promise<CandleDeHoje | null> {
+  const dia = (await diaDeHoje([moeda]))[moeda];
+  if (!dia) return null;
+  return {
+    ticker: moeda,
+    dia: dia.dia,
+    open: dia.abertura,
+    high: dia.maxima,
+    low: dia.minima,
+    close: dia.ultimo,
+    volumeAcoes: null,
+    hora: dia.hora,
+    fonte: "binance",
+  };
+}
+
+export async function GET(pedido: Request, ctx: RouteContext<"/api/cotacao/[ticker]">) {
   const ticker = (await ctx.params).ticker.toUpperCase();
+  if (mercadoDe(new URL(pedido.url).searchParams.get("mercado")) === "cripto") {
+    if (!tickerValido("cripto", ticker)) {
+      return NextResponse.json({ erro: "moeda fora do formato" }, { status: 400 });
+    }
+    return NextResponse.json({ candle: await candleDaMoeda(ticker) });
+  }
   if (!TICKER.test(ticker)) {
     return NextResponse.json({ erro: "ticker fora do formato da B3" }, { status: 400 });
   }

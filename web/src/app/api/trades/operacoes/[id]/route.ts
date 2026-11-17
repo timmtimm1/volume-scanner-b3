@@ -1,7 +1,9 @@
-/** Operacoes de trade: editar e apagar. */
+/** Operacoes de trade: editar e apagar. `?mercado=cripto` para uma operacao de cripto. */
 
 import { NextResponse } from "next/server";
 import { ehDono } from "@/auth";
+import { mercadoDe } from "@/lib/mercado";
+import { noMercado } from "@/lib/mercado-servidor";
 import { OperacaoInvalida, apagarOperacao, editarOperacao } from "@/lib/trades";
 
 export const dynamic = "force-dynamic";
@@ -23,8 +25,9 @@ export async function PATCH(
   if (id === null) return NextResponse.json({ erro: "id invalido" }, { status: 400 });
 
   try {
+    const mercado = mercadoDe(new URL(pedido.url).searchParams.get("mercado"));
     const corpo = await pedido.json();
-    const trade = await editarOperacao(id, corpo);
+    const trade = await noMercado(mercado, () => editarOperacao(id, corpo));
     return trade
       ? NextResponse.json({ trade })
       : NextResponse.json({ erro: "nao encontrado" }, { status: 404 });
@@ -37,7 +40,7 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _pedido: Request,
+  pedido: Request,
   ctx: RouteContext<"/api/trades/operacoes/[id]">,
 ) {
   if (!(await ehDono())) {
@@ -47,7 +50,8 @@ export async function DELETE(
   if (id === null) return NextResponse.json({ erro: "id invalido" }, { status: 400 });
 
   try {
-    const { apagado, trade } = await apagarOperacao(id);
+    const mercado = mercadoDe(new URL(pedido.url).searchParams.get("mercado"));
+    const { apagado, trade } = await noMercado(mercado, () => apagarOperacao(id));
     // 200 com corpo, e nao 204: ver o comentario em `api/alertas/[id]/route.ts`
     // -- resposta sem corpo chega no navegador como net::ERR_ABORTED.
     return apagado

@@ -4,8 +4,16 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import { calcularLote, calcularLoteFracionado, calcularLoteFracionadoVenda } from "./lote.ts";
+import { CATEGORIAS_DO_ESTUDO } from "./config.ts";
+import { TICKER } from "./ticker.ts";
 import {
   arredondarPreco,
+  diaDoMercado,
+  linkDoTrade,
+  precoParaCampo,
+  quantidadeParaCampo,
+  regrasDoDiario,
+  tickerValido,
   casasDoPreco,
   gatilhoNoMercado,
   linkDaFichaNoMercado,
@@ -146,3 +154,63 @@ describe("lote fracionado da venda (cripto, futuros)", () => {
     assert.equal(calcularLoteFracionadoVenda({ ...perfil, entrada: 100, stop: 90 }).quantidade, 0);
   });
 });
+
+describe("regras do diario de trades", () => {
+  it("B3: sem taxa, acao inteira, centavo e PM de seis casas (as contas de sempre)", () => {
+    assert.deepEqual(regrasDoDiario("b3"), {
+      taxa: 0,
+      casasDaQuantidade: 0,
+      casasDaPosicao: 0,
+      casasDoPreco: 2,
+      casasDoPrecoMedio: 6,
+      todoDia: false,
+      categoriasDoEstudo: [],
+    });
+  });
+
+  it("cripto: 0,1% da Binance, oito casas de moeda e dez de preco", () => {
+    const r = regrasDoDiario("cripto");
+    assert.equal(r.taxa, 0.001);
+    assert.equal(r.casasDaQuantidade, 8);
+    assert.equal(r.casasDoPreco, 10); // o numeric(28, 10) da migration 0027
+    assert.equal(r.todoDia, true);
+  });
+
+  it("o setup do estudo no diario e um que o config conhece", () => {
+    for (const c of regrasDoDiario("cripto").categoriasDoEstudo) {
+      assert.ok(CATEGORIAS_DO_ESTUDO.includes(c), c);
+    }
+  });
+
+  it("o dia de cripto e o UTC; o da B3, o de Sao Paulo", () => {
+    const meiaNoiteEMeiaUtc = new Date("2026-11-18T00:30:00Z"); // 21h30 de 17/11 em Brasilia
+    assert.equal(diaDoMercado("b3", meiaNoiteEMeiaUtc), "2026-11-17");
+    assert.equal(diaDoMercado("cripto", meiaNoiteEMeiaUtc), "2026-11-18");
+  });
+
+  it("ticker de cada mercado; a regra da B3 e a mesma de ticker.ts", () => {
+    for (const t of ["PETR4", "BPAC11", "TAEE11B", "B3SA3"]) assert.ok(tickerValido("b3", t), t);
+    assert.ok(!tickerValido("b3", "BTC"));
+    for (const m of ["BTC", "1INCH", "RENDER"]) assert.ok(tickerValido("cripto", m), m);
+    assert.ok(!tickerValido("cripto", "BTC/USDT"));
+    assert.ok(!tickerValido("cripto", "../x"));
+    for (const t of ["PETR4", "BTC", "TAEE11B", "petr4", "PETR", "B3SA3"]) {
+      assert.equal(tickerValido("b3", t), TICKER.test(t), t);
+    }
+  });
+
+  it("link do trade leva o mercado, porque os ids repetem", () => {
+    assert.equal(linkDoTrade("b3", 7), "/trades/7");
+    assert.equal(linkDoTrade("cripto", 7), "/trades/7?mercado=cripto");
+    assert.equal(linkDaFichaNoMercado("cripto", "BTC"), "/cripto/BTC");
+  });
+
+  it("numeros para o campo do formulario, com virgula e sem milhar", () => {
+    assert.equal(quantidadeParaCampo("cripto", 0.0152847), "0,0152847");
+    assert.equal(quantidadeParaCampo("b3", 100), "100");
+    assert.equal(precoParaCampo("b3", 38.2), "38,20");
+    assert.equal(precoParaCampo("cripto", 65351.5), "65351,5");
+    assert.equal(precoParaCampo("cripto", 0.52341), "0,52341");
+  });
+});
+

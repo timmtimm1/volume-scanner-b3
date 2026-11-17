@@ -15,11 +15,16 @@ export type PrecoDeAgora = { preco: number; rotulo: string };
 /** So os dois campos do snapshot que esta regra usa. */
 export type SnapshotParaPreco = { data: string; fechamento: number };
 
+/**
+ * `hoje` e o dia de negociacao de agora no mercado do trade (`diaDoMercado`): o
+ * de Sao Paulo na B3, o UTC em cripto. Sem ele, a B3.
+ */
 export function precoDeAgora(
   candleHoje: CandleDeHoje | null,
   ultimoSnapshot: SnapshotParaPreco | null,
+  hoje: string = diaNaB3(new Date()),
 ): PrecoDeAgora | null {
-  if (candleHoje && candleHoje.dia === diaNaB3(new Date())) {
+  if (candleHoje && candleHoje.dia === hoje) {
     return {
       preco: candleHoje.close,
       rotulo: `agora ${horaNaB3(candleHoje.hora)} · ${candleHoje.fonte}`,

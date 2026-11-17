@@ -17,7 +17,7 @@ import { data as fmtData, numero, percentual, reais } from "@/lib/formato";
 import { numeroDoTexto } from "@/lib/lote";
 import { marcarAgora, type TipoDeOperacao } from "@/lib/posicao";
 import { precoDeAgora } from "@/lib/preco-de-agora";
-import { NOME_DO_SETUP, ORDEM_DAS_CATEGORIAS } from "@/lib/setups-tela";
+import { NOME_DO_SETUP, NOME_NO_DIARIO, ORDEM_DAS_CATEGORIAS } from "@/lib/setups-tela";
 import { useTema } from "@/lib/tema";
 import type { OperacaoDoTrade, SnapshotDoTrade, TradeDetalhe } from "@/lib/trades";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
@@ -672,7 +672,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                 <span>
                   setup{" "}
                   <strong className="text-[13px] text-tinta">
-                    {trade.categoriaSetup ? NOME_DO_SETUP[trade.categoriaSetup] : "sem setup"}
+                    {trade.categoriaSetup ? NOME_NO_DIARIO[trade.categoriaSetup] : "sem setup"}
                   </strong>
                 </span>
                 <span>

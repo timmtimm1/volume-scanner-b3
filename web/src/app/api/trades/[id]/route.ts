@@ -1,7 +1,12 @@
-/** Trades: detalhar um (com operacoes e snapshots) e editar o setup e o stop dele. */
+/**
+ * Trades: detalhar um (com operacoes e snapshots) e editar o setup e o stop dele.
+ * `?mercado=cripto` para um trade de cripto: os ids repetem entre os schemas.
+ */
 
 import { NextResponse } from "next/server";
 import { ehDono } from "@/auth";
+import { mercadoDe } from "@/lib/mercado";
+import { noMercado } from "@/lib/mercado-servidor";
 import { OperacaoInvalida, detalharTrade, editarTrade } from "@/lib/trades";
 
 export const dynamic = "force-dynamic";
@@ -12,14 +17,15 @@ function identificador(bruto: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-export async function GET(_pedido: Request, ctx: RouteContext<"/api/trades/[id]">) {
+export async function GET(pedido: Request, ctx: RouteContext<"/api/trades/[id]">) {
   if (!(await ehDono())) {
     return NextResponse.json({ erro: "nao autorizado" }, { status: 401 });
   }
   const id = identificador((await ctx.params).id);
   if (id === null) return NextResponse.json({ erro: "id invalido" }, { status: 400 });
 
-  const trade = await detalharTrade(id);
+  const mercado = mercadoDe(new URL(pedido.url).searchParams.get("mercado"));
+  const trade = await noMercado(mercado, () => detalharTrade(id));
   return trade
     ? NextResponse.json({ trade })
     : NextResponse.json({ erro: "nao encontrado" }, { status: 404 });
@@ -34,7 +40,9 @@ export async function PATCH(pedido: Request, ctx: RouteContext<"/api/trades/[id]
   if (id === null) return NextResponse.json({ erro: "id invalido" }, { status: 400 });
 
   try {
-    const trade = await editarTrade(id, await pedido.json());
+    const mercado = mercadoDe(new URL(pedido.url).searchParams.get("mercado"));
+    const corpo = await pedido.json();
+    const trade = await noMercado(mercado, () => editarTrade(id, corpo));
     return trade
       ? NextResponse.json({ trade })
       : NextResponse.json({ erro: "nao encontrado" }, { status: 404 });

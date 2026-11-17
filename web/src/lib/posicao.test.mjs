@@ -12,6 +12,9 @@ import {
   marcarAgora,
   validarCampos,
 } from "./posicao.ts";
+import { regrasDoDiario } from "./mercado.ts";
+
+const B3 = regrasDoDiario("b3");
 
 // compra 100x38,20 (01/09) -> compra 50x37,60 (03/09) -> venda 80x39,90 (10/09)
 const REFERENCIA = [
@@ -22,7 +25,7 @@ const REFERENCIA = [
 
 describe("aplicarOperacoes", () => {
   it("exemplo de referencia: compra, compra, venda parcial", () => {
-    const r = aplicarOperacoes(REFERENCIA);
+    const r = aplicarOperacoes(REFERENCIA, B3);
     assert.deepEqual(
       r.ordenadas.map((o) => o.id),
       [1, 2, 3],
@@ -38,7 +41,7 @@ describe("aplicarOperacoes", () => {
 
   it("ordena por (data, id), nao pela ordem de entrada", () => {
     const embaralhado = [REFERENCIA[2], REFERENCIA[0], REFERENCIA[1]];
-    const r = aplicarOperacoes(embaralhado);
+    const r = aplicarOperacoes(embaralhado, B3);
     assert.deepEqual(
       r.ordenadas.map((o) => o.id),
       [1, 2, 3],
@@ -50,7 +53,7 @@ describe("aplicarOperacoes", () => {
       { id: 5, tipo: "compra", data: "2025-09-01", quantidade: 100, preco: 10 },
       { id: 3, tipo: "compra", data: "2025-09-01", quantidade: 10, preco: 10 },
     ];
-    const r = aplicarOperacoes(ops);
+    const r = aplicarOperacoes(ops, B3);
     assert.deepEqual(
       r.ordenadas.map((o) => o.id),
       [3, 5],
@@ -61,7 +64,7 @@ describe("aplicarOperacoes", () => {
     const r = aplicarOperacoes([
       { id: 1, tipo: "compra", data: "2025-09-01", quantidade: 100, preco: 10 },
       { id: 2, tipo: "venda", data: "2025-09-05", quantidade: 100, preco: 12 },
-    ]);
+    ], B3);
     assert.equal(r.encerradoEm, "2025-09-05");
     assert.deepEqual(r.estados.at(-1), {
       quantidade: 0,
@@ -72,7 +75,7 @@ describe("aplicarOperacoes", () => {
   });
 
   it("lista vazia lanca OperacaoInvalida", () => {
-    assert.throws(() => aplicarOperacoes([]), OperacaoInvalida);
+    assert.throws(() => aplicarOperacoes([], B3), OperacaoInvalida);
   });
 
   it("primeira operacao tem de ser compra", () => {
@@ -80,7 +83,7 @@ describe("aplicarOperacoes", () => {
       () =>
         aplicarOperacoes([
           { id: 1, tipo: "venda", data: "2025-09-01", quantidade: 10, preco: 10 },
-        ]),
+        ], B3),
       OperacaoInvalida,
     );
   });
@@ -91,7 +94,7 @@ describe("aplicarOperacoes", () => {
         aplicarOperacoes([
           { id: 1, tipo: "compra", data: "2025-09-01", quantidade: 10, preco: 10 },
           { id: 2, tipo: "venda", data: "2025-09-05", quantidade: 20, preco: 12 },
-        ]),
+        ], B3),
       (erro) =>
         erro instanceof OperacaoInvalida &&
         erro.message.includes("20") &&
@@ -107,7 +110,7 @@ describe("aplicarOperacoes", () => {
           { id: 1, tipo: "compra", data: "2025-09-01", quantidade: 10, preco: 10 },
           { id: 2, tipo: "venda", data: "2025-09-05", quantidade: 10, preco: 12 },
           { id: 3, tipo: "compra", data: "2025-09-10", quantidade: 5, preco: 11 },
-        ]),
+        ], B3),
       (erro) => erro instanceof OperacaoInvalida && /outro trade/.test(erro.message),
     );
   });
@@ -119,7 +122,7 @@ describe("aplicarOperacoes", () => {
           { id: 1, tipo: "compra", data: "2025-09-01", quantidade: 10, preco: 10 },
           { id: 2, tipo: "venda", data: "2025-09-05", quantidade: 10, preco: 12 },
           { id: 3, tipo: "venda", data: "2025-09-10", quantidade: 5, preco: 11 },
-        ]),
+        ], B3),
       OperacaoInvalida,
     );
   });
@@ -128,14 +131,14 @@ describe("aplicarOperacoes", () => {
 describe("validarCampos", () => {
   it("normaliza uma entrada valida", () => {
     assert.deepEqual(
-      validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: "100", preco: "38.2" }),
+      validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: "100", preco: "38.2" }, B3),
       { tipo: "compra", data: "2025-09-01", quantidade: 100, preco: 38.2 },
     );
   });
 
   it("recusa tipo fora de compra/venda", () => {
     assert.throws(
-      () => validarCampos({ tipo: "swap", data: "2025-09-01", quantidade: 1, preco: 1 }),
+      () => validarCampos({ tipo: "swap", data: "2025-09-01", quantidade: 1, preco: 1 }, B3),
       OperacaoInvalida,
     );
   });
@@ -143,42 +146,42 @@ describe("validarCampos", () => {
   it("recusa data fora do formato", () => {
     assert.throws(
       () =>
-        validarCampos({ tipo: "compra", data: "01/09/2025", quantidade: 1, preco: 1 }),
+        validarCampos({ tipo: "compra", data: "01/09/2025", quantidade: 1, preco: 1 }, B3),
       OperacaoInvalida,
     );
   });
 
   it("recusa data invalida no calendario", () => {
     assert.throws(
-      () => validarCampos({ tipo: "compra", data: "2026-02-30", quantidade: 1, preco: 1 }),
+      () => validarCampos({ tipo: "compra", data: "2026-02-30", quantidade: 1, preco: 1 }, B3),
       OperacaoInvalida,
     );
   });
 
   it("recusa quantidade nao inteira ou nao positiva", () => {
     assert.throws(
-      () => validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 1.5, preco: 1 }),
+      () => validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 1.5, preco: 1 }, B3),
       OperacaoInvalida,
     );
     assert.throws(
-      () => validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 0, preco: 1 }),
+      () => validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 0, preco: 1 }, B3),
       OperacaoInvalida,
     );
   });
 
   it("recusa preco nao finito, nao positivo ou com mais de 2 casas", () => {
     assert.throws(
-      () => validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 1, preco: 0 }),
+      () => validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 1, preco: 0 }, B3),
       OperacaoInvalida,
     );
     assert.throws(
       () =>
-        validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 1, preco: Infinity }),
+        validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 1, preco: Infinity }, B3),
       OperacaoInvalida,
     );
     assert.throws(
       () =>
-        validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 1, preco: 10.123 }),
+        validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 1, preco: 10.123 }, B3),
       OperacaoInvalida,
     );
   });
@@ -186,7 +189,7 @@ describe("validarCampos", () => {
 
 describe("marcarAMercado", () => {
   const operacoesDaReferencia = () => {
-    const r = aplicarOperacoes(REFERENCIA);
+    const r = aplicarOperacoes(REFERENCIA, B3);
     return r.ordenadas.map((o, i) => ({ data: o.data, estado: r.estados[i] }));
   };
 
@@ -292,5 +295,125 @@ describe("marcarAgora", () => {
     assert.equal(m.resultado, 200);
     assert.equal(m.resultadoPct, 200 / 1000);
     assert.equal(m.valor, null); // quantidade zerada: nao ha posicao para valer algo
+  });
+});
+
+describe("diario em cripto: taxa da Binance saindo da moeda", () => {
+  const CRIPTO = regrasDoDiario("cripto");
+  const PM = 994.5 / 0.0152847; // custo dividido pelas moedas que ficaram
+
+  it("compra de 0,0153 BTC deixa 0,0152847 na posicao, e o PM inclui a taxa", () => {
+    const r = aplicarOperacoes(
+      [{ id: 1, tipo: "compra", data: "2026-11-17", quantidade: 0.0153, preco: 65000 }],
+      CRIPTO,
+    );
+    const e = r.estados[0];
+    assert.equal(e.quantidade, 0.0152847);
+    assert.equal(e.custoComprado, 994.5); // 0,0153 x 65.000: o que saiu da conta
+    assert.ok(Math.abs(e.precoMedio - PM) < 1e-9);
+    assert.equal(r.encerradoEm, null);
+  });
+
+  it("vender o saldo todo fecha o trade, com a taxa da venda saindo dos dolares", () => {
+    const r = aplicarOperacoes(
+      [
+        { id: 1, tipo: "compra", data: "2026-11-17", quantidade: 0.0153, preco: 65000 },
+        { id: 2, tipo: "venda", data: "2026-11-19", quantidade: 0.0152847, preco: 66000 },
+      ],
+      CRIPTO,
+    );
+    // 0,0152847 x (66.000 x 0,999 - PM) = 1.007,78 recebidos - 994,50 pagos
+    assert.equal(r.estados[1].realizado, 13.28);
+    assert.equal(r.estados[1].quantidade, 0);
+    assert.equal(r.encerradoEm, "2026-11-19");
+  });
+
+  it("vendas parciais: o PM nao muda e o resto fecha exatamente", () => {
+    const r = aplicarOperacoes(
+      [
+        { id: 1, tipo: "compra", data: "2026-11-17", quantidade: 0.0153, preco: 65000 },
+        { id: 2, tipo: "venda", data: "2026-11-18", quantidade: 0.01, preco: 66000 },
+        { id: 3, tipo: "venda", data: "2026-11-19", quantidade: 0.0052847, preco: 64000 },
+      ],
+      CRIPTO,
+    );
+    assert.equal(r.estados[1].quantidade, 0.0052847);
+    assert.equal(r.estados[1].precoMedio, r.estados[0].precoMedio);
+    assert.equal(r.estados[1].realizado, 8.69);
+    assert.equal(r.estados[2].realizado, 2.72); // 8,69 - 5,97
+    assert.equal(r.encerradoEm, "2026-11-19");
+  });
+
+  it("comprar e vender no mesmo preco perde as duas taxas", () => {
+    const r = aplicarOperacoes(
+      [
+        { id: 1, tipo: "compra", data: "2026-11-17", quantidade: 0.0153, preco: 65000 },
+        { id: 2, tipo: "venda", data: "2026-11-17", quantidade: 0.0152847, preco: 65000 },
+      ],
+      CRIPTO,
+    );
+    assert.equal(r.estados[1].realizado, -1.99); // ~0,2% de 994,50
+  });
+
+  it("vender mais do que o saldo depois da taxa e erro", () => {
+    assert.throws(
+      () =>
+        aplicarOperacoes(
+          [
+            { id: 1, tipo: "compra", data: "2026-11-17", quantidade: 0.0153, preco: 65000 },
+            { id: 2, tipo: "venda", data: "2026-11-18", quantidade: 0.0153, preco: 66000 },
+          ],
+          CRIPTO,
+        ),
+      (erro) => erro instanceof OperacaoInvalida && erro.message.includes("0.0152847"),
+    );
+  });
+
+  it("moeda de preco minusculo e quantidade grande nao perde a conta", () => {
+    const r = aplicarOperacoes(
+      [
+        { id: 1, tipo: "compra", data: "2026-11-17", quantidade: 8_000_000, preco: 0.0000125 },
+        { id: 2, tipo: "venda", data: "2026-11-18", quantidade: 7_992_000, preco: 0.000015 },
+      ],
+      CRIPTO,
+    );
+    assert.equal(r.estados[0].quantidade, 7_992_000);
+    assert.equal(r.estados[0].custoComprado, 100);
+    // 7.992.000 x 0,000015 x 0,999 = 119,76 recebidos - 100 pagos
+    assert.equal(r.estados[1].realizado, 19.76);
+    assert.equal(r.encerradoEm, "2026-11-18");
+  });
+
+  it("aceita quantidade com ate 8 casas e preco com ate 10", () => {
+    const op = validarCampos(
+      { tipo: "compra", data: "2026-11-17", quantidade: "0.00076923", preco: "0.0000042123" },
+      CRIPTO,
+    );
+    assert.equal(op.quantidade, 0.00076923);
+    assert.equal(op.preco, 0.0000042123);
+    assert.throws(
+      () => validarCampos({ tipo: "compra", data: "2026-11-17", quantidade: 0.123456789, preco: 1 }, CRIPTO),
+      /8 casas/,
+    );
+    assert.throws(
+      () => validarCampos({ tipo: "compra", data: "2026-11-17", quantidade: 1, preco: 0.00000421234 }, CRIPTO),
+      /10 casas/,
+    );
+  });
+
+  it("na B3 continua so acao inteira, centavo e PM de seis casas", () => {
+    assert.throws(
+      () => validarCampos({ tipo: "compra", data: "2025-09-01", quantidade: 0.5, preco: 10 }, B3),
+      /inteiro/,
+    );
+    const r = aplicarOperacoes(
+      [
+        { id: 1, tipo: "compra", data: "2025-09-01", quantidade: 3, preco: 10 },
+        { id: 2, tipo: "compra", data: "2025-09-02", quantidade: 4, preco: 10.01 },
+      ],
+      B3,
+    );
+    assert.equal(r.estados[1].precoMedio, 10.005714); // 70,04 / 7, em seis casas
+    assert.equal(r.estados[1].quantidade, 7);
   });
 });

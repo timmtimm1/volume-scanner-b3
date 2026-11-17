@@ -82,13 +82,30 @@ export function valorComSinal(mercado: Mercado, v: number): string {
   return `${v >= 0 ? "+" : "−"}${valor(mercado, Math.abs(v))}`;
 }
 
+/** "150", "0,0153": so o numero da quantidade, para tabela. */
+export function numeroDaQuantidade(mercado: Mercado, q: number): string {
+  if (!Number.isFinite(q)) return VAZIO;
+  if (mercado === "b3" || q === 0) return formatar(q, 0);
+  // Quatro algarismos significativos, sem zero sobrando no fim: "0,0153".
+  // De 100 a 1.000, ainda com casas: "666,67", e nao "667" de um lote de 666,6666.
+  const casas = q >= 1000 ? 0 : q >= 1 ? 2 : Math.min(8, Math.max(2, 3 - Math.floor(Math.log10(q))));
+  return new Intl.NumberFormat("pt-BR", { maximumFractionDigits: casas }).format(q);
+}
+
 /** "150 ações", "1 ação", "0,0153 BTC": o tamanho da posicao. */
 export function quantidade(mercado: Mercado, q: number, ticker: string): string {
   if (mercado === "b3") return `${formatar(q, 0)} ${q === 1 ? "ação" : "ações"}`;
-  // Quatro algarismos significativos, sem zero sobrando no fim: "0,0153 BTC".
-  const casas = q >= 100 ? 0 : q >= 1 ? 2 : Math.min(8, Math.max(2, 3 - Math.floor(Math.log10(q))));
-  const texto = new Intl.NumberFormat("pt-BR", { maximumFractionDigits: casas }).format(q);
-  return `${texto} ${ticker}`;
+  return `${numeroDaQuantidade(mercado, q)} ${ticker}`;
+}
+
+/**
+ * A quantidade exata, com todas as casas da posicao: "0,0152847". E o numero
+ * que tem de bater com o saldo da corretora.
+ */
+export function quantidadeExata(mercado: Mercado, q: number): string {
+  return new Intl.NumberFormat("pt-BR", {
+    maximumFractionDigits: REGRAS_DO_DIARIO[mercado].casasDaPosicao,
+  }).format(q);
 }
 
 export type Textos = {
@@ -110,6 +127,14 @@ export type Textos = {
   ativo: string;
   /** "Ações" / "Qtd.": o titulo da coluna de quantidade */
   unidades: string;
+  /** "Papel" / "Moeda": o rotulo do campo */
+  rotuloDoAtivo: string;
+  /** "PETR4" / "BTC": o exemplo do campo */
+  exemploDoAtivo: string;
+  /** O que dizer sob a data de uma operacao ("" na B3). */
+  notaDaData: string;
+  /** Por que nao ha lote, depois de "com 1% de risco sobre o seu capital, " */
+  semLote: string;
 };
 
 const TEXTOS: Record<Mercado, Textos> = {
@@ -123,6 +148,10 @@ const TEXTOS: Record<Mercado, Textos> = {
     proximo: "o próximo pregão",
     ativo: "papel",
     unidades: "Ações",
+    rotuloDoAtivo: "Papel",
+    exemploDoAtivo: "PETR4",
+    notaDaData: "",
+    semLote: "não dá nem para 1 ação a esse preço e esse stop.",
   },
   cripto: {
     naMoeda: "em dólares",
@@ -134,6 +163,10 @@ const TEXTOS: Record<Mercado, Textos> = {
     proximo: "o próximo dia",
     ativo: "moeda",
     unidades: "Qtd.",
+    rotuloDoAtivo: "Moeda",
+    exemploDoAtivo: "BTC",
+    notaDaData: "o dia do candle, em UTC: depois das 21h de Brasília já é o dia seguinte",
+    semLote: "a posição ficaria abaixo de US$ 5, o mínimo da corretora.",
   },
 };
 

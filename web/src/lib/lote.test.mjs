@@ -87,6 +87,11 @@ describe("numeroDoTexto", () => {
     assert.equal(numeroDoTexto(" 1,5 "), 1.5);
     assert.equal(numeroDoTexto("1.5"), 1.5);
   });
+  it("milhar nunca comeca em zero: 0.153 e fracao (quantidade de cripto)", () => {
+    assert.equal(numeroDoTexto("0.153"), 0.153);
+    assert.equal(numeroDoTexto("0,0152847"), 0.0152847);
+    assert.equal(numeroDoTexto("1.234.567"), 1234567);
+  });
   it("devolve null para o que nao e numero", () => {
     assert.equal(numeroDoTexto(""), null);
     assert.equal(numeroDoTexto("abc"), null);

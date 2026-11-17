@@ -10,7 +10,9 @@ import {
   fimDoPrazo,
   SETUPS_DO_ESTUDO,
 } from "@/lib/sinais-estudo-tela";
+import type { ContextoDoDiario } from "@/lib/setups-tela";
 import { Semaforo } from "./CartaoDeEntrada";
+import { BotaoEntreiNoSinal } from "./FormularioEntrei";
 
 const MERCADO = "cripto" as const;
 
@@ -35,7 +37,16 @@ function pct(v: number): string {
  * de", porque a entrada ja e a abertura; o que importa e onde ela foi, o stop,
  * o alvo, ate quando o trade pode ficar aberto e como ele esta agora.
  */
-export function CartaoDeSinal({ s, perfil }: { s: SinalDoEstudo; perfil: Perfil | null }) {
+export function CartaoDeSinal({
+  s,
+  perfil,
+  diario,
+}: {
+  s: SinalDoEstudo;
+  perfil: Perfil | null;
+  /** O diario de cripto: com ele, o sinal de compra ganha o "Entrei". */
+  diario?: ContextoDoDiario;
+}) {
   const setup = SETUPS_DO_ESTUDO[s.setup];
   if (!setup) return null;
   const venda = s.lado === "venda";
@@ -118,6 +129,12 @@ export function CartaoDeSinal({ s, perfil }: { s: SinalDoEstudo; perfil: Perfil 
             : "defina seu capital para ver o lote"}
         {" · "}atualizado às {horaEmBrasilia(s.atualizadoEm)}
       </footer>
+
+      {diario && !venda && (
+        <div className="flex flex-wrap items-center gap-2">
+          <BotaoEntreiNoSinal s={s} diario={diario} />
+        </div>
+      )}
     </article>
   );
 }

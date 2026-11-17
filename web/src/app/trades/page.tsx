@@ -1,7 +1,9 @@
 import { ehDono, signIn, signOut } from "@/auth";
-import { ListaDeTrades } from "@/components/ListaDeTrades";
+import { DiarioDeTrades, type Filtro } from "@/components/DiarioDeTrades";
 import { PerfilDeRisco } from "@/components/PerfilDeRisco";
-import { ResultadoPorSetup } from "@/components/ResultadoPorSetup";
+import { semCripto } from "@/lib/cripto";
+import { ordenarTrades } from "@/lib/diario";
+import { noMercado } from "@/lib/mercado-servidor";
 import { lerPerfil } from "@/lib/perfil";
 import { listarTrades } from "@/lib/trades";
 
@@ -9,10 +11,31 @@ import { listarTrades } from "@/lib/trades";
  * Trades reais: mesma estrutura de `/alertas` -- le a sessao, entao roda no
  * servidor a cada visita. Trade e dado pessoal tanto quanto alerta: o portao
  * de login e identico, so o texto muda.
+ *
+ * Um diario so para os dois mercados, com filtro (`?mercado=b3|cripto`): os
+ * trades de cripto vem do schema de cripto, lidos dentro de `noMercado`.
  */
 export const dynamic = "force-dynamic";
 
-export default async function Trades() {
+/** O diario e o capital de cripto; banco sem o schema de cripto vale "nenhum". */
+async function lerCripto() {
+  try {
+    return await noMercado("cripto", () => Promise.all([listarTrades(), lerPerfil()]));
+  } catch (erro) {
+    if (semCripto(erro)) return [[], null] as const;
+    throw erro;
+  }
+}
+
+function filtroDe(valor: string | string[] | undefined): Filtro {
+  return valor === "cripto" ? "cripto" : valor === "b3" ? "b3" : "tudo";
+}
+
+export default async function Trades({
+  searchParams,
+}: {
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
+}) {
   if (!(await ehDono())) {
     return (
       <section className="cartao mx-auto flex max-w-[560px] flex-col gap-4 p-6 md:mt-8 md:p-8">
@@ -44,7 +67,11 @@ export default async function Trades() {
     );
   }
 
-  const [trades, perfil] = await Promise.all([listarTrades(), lerPerfil()]);
+  const [[trades, perfil], [tradesDeCripto, perfilDeCripto], busca] = await Promise.all([
+    Promise.all([listarTrades(), lerPerfil()]),
+    lerCripto(),
+    searchParams,
+  ]);
 
   return (
     <div className="flex flex-col gap-4">
@@ -52,7 +79,7 @@ export default async function Trades() {
         <div className="flex flex-col gap-0.5">
           <h1 className="text-[22px] font-extrabold tracking-tight">Seus trades</h1>
           <p className="text-[13px] font-semibold text-tinta-3">
-            Compra e venda reais, marcadas a mercado
+            Compra e venda reais, de ações e de cripto, marcadas a mercado
           </p>
         </div>
         <div className="flex-1" />
@@ -71,11 +98,12 @@ export default async function Trades() {
         </form>
       </section>
 
-      <PerfilDeRisco inicial={perfil} />
-
-      <ResultadoPorSetup trades={trades} />
-
-      <ListaDeTrades iniciais={trades} />
+      <DiarioDeTrades
+        trades={ordenarTrades([...trades, ...tradesDeCripto])}
+        filtroInicial={filtroDe(busca.mercado)}
+        perfis={{ b3: perfil, cripto: perfilDeCripto }}
+        perfilDaB3={<PerfilDeRisco inicial={perfil} />}
+      />
     </div>
   );
 }

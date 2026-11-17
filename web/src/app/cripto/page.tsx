@@ -25,6 +25,7 @@ import { noMercado } from "@/lib/mercado-servidor";
 import { lerPerfil } from "@/lib/perfil";
 import { sinaisDoEstudo } from "@/lib/sinais-estudo";
 import { listarSetups, preferenciasDosSetups } from "@/lib/setups";
+import { tradesDosSetups } from "@/lib/trades";
 import {
   type CategoriaDoSetup,
   categoriaDaChave,
@@ -54,7 +55,7 @@ function volumeCurto(v: number): string {
 }
 
 async function ler() {
-  const [setups, preferencias, rodada, perfil, nomes, volume, sinais] = await Promise.all([
+  const [setups, preferencias, rodada, perfil, nomes, volume, sinais, trades] = await Promise.all([
     listarSetups(),
     preferenciasDosSetups(),
     rodadaAtual(),
@@ -62,6 +63,7 @@ async function ler() {
     lerMoedas(),
     volumeDoDia(),
     sinaisDoEstudo(),
+    tradesDosSetups(),
   ]);
   const saidasDoBacktest: Partial<Record<CategoriaDoSetup, SaidaDoSetup>> = {};
   let linhas: LinhaDoBacktest[] = [];
@@ -84,7 +86,7 @@ async function ler() {
     candlesDosPapeis(armados.map((s) => s.ticker)),
     diaDeHoje(armados.map((s) => s.ticker)),
   ]);
-  return { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais };
+  return { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais, trades };
 }
 
 export default async function Cripto() {
@@ -132,11 +134,17 @@ export default async function Cripto() {
       </section>
     );
   }
-  const { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais } = dados;
+  const { setups, preferencias, rodada, perfil, nomes, volume, saidasDoBacktest, linhas, armados, candles, hoje, sinais, trades } = dados;
   const sinaisVivos = sinais.filter((s) => s.estado === "aguardando" || s.estado === "aberto");
   const sinaisEncerrados = sinais.filter((s) => s.estado !== "aguardando" && s.estado !== "aberto");
   const t = textos(MERCADO);
-  const diario: ContextoDoDiario = { mercado: MERCADO, perfil, tradePorSetup: {}, abertoPorTicker: {} };
+  const diario: ContextoDoDiario = {
+    mercado: MERCADO,
+    perfil,
+    tradePorSetup: trades.porSetup,
+    tradePorSinal: trades.porSinal,
+    abertoPorTicker: trades.abertoPorTicker,
+  };
 
   const entradas = ordenarEntradas(
     armados.map((s) => {
@@ -181,6 +189,12 @@ export default async function Cripto() {
           </p>
         </div>
         <div className="flex-1" />
+        <Link
+          href="/trades?mercado=cripto"
+          className="toque inline-flex h-10 items-center rounded-full border border-linha-2 px-4 text-[13px] font-bold text-tinta-2 transition-colors hover:text-tinta"
+        >
+          Seus trades
+        </Link>
         <Link
           href="/cripto/backtest"
           className="toque inline-flex h-10 items-center rounded-full border border-linha-2 px-4 text-[13px] font-bold text-tinta-2 transition-colors hover:text-tinta"
@@ -297,7 +311,7 @@ export default async function Cripto() {
         ) : (
           <div className={GRADE}>
             {sinaisVivos.map((s) => (
-              <CartaoDeSinal key={s.id} s={s} perfil={perfil} />
+              <CartaoDeSinal key={s.id} s={s} perfil={perfil} diario={diario} />
             ))}
           </div>
         )}

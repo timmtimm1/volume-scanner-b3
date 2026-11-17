@@ -49,7 +49,7 @@ export function LinhaEmAndamento({ s, diario }: { s: Setup; diario: ContextoDoDi
         <span className="num ml-auto text-right text-[13px] font-bold">
           <ResultadoEmR r={resultadoEmR(s)} />
         </span>
-        {mercado === "b3" && <BotaoEntrei s={s} diario={diario} />}
+        <BotaoEntrei s={s} diario={diario} />
       </div>
       <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
         <span className="num text-[12px] font-semibold text-tinta-2">

@@ -1,6 +1,8 @@
 import { notFound } from "next/navigation";
 import { ehDono, signIn } from "@/auth";
 import { DetalheDoTrade } from "@/components/DetalheDoTrade";
+import { mercadoDe } from "@/lib/mercado";
+import { noMercado } from "@/lib/mercado-servidor";
 import { detalharTrade } from "@/lib/trades";
 
 /** Trade muda por acao do usuario e pela marcacao noturna: nunca pre-renderizado. */
@@ -14,8 +16,11 @@ function identificador(bruto: string): number | null {
 
 export default async function TradePorId({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  /** `?mercado=cripto`: os ids repetem entre os schemas. */
+  searchParams: Promise<Record<string, string | string[] | undefined>>;
 }) {
   if (!(await ehDono())) {
     return (
@@ -48,7 +53,9 @@ export default async function TradePorId({
   const idNumerico = identificador(id);
   if (idNumerico === null) notFound();
 
-  const trade = await detalharTrade(idNumerico);
+  const busca = await searchParams;
+  const mercado = mercadoDe(typeof busca.mercado === "string" ? busca.mercado : null);
+  const trade = await noMercado(mercado, () => detalharTrade(idNumerico));
   if (!trade) notFound();
 
   return <DetalheDoTrade inicial={trade} />;

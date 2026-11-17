@@ -174,3 +174,20 @@ export function validarCamposDoDiario(
 
   return { setupId, categoriaSetup, stop };
 }
+
+type TradeOrdenavel = { id: number; abertoEm: string; encerradoEm: string | null };
+
+/**
+ * A ordem da lista de trades, a mesma do SQL de `listarTrades`: abertos
+ * primeiro; depois o mais recente (encerramento, ou abertura de quem esta
+ * aberto) primeiro; empate pelo id maior. Serve para juntar os trades dos dois
+ * mercados numa lista so.
+ */
+export function ordenarTrades<T extends TradeOrdenavel>(trades: T[]): T[] {
+  return [...trades].sort(
+    (a, b) =>
+      Number(a.encerradoEm !== null) - Number(b.encerradoEm !== null) ||
+      (b.encerradoEm ?? b.abertoEm).localeCompare(a.encerradoEm ?? a.abertoEm) ||
+      b.id - a.id,
+  );
+}

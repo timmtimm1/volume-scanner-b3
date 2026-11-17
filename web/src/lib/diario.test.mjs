@@ -10,6 +10,7 @@ import {
   resultadoEmRDoTrade,
   riscoEmReais,
   validarCamposDoDiario,
+  ordenarTrades,
 } from "./diario.ts";
 import { aplicarOperacoes, marcarAgora } from "./posicao.ts";
 import { regrasDoDiario } from "./mercado.ts";
@@ -167,3 +168,20 @@ describe("validarCamposDoDiario", () => {
     }
   });
 });
+
+describe("ordenarTrades", () => {
+  it("abertos primeiro, depois o mais recente, empate pelo id maior", () => {
+    const t = [
+      { id: 1, abertoEm: "2026-09-01", encerradoEm: "2026-09-10", mercado: "b3" },
+      { id: 1, abertoEm: "2026-11-17", encerradoEm: null, mercado: "cripto" },
+      { id: 4, abertoEm: "2026-10-01", encerradoEm: null, mercado: "b3" },
+      { id: 2, abertoEm: "2026-11-01", encerradoEm: "2026-11-15", mercado: "cripto" },
+      { id: 3, abertoEm: "2026-11-02", encerradoEm: "2026-11-15", mercado: "b3" },
+    ];
+    assert.deepEqual(
+      ordenarTrades(t).map((x) => `${x.mercado}${x.id}`),
+      ["cripto1", "b34", "b33", "cripto2", "b31"],
+    );
+  });
+});
+

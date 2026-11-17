@@ -20,7 +20,7 @@
  * Nada aqui inventa zero.
  */
 
-import type { Barra, Fundamentos, Provento, Trimestre } from "./types";
+import type { Barra, Desdobramento, Fundamentos, Provento, Trimestre } from "./types";
 
 /** Quantos trimestres o minigrafico mostra. */
 export const TRIMESTRES_NO_GRAFICO = 8;
@@ -39,6 +39,10 @@ export type Indicadores = {
   conferencias: Conferencia[];
   /** A CVM declarou as acoes em milhares e o numero foi corrigido. */
   escalaCorrigida: boolean;
+  /** Lucro de 12 meses por acao; null com prejuizo ou contagem de acoes reprovada. */
+  lucroPorAcao: number | null;
+  /** Patrimonio liquido por acao; null se negativo ou contagem reprovada. */
+  valorPatrimonialPorAcao: number | null;
   precoLucro: number | null;
   precoValorPatrimonial: number | null;
   evEbitda: number | null;
@@ -90,13 +94,75 @@ export function umAnoAntes(data: string): string {
 export function proventosDeDozeMeses(
   proventos: Provento[],
   data: string,
+  desdobramentos: readonly Desdobramento[] = [],
 ): number | null {
   if (proventos.length === 0) return null;
   const inicio = umAnoAntes(data);
   const janela = proventos.filter(
     (p) => p.dataCom > inicio && p.dataCom <= data,
   );
-  return janela.reduce((soma, p) => soma + p.valor, 0);
+  return janela.reduce(
+    (soma, p) => soma + p.valor * fatorAteODia(p.dataCom, data, desdobramentos),
+    0,
+  );
+}
+
+/* ------------------------------------------------------------------ */
+/* Desdobramentos: por a escala do provento na escala do preco        */
+/* ------------------------------------------------------------------ */
+
+/** As fracoes de desdobramento e grupamento que a B3 costuma ter. */
+const FRACOES = [
+  1 / 1000, 1 / 100, 1 / 50, 1 / 25, 1 / 20, 1 / 10, 1 / 8, 1 / 5, 1 / 4, 1 / 3, 1 / 2,
+  2, 3, 4, 5, 8, 10, 20, 25, 50, 100, 1000,
+];
+/** Fora desta faixa, a abertura sobre o fechamento anterior e candidata a desdobramento. */
+const SALTO_MINIMO = 0.62;
+const SALTO_MAXIMO = 1.6;
+/** Dentro de 8% de uma fracao conhecida, vale a fracao exata. */
+const FOLGA_DA_FRACAO = 0.08;
+/** Sem fracao reconhecivel, so conta salto maior que 3 vezes. */
+const SALTO_SEM_FRACAO = 3;
+
+/**
+ * O fator de um salto de abertura (abertura / fechamento anterior), ou `null`
+ * se for movimento de mercado.
+ *
+ * E a mesma regra de `scanner/gatilhos/matrizes.py`, que ajusta os precos para
+ * o motor de suportes: so entra salto que bate com uma fracao de desdobramento
+ * ou grupamento, ou que e grande demais para ser mercado. Uma queda de 45% sem
+ * fracao reconhecivel e queda de verdade e fica.
+ */
+export function fatorDoSalto(salto: number): number | null {
+  if (!Number.isFinite(salto) || salto <= 0) return null;
+  if (salto >= SALTO_MINIMO && salto <= SALTO_MAXIMO) return null;
+  let perto = FRACOES[0];
+  for (const f of FRACOES) {
+    if (Math.abs(Math.log(salto / f)) < Math.abs(Math.log(salto / perto))) perto = f;
+  }
+  if (Math.abs(perto / salto - 1) < FOLGA_DA_FRACAO) return perto;
+  if (salto > SALTO_SEM_FRACAO || salto < 1 / SALTO_SEM_FRACAO) return salto;
+  return null;
+}
+
+/**
+ * Por quanto multiplicar um valor por acao de `dataCom` para ele ficar na
+ * escala das acoes de `data`: o produto dos desdobramentos que aconteceram
+ * depois da data com e ate o dia visto.
+ *
+ * Relativo ao dia visto, e nao a hoje: a ficha tambem mostra pregoes antigos,
+ * e la o preco ainda esta na escala de antes do desdobramento.
+ */
+export function fatorAteODia(
+  dataCom: string,
+  data: string,
+  desdobramentos: readonly Desdobramento[],
+): number {
+  let fator = 1;
+  for (const d of desdobramentos) {
+    if (d.data > dataCom && d.data <= data) fator *= d.fator;
+  }
+  return fator;
 }
 
 /** Divide protegendo contra zero, nulo e denominador negativo sem sentido. */
@@ -459,6 +525,8 @@ export function indicadoresNaData(
     acoesConfiaveis: confiaveis,
     conferencias,
     escalaCorrigida,
+    lucroPorAcao,
+    valorPatrimonialPorAcao,
     precoLucro: razao(preco, lucroPorAcao, { positivo: true }),
     precoValorPatrimonial: razao(preco, valorPatrimonialPorAcao, {
       positivo: true,
@@ -466,7 +534,10 @@ export function indicadoresNaData(
     evEbitda: ehBanco
       ? null
       : razao(empresa, doTrimestre.ebitda12m, { positivo: true }),
-    dividendYield: razao(proventosDeDozeMeses(dados.proventos, data), preco),
+    dividendYield: razao(
+      proventosDeDozeMeses(dados.proventos, data, dados.desdobramentos),
+      preco,
+    ),
     valorDeMercado: mercado,
     retornoSobrePatrimonio: razao(
       doTrimestre.lucro12m,

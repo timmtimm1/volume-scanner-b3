@@ -7,6 +7,8 @@ import {
   acoesConfiaveis,
   conferirAcoes,
   indicadoresNaData,
+  fatorAteODia,
+  fatorDoSalto,
   proventosDeDozeMeses,
   trimestreNaData,
   umAnoAntes,
@@ -426,3 +428,64 @@ describe("valorDeMercado e as classes", () => {
     assert.equal(valorDeMercado(DOIS_T26, soOn, "2026-09-15", 57.48), null);
   });
 });
+
+describe("desdobramentos", () => {
+  it("salto de abertura que bate com fracao conhecida vira a fracao exata", () => {
+    assert.equal(fatorDoSalto(0.2), 1 / 5); // SBSP3 em 29/04/2026: 1 para 5
+    assert.equal(fatorDoSalto(0.3355), 1 / 3);
+    assert.equal(fatorDoSalto(0.2501), 1 / 4);
+    assert.equal(fatorDoSalto(10.1786), 10); // grupamento de 10 para 1
+    assert.equal(fatorDoSalto(1.9817), 2);
+  });
+
+  it("movimento de mercado nao e desdobramento", () => {
+    assert.equal(fatorDoSalto(1.0), null);
+    assert.equal(fatorDoSalto(0.93), null);
+    assert.equal(fatorDoSalto(1.45), null);
+    // queda de 45% sem fracao reconhecivel e queda de verdade
+    assert.equal(fatorDoSalto(0.551), null);
+    assert.equal(fatorDoSalto(1.76), null);
+  });
+
+  it("salto enorme sem fracao conhecida vale o proprio salto", () => {
+    assert.equal(fatorDoSalto(6.3), 6.3); // longe de 5 e de 8
+    assert.equal(fatorDoSalto(0.07), 0.07);
+    // 9,4 esta a 6% de 10: vale o grupamento de 10 para 1 (ENJU3, 09/10/2026)
+    assert.equal(fatorDoSalto(9.4), 10);
+  });
+
+  it("valor invalido nao vira fator", () => {
+    assert.equal(fatorDoSalto(0), null);
+    assert.equal(fatorDoSalto(Number.NaN), null);
+  });
+
+  const splits = [
+    { data: "2025-03-10", fator: 1 / 3 },
+    { data: "2026-04-29", fator: 1 / 5 },
+  ];
+
+  it("o fator junta so os desdobramentos entre a data com e o dia visto", () => {
+    perto(fatorAteODia("2024-12-01", "2026-11-13", splits), 1 / 15);
+    perto(fatorAteODia("2025-06-01", "2026-11-13", splits), 1 / 5);
+    assert.equal(fatorAteODia("2026-06-01", "2026-11-13", splits), 1);
+    // visto num pregao ANTERIOR ao segundo desdobramento, ele ainda nao vale
+    perto(fatorAteODia("2024-12-01", "2026-01-15", splits), 1 / 3);
+    // provento com data com no proprio dia do desdobramento ja esta na escala nova
+    assert.equal(fatorAteODia("2026-04-29", "2026-11-13", splits), 1);
+  });
+
+  it("dividend yield nao infla depois de um desdobramento", () => {
+    // R$ 3,00 por acao pagos antes de um desdobramento de 1 para 3 sao R$ 1,00
+    // por acao de hoje; o pago depois entra inteiro.
+    const proventos = [
+      { dataCom: "2026-02-10", tipo: "DIVIDENDO", valor: 3.0 },
+      { dataCom: "2026-08-10", tipo: "DIVIDENDO", valor: 0.5 },
+    ];
+    const split = [{ data: "2026-05-04", fator: 1 / 3 }];
+    perto(proventosDeDozeMeses(proventos, "2026-11-13", split), 1.5);
+    perto(proventosDeDozeMeses(proventos, "2026-11-13"), 3.5); // o erro de antes
+    // num pregao anterior ao desdobramento o preco tambem esta na escala velha
+    perto(proventosDeDozeMeses(proventos, "2026-04-30", split), 3.0);
+  });
+});
+

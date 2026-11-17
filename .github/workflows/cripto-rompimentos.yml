@@ -49,18 +49,30 @@ jobs:
         id: checagem
         run: uv run --no-sync scanner alerta checar --migrar-antes
 
+      - name: Sinais do estudo (RSI no diario, compressao na venda no 4h)
+        id: sinais
+        # Os dois setups do estudo de 17/11/2026 entram na abertura do candle
+        # seguinte. A cada passada: sinal novo no ultimo candle fechado (com
+        # aviso no Telegram) e o acompanhamento dos abertos ate o stop, o alvo
+        # ou o prazo. Ver src/scanner/cripto/estudo.py.
+        if: ${{ !cancelled() }}
+        run: uv run --no-sync scanner cripto sinais
+
       - name: Avisar no Telegram se algo falhou
         if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
         shell: bash
         env:
           RES_DEPS: ${{ steps.deps.outcome }}
           RES_CHECAGEM: ${{ steps.checagem.outcome }}
+          RES_SINAIS: ${{ steps.sinais.outcome }}
         run: |
           onde="passo desconhecido"
           if [ "$RES_DEPS" = failure ]; then
             onde="instalacao das dependencias"
           elif [ "$RES_CHECAGEM" = failure ]; then
             onde="migrations ou checagem das entradas de cripto"
+          elif [ "$RES_SINAIS" = failure ]; then
+            onde="sinais do estudo (RSI e compressao na venda)"
           fi
           texto=$(printf '⚠️ <b>A checagem das entradas de cripto falhou</b>\nOnde: %s\n\nOs alertas continuam ativos e a proxima passada tenta de novo.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
             "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")

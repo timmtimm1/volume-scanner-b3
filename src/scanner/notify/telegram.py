@@ -671,3 +671,69 @@ def money_simples(valor: float | None) -> str:
             casas = min(10, max(2, 4 - math.floor(math.log10(modulo))))
         return f"US$ {br(valor, casas)}"
     return f"R$ {br(valor)}"
+
+
+COR_DA_NOTA = {"firme": "🟢", "fraco": "🟡", "falhou": "🔴"}
+NOTA_EM_TEXTO = {
+    "firme": "histórico bom",
+    "fraco": "histórico duvidoso",
+    "falhou": "histórico ruim",
+}
+PRAZO_EM_TEXTO = {"1d": "{n} dias", "4h": "{n} candles de 4h ({d} dias)"}
+
+
+def _abertura_de(sinal: Mapping[str, Any]) -> str:
+    """ " de 17/11 às 21:00": quando abriu o candle da entrada, no horario de Brasilia.
+
+    A passada olha os 3 ultimos candles (para nao perder sinal se uma rodada
+    falhar); um sinal de ontem chega com a entrada ja feita, e a mensagem diz
+    de quando ela e.
+    """
+    from datetime import timedelta
+
+    quando = sinal.get("sinal_em")
+    if quando is None or not hasattr(quando, "astimezone"):
+        return ""
+    passo = timedelta(hours=4) if sinal.get("timeframe") == "4h" else timedelta(days=1)
+    abriu = (quando + passo).astimezone(FUSO_B3)
+    return f" de {abriu:%d/%m} às {abriu:%H:%M}"
+
+
+def format_sinal_estudo(sinal: Mapping[str, Any], base_url: str | None = None) -> str:
+    """Aviso de um sinal novo dos setups do estudo de cripto (entrada na abertura).
+
+    A entrada ja aconteceu quando a mensagem sai: e a abertura do candle
+    seguinte ao sinal, e a checagem roda de 15 em 15 minutos. A mensagem traz o
+    preco dessa abertura, o stop, o alvo e o prazo, e a nota do estudo.
+    """
+    venda = sinal["lado"] == "venda"
+    moeda = str(sinal["moeda"])
+    tf = str(sinal["timeframe"])
+    seta = "📉" if venda else "📈"
+    quadro = "diário" if tf == "1d" else "4h"
+    entrada = sinal.get("entrada")
+    stop = float(sinal["stop"])
+    base = float(entrada) if entrada is not None else float(sinal["fechamento"])
+    distancia = abs(base - stop) / base
+    prazo = int(sinal["prazo_candles"])
+    prazo_txt = PRAZO_EM_TEXTO.get(tf, "{n} candles").format(n=prazo, d=round(prazo / 6))
+    nota = str(sinal.get("nivel") or "")
+    linhas = [
+        f"{seta} <b>{moeda} · {sinal['titulo']} ({quadro})</b>",
+        f"{'Vender' if venda else 'Comprar'} na abertura{_abertura_de(sinal)}: "
+        + (money_simples(float(entrada)) if entrada is not None else "a do próximo candle"),
+        f"stop {money_simples(stop)} ({br(distancia * 100, 1)}%)"
+        f" · alvo {money_simples(float(sinal['alvo']))} (3R)",
+        f"sai no stop, no alvo ou em até {prazo_txt}",
+        f"{COR_DA_NOTA.get(nota, '⚪')} {NOTA_EM_TEXTO.get(nota, 'sem nota')}"
+        " no estudo de 2017–2026",
+    ]
+    if venda:
+        linhas.append("⚠️ venda: precisa de futuros ou margem na Binance")
+    if base_url:
+        dia = sinal["sinal_em"]
+        alvo_link = chart_url(
+            base_url, moeda, dia.date() if hasattr(dia, "date") else dia, foco=True
+        )
+        linhas += ["", f'<a href="{alvo_link}">→ abrir grafico</a>']
+    return "\n".join(linhas)

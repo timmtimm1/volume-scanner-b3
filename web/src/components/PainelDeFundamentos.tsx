@@ -2,6 +2,7 @@
 
 import { type ReactNode, useMemo, useState } from "react";
 import {
+  fatorAteODia,
   indicadoresNaData,
   type Indicadores,
   variacaoAnual,
@@ -14,12 +15,20 @@ import {
   proporcao,
 } from "@/lib/formato";
 import type { Barra, Fundamentos } from "@/lib/types";
+import { crescimentoDoLucro, premissasPadrao, proventoMedioAnual } from "@/lib/valuation";
+import { BlocoDeValuation } from "./BlocoDeValuation";
 
 type Props = {
   dados: Fundamentos;
   barras: Barra[];
   /** Pregao que a ficha esta mostrando. */
   data: string;
+  /**
+   * Liga o bloco "Preço justo" (Graham, Bazin e fluxo de caixa). So para quem
+   * esta logado, como os setups: uma tela publica de "preco justo" leria como
+   * recomendacao. `juro` e a taxa longa que entra no desconto (fracao).
+   */
+  valuation?: { juro: number | null } | null;
 };
 
 /** Largura do balao do trimestre, em pixels -- o clamp precisa dela para
@@ -378,11 +387,35 @@ function LinhaDeResultado({
  * liquida e margem nem aparecem -- nao existem no sentido usual, e mostrar
  * "—" em cinco linhas seguidas so encheria a tela.
  */
-export function PainelDeFundamentos({ dados, barras, data }: Props) {
+export function PainelDeFundamentos({ dados, barras, data, valuation = null }: Props) {
   const indicadores = useMemo(
     () => indicadoresNaData(dados, barras, data),
     [dados, barras, data],
   );
+
+  // As entradas das tres contas de preco justo, do mesmo balanco e do mesmo
+  // preco dos multiplos acima.
+  const precoJusto = useMemo(() => {
+    if (indicadores === null || valuation === null) return null;
+    const ate = dados.trimestres.slice(
+      0,
+      dados.trimestres.findIndex((t) => t.dtFim === indicadores.trimestre.dtFim) + 1,
+    );
+    const crescimento = crescimentoDoLucro(ate);
+    return {
+      dados: {
+        preco: indicadores.preco,
+        lucroPorAcao: indicadores.lucroPorAcao,
+        valorPatrimonialPorAcao: indicadores.valorPatrimonialPorAcao,
+        proventoMedio: proventoMedioAnual(dados.proventos, data, undefined, (dataCom) =>
+          fatorAteODia(dataCom, data, dados.desdobramentos ?? []),
+        ),
+        acoesConfiaveis: indicadores.acoesConfiaveis,
+      },
+      padrao: premissasPadrao(crescimento, valuation.juro),
+      crescimentoMedido: crescimento !== null,
+    };
+  }, [indicadores, valuation, dados, data]);
 
   if (indicadores === null) {
     return (
@@ -525,6 +558,13 @@ export function PainelDeFundamentos({ dados, barras, data }: Props) {
         </div>
         <GraficosDoTrimestre indicadores={indicadores} />
       </div>
+
+      {precoJusto !== null && (
+        <div className="pb-3">
+          {/* a chave zera o ajuste do fluxo de caixa ao trocar de pregao */}
+          <BlocoDeValuation key={data} {...precoJusto} />
+        </div>
+      )}
 
       <p className="pb-3 text-[11px] leading-relaxed text-tinta-3">
         {ehBanco

@@ -164,6 +164,14 @@ export type Provento = {
   valor: number;
 };
 
+/**
+ * Um desdobramento ou grupamento, reconhecido pelo salto de abertura nas barras.
+ * `fator` e o que multiplica precos e proventos por acao ANTERIORES a `data`
+ * para ficarem na escala nova: 1/3 num desdobramento de 1 para 3, 10 num
+ * grupamento de 10 para 1.
+ */
+export type Desdobramento = { data: string; fator: number };
+
 /** Tudo que a aba Fundamentos da ficha precisa. */
 export type Fundamentos = {
   empresa: string;
@@ -184,6 +192,13 @@ export type Fundamentos = {
    * menos acoes em circulacao do que negociou num dia so.
    */
   picoDeVolumeEmAcoes: number | null;
+  /**
+   * Desdobramentos e grupamentos do papel dentro da janela de barras do banco.
+   * O provento fica gravado pelo valor por acao da epoca; sem isto, um
+   * dividendo de R$ 2,00 pago antes de um desdobramento de 1 para 3 seria
+   * somado como R$ 2,00 contra um preco tres vezes menor.
+   */
+  desdobramentos?: Desdobramento[];
 };
 
 /* ------------------------------------------------------------------ */

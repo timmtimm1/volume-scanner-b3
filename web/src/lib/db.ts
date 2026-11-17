@@ -23,9 +23,11 @@
 import { cache } from "react";
 import { Pool } from "pg";
 import { PISO_DE_VOLUME, UNIVERSO, Z_MINIMO_DO_SITE } from "./config";
+import { fatorDoSalto } from "./fundamentos";
 import { mercadoDoPedido, sqlDoMercado } from "./mercado-servidor";
 import type {
   Barra,
+  Desdobramento,
   EdicaoDaSemana,
   Evento,
   FaixaDeDesvio,
@@ -526,7 +528,7 @@ export async function fundamentos(
   if (empresa.rows.length === 0) return null;
   const { cd_cvm, nome, setor_cvm, classe } = empresa.rows[0];
 
-  const [trimestres, proventos, irmaos, pico] = await Promise.all([
+  const [trimestres, proventos, irmaos, pico, saltos] = await Promise.all([
     conexao().query(
       `SELECT f.dt_fim, f.rotulo, f.origem, f.publicado_em, f.layout,
               f.receita_tri, f.ebitda_tri, f.lucro_tri,
@@ -579,9 +581,11 @@ export async function fundamentos(
         WHERE t.cd_cvm = $1 AND b.trade_date > CURRENT_DATE - INTERVAL '1 year'`,
       [cd_cvm],
     ),
+    conexao().query(SALTOS_DE_ABERTURA, [[ticker]]),
   ]);
 
   return {
+    desdobramentos: desdobramentosDosSaltos(saltos.rows)[ticker] ?? [],
     empresa: String(nome),
     setor: setor_cvm === null ? null : String(setor_cvm),
     classe: classe === null ? null : String(classe),
@@ -624,6 +628,33 @@ export async function fundamentos(
  * periodo: e a que representa o preco da preferencial. A unit nao entra --
  * ela ja embute ON e PN, e contar as duas coisas dobraria o valor de mercado.
  */
+/**
+ * Os dias em que um papel abriu muito longe do fechamento anterior: candidatos
+ * a desdobramento ou grupamento. Quem decide se e mesmo e `fatorDoSalto`, com
+ * a mesma regra do motor em Python. So alcanca a janela de barras do banco.
+ */
+export const SALTOS_DE_ABERTURA = `
+  SELECT ticker, trade_date, salto FROM (
+    SELECT ticker, trade_date,
+           open / NULLIF(lag(close) OVER (PARTITION BY ticker ORDER BY trade_date), 0) AS salto
+      FROM volume_scanner.daily_bars
+     WHERE ticker = ANY($1) AND open IS NOT NULL
+  ) s
+   WHERE salto < 0.62 OR salto > 1.6
+   ORDER BY ticker, trade_date`;
+
+export function desdobramentosDosSaltos(
+  linhas: { ticker: unknown; trade_date: unknown; salto: unknown }[],
+): Record<string, Desdobramento[]> {
+  const porPapel: Record<string, Desdobramento[]> = {};
+  for (const linha of linhas) {
+    const fator = fatorDoSalto(Number(linha.salto));
+    if (fator === null) continue;
+    (porPapel[String(linha.ticker)] ??= []).push({ data: dia(linha.trade_date), fator });
+  }
+  return porPapel;
+}
+
 function precosPorClasse(
   linhas: {
     classe: unknown;

@@ -62,3 +62,12 @@ describe("lerNivelDigitado", () => {
     assert.equal(lerNivelDigitado("1.234,50"), null);
   });
 });
+
+describe("lerNivelDigitado em cripto", () => {
+  it("le US$ e guarda as casas da moeda quando o arredondamento e o dela", () => {
+    const moeda = (v) => Math.round(v * 1e6) / 1e6;
+    assert.equal(lerNivelDigitado("US$ 0,050411", moeda), 0.050411);
+    assert.equal(lerNivelDigitado("0,050411"), 0.05); // sem o do mercado: centavo
+  });
+});
+

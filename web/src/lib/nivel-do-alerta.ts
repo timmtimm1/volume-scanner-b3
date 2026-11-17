@@ -37,13 +37,20 @@ export function direcaoDoNivel(
 /**
  * O nivel digitado na lista de alertas, ou null se nao for um preco.
  *
- * Aceita virgula ou ponto como separador decimal e ignora o "R$" e os espacos
- * que vierem colados. Milhar nao e aceito: "1.234,50" e ambiguo, e acao na B3
- * que custa mais de mil reais por papel e excecao.
+ * Aceita virgula ou ponto como separador decimal e ignora o "R$" (ou "US$") e
+ * os espacos que vierem colados. Milhar nao e aceito: "1.234,50" e ambiguo, e
+ * acao na B3 que custa mais de mil reais por papel e excecao. `arredondar` e o
+ * do mercado (`nivelDoAlerta`); sem ele, centavo.
  */
-export function lerNivelDigitado(texto: string): number | null {
-  const limpo = texto.replace(/R\$/i, "").replace(/\s/g, "").replace(",", ".");
+export function lerNivelDigitado(
+  texto: string,
+  arredondar: (v: number) => number = nivelEmCentavos,
+): number | null {
+  const limpo = texto
+    .replace(/US\$|R\$/i, "")
+    .replace(/\s/g, "")
+    .replace(",", ".");
   if (!/^\d+(\.\d+)?$/.test(limpo)) return null;
-  const valor = nivelEmCentavos(Number(limpo));
+  const valor = arredondar(Number(limpo));
   return valor > 0 ? valor : null;
 }

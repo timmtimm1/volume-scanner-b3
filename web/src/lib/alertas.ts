@@ -8,11 +8,16 @@
  *
  * A validacao mora aqui e nao so na rota: quem escreve no banco valida o que
  * escreve, independentemente de quem chamou.
+ *
+ * Os dois mercados: dentro de `noMercado("cripto", ...)` (as rotas leem
+ * `?mercado=cripto`) a conexao troca o schema e o ticker e a validade seguem as
+ * regras de cripto. Os alertas de cripto sao conferidos pelo `cripto-rompimentos`.
  */
 
 import { conexaoDeAlertas } from "./db";
-import { TICKER } from "./ticker";
-import { alertaVencido, hojeNaB3 } from "./validade";
+import { diaDoMercado, tickerValido } from "./mercado";
+import { mercadoDoPedido } from "./mercado-servidor";
+import { alertaVencido } from "./validade";
 
 export type Direcao = "acima" | "abaixo";
 
@@ -63,7 +68,9 @@ function dia(v: Date | string): string {
 
 function paraAlerta(r: Linha): Alerta {
   const expiraEm = r.expira_em ? dia(r.expira_em) : null;
-  const vencido = r.disparado_em === null && alertaVencido(expiraEm, hojeNaB3());
+  // "Hoje" do mercado: em cripto o dia UTC do candle, que vira as 21h de Brasilia.
+  const vencido =
+    r.disparado_em === null && alertaVencido(expiraEm, diaDoMercado(mercadoDoPedido(), new Date()));
   return {
     id: Number(r.id),
     ticker: r.ticker,
@@ -122,7 +129,10 @@ export async function criarAlerta(entrada: {
   const ticker = String(entrada.ticker ?? "").toUpperCase();
   // Validado aqui, e nao so na rota: este e o ponto de entrada do dado, e o
   // ticker salvo vai depois para a URL dos fornecedores de cotacao.
-  if (!TICKER.test(ticker)) throw new DadoInvalido("ticker fora do formato da B3");
+  const mercado = mercadoDoPedido();
+  if (!tickerValido(mercado, ticker)) {
+    throw new DadoInvalido(mercado === "b3" ? "ticker fora do formato da B3" : "moeda fora do formato");
+  }
 
   const preco = precoValido(entrada.preco);
   const direcao = direcaoValida(entrada.direcao);

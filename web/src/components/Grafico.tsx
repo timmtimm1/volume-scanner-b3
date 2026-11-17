@@ -33,7 +33,14 @@ import type { PointerEvent as EventoDePonteiro } from "react";
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { Alerta, Direcao } from "@/lib/alertas";
 import { type CandleDeHoje, candleParcial, horaNaB3 } from "@/lib/candle-de-hoje";
-import { diaCurto, numero, percentual, reaisComSinal } from "@/lib/formato";
+import { diaCurto, numero, percentual } from "@/lib/formato";
+import {
+  nivelDoAlerta,
+  numeroDaQuantidade,
+  precoComSinal,
+  valorComSinal,
+  type Mercado,
+} from "@/lib/mercado";
 import { aberturaDaBanda, bollinger, mediaMovel, type TipoDeMedia } from "@/lib/indicadores";
 import {
   CORES_DAS_MEDIAS,
@@ -135,6 +142,8 @@ type Props = {
   /** Entrada, stop e alvo do setup em aberto do papel (so logado). */
   /** Casas decimais do eixo de preco: 2 na B3; em cripto, as da moeda (ate 10). */
   casasDoPreco?: number;
+  /** Ausente = B3. Em cripto a regua e os alertas falam em dolar, com as casas da moeda. */
+  mercado?: Mercado;
   linhasDeSetup?: LinhaDeSetup[];
   /**
    * O trade aberto do papel, ja marcado a mercado, para a linha tracejada do
@@ -235,6 +244,7 @@ export function Grafico({
   regua,
   edicaoDeAlertas,
   casasDoPreco = 2,
+  mercado = "b3",
 }: Props) {
   const idBase = useId();
   const { tema } = useTema();
@@ -800,10 +810,10 @@ export function Grafico({
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: `C ${numero(posicao.quantidade, 0)} · ${reaisComSinal(posicao.resultado)} (${percentual(posicao.resultadoPct, 1)})`,
+        title: `C ${numeroDaQuantidade(mercado, posicao.quantidade)} · ${valorComSinal(mercado, posicao.resultado)} (${percentual(posicao.resultadoPct, 1)})`,
       });
     }
-  }, [operacoes, posicao, barras, eventos, destaque]);
+  }, [operacoes, posicao, barras, eventos, destaque, mercado]);
 
   /**
    * As marcas de balanco publicado, acima do candle.
@@ -953,7 +963,9 @@ export function Grafico({
 
     const precoBruto = s.coordinateToPrice(y);
     if (precoBruto === null) return null;
-    const preco = Math.round(Number(precoBruto) * 100) / 100;
+    // Centavo na B3; as casas da moeda em cripto (senao uma moeda de US$ 0,05
+    // mediria US$ 0,05 em qualquer altura do grafico).
+    const preco = nivelDoAlerta(mercado, Number(precoBruto));
 
     const logico = c.timeScale().coordinateToLogical(x);
     if (logico === null) return null;
@@ -1302,6 +1314,7 @@ export function Grafico({
             aoApagar={(id) => void edicaoDeAlertas.apagar(id)}
             moverLinha={moverLinha}
             cor={SERIE.alerta}
+            mercado={mercado}
           />
         )}
 
@@ -1356,7 +1369,7 @@ export function Grafico({
                   <div className="num" style={{ color: corDaRegua }}>
                     {percentual(medicaoDaRegua.variacaoPct, 2)}
                   </div>
-                  <div className="num">{reaisComSinal(medicaoDaRegua.porAcao)}</div>
+                  <div className="num">{precoComSinal(mercado, medicaoDaRegua.porAcao)}</div>
                   <div className="num text-tinta-3">{medicaoDaRegua.candles} candles</div>
                 </div>
               </>
@@ -1382,6 +1395,7 @@ export function Grafico({
           agora={regua.agora}
           trade={regua.trade}
           criarAlerta={regua.criarAlerta}
+          mercado={mercado}
         />
       )}
     </div>

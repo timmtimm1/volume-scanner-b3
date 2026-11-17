@@ -1,7 +1,9 @@
-/** Alertas: apagar, mudar o nivel e religar. */
+/** Alertas: apagar, mudar o nivel e religar. `?mercado=cripto` para alerta de cripto. */
 
 import { NextResponse } from "next/server";
 import { ehDono } from "@/auth";
+import { mercadoDe } from "@/lib/mercado";
+import { noMercado } from "@/lib/mercado-servidor";
 import { apagarAlerta, DadoInvalido, moverAlerta, reativarAlerta } from "@/lib/alertas";
 
 // Redundante no Next 16 -- desde a v15 o padrao de handler GET ja e dinamico, e
@@ -16,7 +18,7 @@ function identificador(bruto: string): number | null {
   return Number.isInteger(n) && n > 0 ? n : null;
 }
 
-export async function DELETE(_pedido: Request, ctx: RouteContext<"/api/alertas/[id]">) {
+export async function DELETE(pedido: Request, ctx: RouteContext<"/api/alertas/[id]">) {
   if (!(await ehDono())) {
     return NextResponse.json({ erro: "nao autorizado" }, { status: 401 });
   }
@@ -27,7 +29,8 @@ export async function DELETE(_pedido: Request, ctx: RouteContext<"/api/alertas/[
   // "apagado, nada a devolver", mas resposta sem corpo aqui chega no navegador
   // como net::ERR_ABORTED: o servidor apaga, o `fetch` rejeita, e a tela fica
   // mostrando um alerta que nao existe mais. Custou um teste para achar.
-  return (await apagarAlerta(id))
+  const mercado = mercadoDe(new URL(pedido.url).searchParams.get("mercado"));
+  return (await noMercado(mercado, () => apagarAlerta(id)))
     ? NextResponse.json({ apagado: true })
     : NextResponse.json({ erro: "nao encontrado" }, { status: 404 });
 }
@@ -48,16 +51,18 @@ export async function PATCH(pedido: Request, ctx: RouteContext<"/api/alertas/[id
   const id = identificador((await ctx.params).id);
   if (id === null) return NextResponse.json({ erro: "id invalido" }, { status: 400 });
 
+  const mercado = mercadoDe(new URL(pedido.url).searchParams.get("mercado"));
   const texto = await pedido.text();
   if (texto.trim() === "") {
-    const alerta = await reativarAlerta(id);
+    const alerta = await noMercado(mercado, () => reativarAlerta(id));
     return alerta
       ? NextResponse.json({ alerta })
       : NextResponse.json({ erro: "nao encontrado" }, { status: 404 });
   }
 
   try {
-    const alerta = await moverAlerta(id, JSON.parse(texto));
+    const corpo = JSON.parse(texto);
+    const alerta = await noMercado(mercado, () => moverAlerta(id, corpo));
     return alerta
       ? NextResponse.json({ alerta })
       : NextResponse.json(

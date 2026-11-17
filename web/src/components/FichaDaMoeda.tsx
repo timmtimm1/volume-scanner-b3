@@ -3,13 +3,19 @@
 import Link from "next/link";
 import { useMemo } from "react";
 import { Grafico } from "@/components/Grafico";
+import { PainelDeAlerta } from "@/components/PainelDeAlerta";
+import type { Direcao } from "@/lib/alertas";
 import { fmtR } from "@/lib/backtest-tela";
 import { data, diaCurto, percentual } from "@/lib/formato";
 import { horaEmBrasilia } from "@/lib/cripto-hoje";
 import { casasDoPreco, gatilhoNoMercado, preco, stopNoMercado } from "@/lib/mercado";
 import { NOME_DO_SETUP, resultadoEmR, rotuloDoEstado, type Setup } from "@/lib/setups-tela";
 import type { Barra, NivelDoGrafico } from "@/lib/types";
+import { marcarAgora } from "@/lib/posicao";
+import { useAlertasDoPapel } from "@/lib/useAlertasDoPapel";
+import { useComputador } from "@/lib/useComputador";
 import { paraMarca } from "@/lib/useSetupsDoPapel";
+import { useTradesDoPapel } from "@/lib/useTradesDoPapel";
 
 const MERCADO = "cripto" as const;
 
@@ -38,9 +44,13 @@ function volumeCurto(v: number): string {
 
 /**
  * A ficha de uma criptomoeda: o grafico diario com suportes, resistencias e os
- * setups que armaram nela, e a lista desses setups. E a ficha do papel sem o
- * que so existe para acao (fundamentos, proventos, noticias, alertas de preco
- * e diario de trades, que em cripto sao outra fase).
+ * setups que armaram nela, a lista desses setups, a regua e os alertas de preco
+ * (pedido de 17/11/2026). E a ficha do papel sem o que so existe para acao
+ * (fundamentos, proventos, noticias).
+ *
+ * Os alertas e o trade aberto sao buscados pelo navegador, nas mesmas rotas das
+ * acoes com `?mercado=cripto`; os alertas sao conferidos pelo `cripto-rompimentos`
+ * de 15 em 15 minutos, contra o dia de hoje da Binance.
  */
 export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, setups, foco, aoVivo = null }: Props) {
   const ultima = barras[barras.length - 1];
@@ -50,6 +60,66 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
   const casas = casasDoPreco(ultima.close);
   const marcas = useMemo(() => setups.map(paraMarca), [setups]);
   const armados = setups.filter((s) => s.estado === "armado");
+
+  // Sem `hoje` a parte: o ultimo candle de `barras` ja e o de hoje, em
+  // andamento, quando a Binance respondeu ao abrir a pagina.
+  const estadoDosAlertas = useAlertasDoPapel(ticker, barras, undefined, null, MERCADO);
+  const estadoDosTrades = useTradesDoPapel(ticker, estadoDosAlertas.autenticado, [], MERCADO);
+  const computador = useComputador();
+  const alertasNoGrafico = useMemo(
+    () => (computador ? estadoDosAlertas.alertas.filter((a) => a.ativo) : estadoDosAlertas.alertas),
+    [computador, estadoDosAlertas.alertas],
+  );
+  // Mesma divisao da ficha das acoes: no computador o alerta e criado,
+  // arrastado e apagado no grafico; no celular tocar no grafico preenche o painel.
+  const edicaoDeAlertas =
+    computador && estadoDosAlertas.autenticado === true
+      ? {
+          referencia: estadoDosAlertas.precoDeReferencia,
+          criar: estadoDosAlertas.criarNoGrafico,
+          mover: estadoDosAlertas.moverAlerta,
+          apagar: estadoDosAlertas.apagar,
+          erro: estadoDosAlertas.erro,
+        }
+      : undefined;
+  const aberto = estadoDosTrades.tradeAberto;
+  const agora = ultima?.close ?? null;
+  const regua =
+    agora !== null
+      ? {
+          agora,
+          trade: aberto
+            ? {
+                quantidade: aberto.quantidade,
+                precoMedio: aberto.precoMedio,
+                custoComprado: aberto.custoComprado,
+                realizado: aberto.realizado,
+              }
+            : null,
+          podeCriarAlerta: estadoDosAlertas.autenticado === true,
+          criarAlerta: async (preco: number, direcao: Direcao) => {
+            await estadoDosAlertas.criarAlertaEm(preco, direcao);
+          },
+        }
+      : undefined;
+  // A linha tracejada do preco medio do trade aberto, marcada ao preco de agora.
+  const posicaoDoGrafico = useMemo(() => {
+    if (!aberto || agora === null) return null;
+    const marcado = marcarAgora(aberto, agora);
+    return {
+      quantidade: aberto.quantidade,
+      precoMedio: aberto.precoMedio,
+      resultado: marcado.resultado,
+      resultadoPct: marcado.resultadoPct,
+    };
+  }, [aberto, agora]);
+  const operacoesDeTrade = useMemo(
+    () =>
+      estadoDosTrades.trades.flatMap((t) =>
+        t.operacoes.map((o) => ({ data: o.data, tipo: o.tipo, quantidade: o.quantidade })),
+      ),
+    [estadoDosTrades.trades],
+  );
 
   return (
     <div className="flex flex-col gap-4">
@@ -92,6 +162,14 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           niveis={niveis}
           setups={marcas}
           casasDoPreco={casas}
+          mercado={MERCADO}
+          alertas={alertasNoGrafico}
+          escolhendoPreco={estadoDosAlertas.escolhendo}
+          aoEscolherPreco={estadoDosAlertas.escolherNoGrafico}
+          operacoes={operacoesDeTrade}
+          posicao={posicaoDoGrafico}
+          regua={regua}
+          edicaoDeAlertas={edicaoDeAlertas}
           classeDeAltura="h-[320px] md:h-[440px] lg:h-[560px]"
         />
         <p className="px-2 pt-2 text-[12px] font-semibold text-tinta-3">
@@ -101,6 +179,10 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           volume muito acima do normal.
         </p>
       </section>
+
+      {/* Alertas de preco da moeda: criar (no celular, tocando no grafico), mudar
+          o nivel e apagar. Avisam no Telegram pela passada de 15 em 15 minutos. */}
+      <PainelDeAlerta estado={estadoDosAlertas} computador={computador} />
 
       {armados.length > 0 && (
         <section className="cartao flex flex-col gap-2 p-4 md:p-5">

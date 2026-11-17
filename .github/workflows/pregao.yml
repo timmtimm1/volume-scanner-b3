@@ -212,6 +212,44 @@ jobs:
             -d disable_web_page_preview=true \
             --data-urlencode "text=$texto"
 
+      - name: Conferir se os fundamentos estao em dia
+        id: conferencia
+        # A carga acima pergunta a CVM "mudou?" e confia na resposta. Em
+        # 15/11/2026 quem respondeu foi um cache, com 304 para um arquivo que
+        # tinha 191 balancos novos, e o log dizia "sem mudanca" -- a linha de um
+        # dia normal. Este passo nao confia na carga: pergunta a origem a data
+        # de cada zip e compara com o que o banco processou, e confere se o
+        # trimestre que ja venceu esta no banco (`scanner fundamentos conferir`).
+        #
+        # So le. Falhar aqui nao desfaz nada: avisa no Telegram, e o job segue.
+        if: ${{ steps.pregao.outputs.pronto != 'true' }}
+        continue-on-error: true
+        timeout-minutes: 3
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run --no-sync scanner fundamentos conferir 2>&1 | tee /tmp/conferencia.log
+
+      - name: Avisar no Telegram se os fundamentos ficaram para tras
+        if: ${{ steps.conferencia.outcome == 'failure' && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
+        shell: bash
+        env:
+          DATA_PREGAO: ${{ steps.pregao.outputs.data || env.PREGAO }}
+        run: |
+          detalhe=$(grep -E '^\[conferencia\] (ATRASADO|INCOMPLETO) ' /tmp/conferencia.log 2>/dev/null | sed 's/^\[conferencia\] //' | head -6 | cut -c1-220 || true)
+          if [ -z "$detalhe" ]; then
+            detalhe="A conferencia nao terminou (CVM lenta ou fora do ar)."
+          fi
+          detalhe=$(printf '%s' "$detalhe" | tr -d '<>&' | iconv -c -f UTF-8 -t UTF-8 2>/dev/null || true)
+          texto=$(printf '⚠️ <b>Fundamentos atrás da CVM</b>\nConferido depois do pregão de %s: a CVM tem balanços que ainda não estão no site.\n\n%s\n\nPara carregar agora: Actions → pregao manual → Run workflow.\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$DATA_PREGAO" "$detalhe" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
+            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$texto"
+
       - name: Rebuild na Vercel com os fundamentos novos
         id: vercel_fundamentos
         if: ${{ env.VERCEL_DEPLOY_HOOK != '' && steps.fundamentos.outputs.mudou == 'true' }}

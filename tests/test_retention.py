@@ -557,6 +557,8 @@ def _aviso_dos_fundamentos(arquivo: Path) -> dict[Any, Any]:
         for p in job["steps"]
         if "api.telegram.org" in str(p.get("run", ""))
         and ("steps.fundamentos.outcome" in str(p.get("if", "")) or arquivo == FUNDAMENTOS_B3)
+        # O aviso da conferencia (16/11/2026) e outro passo, com outra mensagem.
+        and "steps.conferencia.outcome" not in str(p.get("if", ""))
     ]
     return dict(aviso)
 

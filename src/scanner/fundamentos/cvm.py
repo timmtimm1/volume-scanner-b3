@@ -215,10 +215,37 @@ def baixar(
     raise AssertionError("inalcancavel: o loop acima sempre retorna ou levanta")
 
 
+def sem_cache(url: str, agora: float | None = None) -> str:
+    """A mesma URL com um parametro que muda a cada chamada, para furar o cache.
+
+    A CVM serve os arquivos atras de um cache (Cloudflare, `max-age` de 4
+    horas). O pedido condicional (`If-None-Match`) pode ser respondido pelo
+    proprio cache, com a copia que ele guardou ANTES de a CVM republicar: ele
+    devolve 304 para um arquivo que ja mudou na origem.
+
+    Foi o que aconteceu em 15/11/2026: a CVM republicou o ITR de 2026 as 10:48
+    UTC com 191 balancos novos do 3T26, a carga rodou as 11:31, recebeu 304 e
+    ficou com os dados de 08/11. O site passou a semana da temporada de
+    balancos sem nenhum deles.
+
+    O cache guarda uma copia por URL completa, parametro incluido: com um valor
+    novo a cada chamada nao ha copia guardada, e a resposta vem da origem
+    (`cf-cache-status: MISS`, medido em 16/11/2026). O servidor da CVM ignora o
+    parametro.
+    """
+    carimbo = int((agora if agora is not None else time.time()) * 1000)
+    separador = "&" if "?" in url else "?"
+    return f"{url}{separador}v={carimbo}"
+
+
 def _tentar_baixar(url: str, destino: Path, parcial: Path, cabecalhos: dict[str, str]) -> Download:
     try:
         with httpx.stream(
-            "GET", url, headers=cabecalhos, timeout=TIMEOUT_SECONDS, follow_redirects=True
+            "GET",
+            sem_cache(url),
+            headers=cabecalhos,
+            timeout=TIMEOUT_SECONDS,
+            follow_redirects=True,
         ) as resposta:
             if resposta.status_code == httpx.codes.NOT_MODIFIED:
                 return Download(
@@ -267,6 +294,26 @@ def _tentar_baixar(url: str, destino: Path, parcial: Path, cabecalhos: dict[str,
         last_modified=novo_last_modified,
         modificado_em=_parse_http_date(novo_last_modified),
     )
+
+
+def data_na_cvm(url: str, *, cliente: httpx.Client | None = None) -> datetime | None:
+    """Quando a CVM publicou o arquivo pela ultima vez (`Last-Modified`), sem baixa-lo.
+
+    Um HEAD sem condicao e sem cache: e a pergunta "qual e a versao que esta no
+    ar agora?", independente do que a carga acha que ja tem. `None` quando o
+    arquivo nao existe (o DFP do ano corrente, antes de o primeiro sair).
+    Qualquer outra falha levanta `CvmIndisponivelError`.
+    """
+    try:
+        pedir = cliente.head if cliente is not None else httpx.head
+        resposta = pedir(sem_cache(url), timeout=TIMEOUT_SECONDS, follow_redirects=True)
+    except httpx.HTTPError as exc:
+        raise CvmIndisponivelError(f"{url}: falha ao consultar: {exc}") from exc
+    if resposta.status_code == httpx.codes.NOT_FOUND:
+        return None
+    if resposta.status_code != httpx.codes.OK:
+        raise CvmIndisponivelError(f"{url}: HTTP {resposta.status_code}")
+    return _parse_http_date(resposta.headers.get("Last-Modified"))
 
 
 def ler_cadastro(caminho: Path) -> pd.DataFrame:

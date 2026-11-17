@@ -875,6 +875,30 @@ gh workflow run pregao-manual.yml -f trade_date=ultimo
 > respondeu 403. O download tenta de novo em 404, 403, 429 e 5xx, com espera
 > entre as tentativas. Se mesmo assim não sair à noite, a manhã cobre.
 
+### A conferência dos fundamentos
+
+**O que aconteceu em 15/11/2026.** Na semana de 9 a 13/11, 437 empresas entregaram o balanço do 3º trimestre. A CVM só publica o pacote de dados abertos aos domingos, e no domingo 15/11 a carga semanal rodou, leu "sem mudança" no arquivo de 2026 e ficou com os dados de 08/11. O site passou a segunda-feira sem nenhum balanço da temporada. Foram duas causas somadas:
+
+1. **Um cache respondeu no lugar da CVM.** Os arquivos ficam atrás de um cache (Cloudflare, 4 horas). A carga pergunta "mudou desde a versão que eu tenho?", e quem respondeu "não" foi o cache, com a cópia que ele tinha guardado antes de a CVM republicar.
+2. **A carga rodava no meio da publicação.** A CVM regrava os dez arquivos um por vez: naquele domingo, das 07:14 às 08:50 de Brasília. A carga semanal era às 08:30.
+
+**O que mudou.**
+
+- Todo download da CVM vai com um parâmetro novo na URL (`sem_cache`, em `fundamentos/cvm.py`): o cache não tem cópia para aquela URL e a resposta vem da origem. A pergunta condicional continua valendo, então arquivo que não mudou continua não sendo baixado.
+- A carga semanal passou para as 10:30 de domingo e dispara o rebuild do site quando chega balanço novo (antes só aparecia na noite de segunda).
+- **`scanner fundamentos conferir`** roda depois de toda carga, no pregão e no semanal. Ele não confia na carga; faz duas perguntas por conta própria:
+  - *Arquivo*: a data em que a CVM publicou cada zip (perguntada à origem, sem cache e sem condição) é mais nova que a do arquivo que o banco processou?
+  - *Cobertura*: passado o prazo legal de entrega do trimestre (45 dias para o ITR, 90 para a DFP, mais 9 dias para a publicação semanal), pelo menos 80% das empresas que entregaram o trimestre anterior já têm o novo no banco? Isso pega o que a primeira pergunta não vê: arquivo lido mas documento descartado (mudança de layout, erro no parser).
+- Se alguma das duas falhar, chega um aviso no Telegram ("Fundamentos atrás da CVM") dizendo qual arquivo e de quando. A conferência só lê e só avisa: não derruba o pregão.
+
+**O que isso não muda.** O atraso de até uma semana entre a empresa divulgar e a CVM publicar o pacote é da CVM. Balanço divulgado numa segunda continua chegando no domingo seguinte. Buscar cada documento no dia seguinte exigiria outra fonte (o sistema de documentos da CVM, empresa por empresa), e a decisão em 16/11/2026 foi ficar com o semanal confiável.
+
+```bash
+uv run scanner fundamentos conferir    # sai com 1 se o banco estiver atrás
+```
+
+Testes: `tests/test_fundamentos_conferencia.py` (os dois casos acima, o prazo de cada trimestre, CVM fora do ar), `tests/test_fundamentos_cvm.py` (a regressão do cache: com 304 para a URL limpa e arquivo novo na origem, o arquivo novo tem de vir) e `tests/test_regressoes.py` (nenhum workflow carrega fundamentos sem conferir depois).
+
 ## Recriar do zero
 
 Roteiro para subir uma cópia própria do projeto — repositório, banco, bot, site e

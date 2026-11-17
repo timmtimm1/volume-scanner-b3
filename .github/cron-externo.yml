@@ -74,9 +74,13 @@ jobs:
 
   fundamentos-b3:
     workflow: fundamentos-b3.yml
-    cron: "30 8 * * 0"
+    cron: "30 10 * * 0"
     porque: >-
-      Domingo as 08:30, uma vez por semana. Cadastro na B3 e proventos nao
+      Domingo as 10:30 (era 08:30 ate 16/11/2026). A CVM regrava os dez zips
+      de balancos no domingo de manha, um por vez: em 15/11/2026 o primeiro
+      saiu as 07:14 e o ultimo as 08:50 de Brasilia, e a passada das 08:30
+      rodou no meio -- leu os que ja tinham saido e deixou os outros para a
+      noite de segunda. As 10:30 todos ja sairam. Uma vez por semana. Cadastro na B3 e proventos nao
       pedem cadencia diaria -- a empresa nao publica balanco nem provento todo
       dia, e nada aqui alimenta o alerta. Domingo porque o mercado esta
       fechado e nao ha pressa nenhuma: da folga inteira antes da abertura de

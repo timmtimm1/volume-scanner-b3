@@ -132,14 +132,25 @@ const LUZ: Record<Cor, string> = {
 const ORDEM_DAS_LUZES: readonly Cor[] = ["vermelho", "amarelo", "verde"];
 
 /** As tres luzes, so a da nota acesa, com a palavra e a explicacao de uma linha. */
-export function Semaforo({ cor, mercado = "b3" }: { cor: Cor; mercado?: Mercado }) {
+export function Semaforo({
+  cor,
+  mercado = "b3",
+  explicacao,
+}: {
+  cor: Cor;
+  mercado?: Mercado;
+  /** Explicacao propria (os setups do estudo de cripto dizem de onde vem a nota). */
+  explicacao?: string;
+}) {
   const t = textos(mercado);
   // O texto da B3 e a base; em cripto trocam os anos da nota e o que e sorteado.
   const texto = {
     nome: TEXTO_DA_COR[cor].nome,
-    explicacao: TEXTO_DA_COR[cor].explicacao
-      .replace("2016–2026", t.periodoDaNotaTexto)
-      .replace("um papel sorteado", t.sorteado),
+    explicacao:
+      explicacao ??
+      TEXTO_DA_COR[cor].explicacao
+        .replace("2016–2026", t.periodoDaNotaTexto)
+        .replace("um papel sorteado", t.sorteado),
   };
   return (
     <div className="flex items-center gap-3 rounded-xl bg-painel px-3 py-2.5">

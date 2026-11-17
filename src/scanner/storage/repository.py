@@ -56,6 +56,7 @@ from scanner.storage.models import (
     ResumoSemanal,
     Setup,
     SetupPreferencia,
+    SinalEstudo,
     Trade,
     TradeOperacao,
     TradeSnapshot,
@@ -1887,3 +1888,84 @@ def moedas_para_carregar(engine: Engine) -> pd.DataFrame:
     with engine.connect() as conn:
         frame = pd.read_sql(consulta, conn)
     return frame[frame["no_top"] | frame["ultima"].notna()].reset_index(drop=True)
+
+
+# --- Sinais do estudo de cripto (migration 0026) -------------------------------
+
+
+def sinais_estudo_abertos(engine: Engine) -> list[dict[str, Any]]:
+    """Os sinais ainda sem saida: aguardando a entrada ou com o trade aberto."""
+    stmt = select(
+        SinalEstudo.moeda,
+        SinalEstudo.setup,
+        SinalEstudo.sinal_em,
+        SinalEstudo.fechamento,
+        SinalEstudo.stop,
+    ).where(SinalEstudo.estado.in_(("aguardando", "aberto")))
+    with engine.connect() as conn:
+        return [dict(linha._mapping) for linha in conn.execute(stmt)]
+
+
+def gravar_sinais_estudo(
+    engine: Engine, linhas: Sequence[Mapping[str, Any]]
+) -> set[tuple[Any, ...]]:
+    """Grava ou atualiza cada sinal; devolve (moeda, setup, sinal_em) dos que nasceram agora.
+
+    Saber quais sao novos e o que deixa o aviso do Telegram sair uma vez so,
+    mesmo com a passada de 15 em 15 minutos revendo os ultimos candles.
+    """
+    import pandas as pd
+
+    colunas = (
+        "moeda",
+        "setup",
+        "timeframe",
+        "lado",
+        "sinal_em",
+        "fechamento",
+        "stop",
+        "alvo",
+        "prazo_candles",
+        "estado",
+        "entrada",
+        "saida",
+        "saida_em",
+        "resultado_r",
+    )
+    novos: set[tuple[Any, ...]] = set()
+    if not linhas:
+        return novos
+    with engine.begin() as conn:
+        for linha in linhas:
+            valores = {k: linha[k] for k in colunas}
+            for k in ("fechamento", "stop", "alvo", "entrada", "saida"):
+                if valores[k] is not None:
+                    valores[k] = Decimal(str(valores[k]))
+            if valores["resultado_r"] is not None:
+                valores["resultado_r"] = Decimal(str(round(float(valores["resultado_r"]), 4)))
+            base = insert(SinalEstudo).values(**valores)
+            comando = base.on_conflict_do_update(
+                constraint="uq_sinais_estudo",
+                set_={
+                    k: base.excluded[k]
+                    for k in (
+                        "estado",
+                        "entrada",
+                        "saida",
+                        "saida_em",
+                        "resultado_r",
+                        "alvo",
+                        "stop",
+                    )
+                }
+                | {"atualizado_em": func.now()},
+            ).returning(
+                SinalEstudo.moeda,
+                SinalEstudo.setup,
+                SinalEstudo.sinal_em,
+                text("(xmax = 0) AS inserido"),
+            )
+            r = conn.execute(comando).one()
+            if r.inserido:
+                novos.add((r.moeda, r.setup, pd.Timestamp(r.sinal_em).tz_convert("UTC")))
+    return novos

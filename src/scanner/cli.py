@@ -556,6 +556,61 @@ def setups_cmd(
     typer.echo(relatorio.summary())
 
 
+cripto_app = typer.Typer(help="Criptomoedas (SCANNER_MERCADO=cripto).", no_args_is_help=True)
+app.add_typer(cripto_app, name="cripto")
+
+
+@cripto_app.command("sinais")
+def cripto_sinais(
+    dry_run: Annotated[
+        bool,
+        typer.Option(
+            "--dry-run", help="Avisos no terminal em vez do Telegram (o banco e gravado igual)."
+        ),
+    ] = False,
+) -> None:
+    """Os setups do estudo: sinais novos e o acompanhamento dos abertos (de 15 em 15 min)."""
+    from scanner.config import get_settings
+    from scanner.cripto import estudo
+    from scanner.notify.telegram import format_sinal_estudo
+    from scanner.storage.engine import build_engine
+    from scanner.storage.repository import moedas_para_carregar
+
+    if not mercado.e_cripto():
+        raise typer.BadParameter("rode com SCANNER_MERCADO=cripto")
+    engine = build_engine()
+    tabela = moedas_para_carregar(engine)
+    moedas = {
+        str(m): str(p)
+        for m, p in tabela[tabela["no_top"]][["ticker", "par"]].itertuples(index=False)
+    }
+    notifier = _notificador(get_settings(), dry_run=dry_run)
+    base = get_settings().web_base_url
+
+    def avisar(novo: estudo.Novo, trade: estudo.Trade) -> bool:
+        s = novo.setup
+        texto = format_sinal_estudo(
+            {
+                "moeda": novo.moeda,
+                "titulo": s.titulo,
+                "timeframe": s.tf,
+                "lado": s.lado,
+                "entrada": trade.entrada,
+                "fechamento": novo.fechamento,
+                "stop": novo.stop,
+                "alvo": novo.fechamento
+                + (-1 if s.lado == "venda" else 1) * s.alvo_r * abs(novo.fechamento - novo.stop),
+                "prazo_candles": s.prazo,
+                "nivel": s.nivel,
+                "sinal_em": novo.sinal_em,
+            },
+            base,
+        )
+        return bool(notifier.send_text(texto))
+
+    typer.echo(estudo.rodar(engine, moedas, avisar=avisar))
+
+
 alerta_app = typer.Typer(help="Alertas de rompimento de preco.", no_args_is_help=True)
 app.add_typer(alerta_app, name="alerta")
 

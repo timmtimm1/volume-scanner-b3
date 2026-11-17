@@ -60,6 +60,8 @@ def test_nomes_das_tabelas() -> None:
     # usuario, para a calculadora de lote dos setups.
     # `moedas` (migration 0023) e o ranking das criptomoedas; so tem linha no
     # schema de cripto (`SCANNER_MERCADO=cripto`), na B3 fica vazia.
+    # `sinais_estudo` (migration 0026) sao os sinais dos dois setups do estudo
+    # de cripto (entrada na abertura); tambem so tem linha no schema de cripto.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -92,6 +94,7 @@ def test_nomes_das_tabelas() -> None:
         "setup_preferencias",
         "perfil_de_risco",
         "moedas",
+        "sinais_estudo",
     }
 
 

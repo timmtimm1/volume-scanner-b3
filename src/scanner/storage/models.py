@@ -872,6 +872,52 @@ class Moeda(Base):
     )
 
 
+class SinalEstudo(Base):
+    """Um sinal dos setups do estudo de cripto de 17/11/2026 (migration 0026).
+
+    Reversao no RSI (compra, diario) e rompimento de compressao (venda, 4h),
+    com a entrada na ABERTURA do candle seguinte -- diferente dos setups da
+    tabela `setups`, que compram acima da maxima. `sinal_em` e a abertura do
+    candle do sinal (UTC); o sinal e conhecido quando ele fecha. O trade e
+    refeito a cada 15 minutos (`scanner.cripto.estudo`): aguardando a entrada,
+    aberto, ou encerrado no alvo, no stop ou no prazo. So o schema de cripto
+    tem linhas.
+    """
+
+    __tablename__ = "sinais_estudo"
+    __table_args__ = (
+        UniqueConstraint("moeda", "setup", "sinal_em", name="uq_sinais_estudo"),
+        CheckConstraint("lado IN ('compra', 'venda')", name="ck_sinais_estudo_lado"),
+        CheckConstraint(
+            "estado IN ('aguardando', 'aberto', 'alvo', 'stop', 'prazo')",
+            name="ck_sinais_estudo_estado",
+        ),
+        Index("ix_sinais_estudo_estado", "estado"),
+    )
+
+    id: Mapped[int] = mapped_column(BigInteger, primary_key=True, autoincrement=True)
+    moeda: Mapped[str] = mapped_column(Text, nullable=False)
+    setup: Mapped[str] = mapped_column(Text, nullable=False)
+    timeframe: Mapped[str] = mapped_column(Text, nullable=False)
+    lado: Mapped[str] = mapped_column(Text, nullable=False)
+    sinal_em: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)
+    fechamento: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    stop: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    alvo: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    prazo_candles: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    estado: Mapped[str] = mapped_column(Text, nullable=False, server_default="aguardando")
+    entrada: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
+    saida: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
+    saida_em: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    resultado_r: Mapped[Decimal | None] = mapped_column(Numeric(10, 4))
+    criado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
 # --- Suite de backtest (secao 14 do plano, migration 0016) -------------------
 
 _SAIDAS = "saida IN ('alvo1', 'alvo2', 'alvo3', 'minimas', 'mme9')"

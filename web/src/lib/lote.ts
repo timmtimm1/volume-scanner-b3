@@ -166,3 +166,33 @@ export function calcularLoteFracionado(e: EntradaDoLote): Lote {
     limitadoPeloCapital: pelaRegraDoCapital < pelaRegraDoRisco,
   };
 }
+
+/**
+ * O lote de uma VENDA em cripto (futuros ou margem): o stop fica acima da entrada.
+ *
+ * A mesma regra do risco, com a distancia `stop - entrada`. Sem alavancagem: a
+ * posicao vendida nunca passa do capital, mesmo que o risco permitisse mais.
+ */
+export function calcularLoteFracionadoVenda(e: EntradaDoLote): Lote {
+  const { capital, riscoPct, entrada, stop } = e;
+  if (!positivo(capital) || !positivo(riscoPct) || !positivo(entrada) || !positivo(stop)) {
+    return SEM_LOTE;
+  }
+  const porUnidade = stop - entrada;
+  if (!(porUnidade > 0)) return SEM_LOTE;
+
+  const pelaRegraDoRisco = (capital * riscoPct) / 100 / porUnidade;
+  const pelaRegraDoCapital = capital / entrada;
+  const fator = 10 ** CASAS_DA_MOEDA;
+  const quantidade =
+    Math.floor(Math.min(pelaRegraDoRisco, pelaRegraDoCapital) * fator + 1e-6) / fator;
+  if (!(quantidade > 0) || quantidade * entrada < POSICAO_MINIMA_EM_CRIPTO) return SEM_LOTE;
+  const perdaMaxima = r2(quantidade * porUnidade);
+  return {
+    quantidade,
+    perdaMaxima,
+    valorPosicao: r2(quantidade * entrada),
+    pctDoCapital: perdaMaxima / capital,
+    limitadoPeloCapital: pelaRegraDoCapital < pelaRegraDoRisco,
+  };
+}

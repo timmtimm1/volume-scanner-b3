@@ -34,7 +34,6 @@ PROJECT_ROOT = Path(__file__).resolve().parents[1]
 # `pregao-manual.yml` (a mao) so o chamam.
 WORKFLOW = PROJECT_ROOT / ".github" / "workflows" / "pregao.yml"
 DAILY = PROJECT_ROOT / ".github" / "workflows" / "daily.yml"
-REPESCAGEM = PROJECT_ROOT / ".github" / "workflows" / "daily-repescagem.yml"
 MANUAL = PROJECT_ROOT / ".github" / "workflows" / "pregao-manual.yml"
 # So rodam a mao, sem agenda: o botao do pregao e o envio da rodada de backtest.
 SO_A_MAO = {MANUAL, PROJECT_ROOT / ".github" / "workflows" / "backtest-enviar.yml"}
@@ -432,42 +431,25 @@ def test_repescagem_pronta_nao_reconstroi_o_site_nem_consulta_a_cvm(
     assert "steps.pregao.outputs.pronto != 'true'" in str(fundamentos["if"])
 
 
-def test_so_a_repescagem_pede_so_se_faltar() -> None:
-    """As 21:30, as 07:40 e o manual processam sempre; so a repescagem pula.
+def test_nenhum_disparo_do_pregao_pula_o_pregao() -> None:
+    """As 21:30, as 07:40 e o manual processam sempre.
 
     A da manha tem de continuar reprocessando: e ela que pega um arquivo que a
-    B3 corrigiu durante a noite.
+    B3 corrigiu durante a noite, e e a unica reserva desde que as repescagens
+    das 22:15 e 23:30 sairam (17/11/2026: nunca tinham rodado).
     """
-    (job,) = _carregar(REPESCAGEM)["jobs"].values()
-    assert job["with"]["so_se_faltar"] is True
-    assert job["with"]["trade_date"] == "ultimo"
-    assert set(_gatilhos(_carregar(REPESCAGEM))) == {"workflow_dispatch"}
-
     for arquivo in (DAILY, MANUAL):
         (job,) = _carregar(arquivo)["jobs"].values()
         assert "so_se_faltar" not in job["with"], f"{arquivo.name} passou a pular pregao"
 
 
-def test_repescagens_rodam_depois_das_21h30_e_terminam_antes_da_meia_noite() -> None:
-    """Depois da meia-noite `ultimo` ja nao e o pregao do dia.
-
-    Com os 15 minutos de espera pelo arquivo, uma repescagem que comecasse as
-    23:50 atravessaria o dia. O teto e 23:40.
-    """
+def test_a_reserva_da_manha_continua_na_agenda() -> None:
+    """Sem repescagem, a das 07:40 e o que pega o arquivo que a B3 atrasou."""
     agenda = _agenda_externa()
-    noite = str(agenda["jobs"]["daily-noite"]["cron"]).split()
-    inicio_da_noite = int(noite[1]) * 60 + int(noite[0])
-
-    repescagens = [j for j in agenda["jobs"].values() if j["workflow"] == REPESCAGEM.name]
-    assert len(repescagens) >= 1
-    for job in repescagens:
-        minuto, hora, *resto = str(job["cron"]).split()
-        assert minuto != "0", "minuto 0 cai na fila da hora cheia"
-        comeco = int(hora) * 60 + int(minuto)
-        # A passada das 21:30 so desiste 15 minutos depois de comecar.
-        assert comeco >= inicio_da_noite + 15, "comeca com as 21:30 ainda esperando o arquivo"
-        assert comeco <= 23 * 60 + 40, "a espera pelo arquivo atravessaria a meia-noite"
-        assert resto == ["*", "*", "1-5"]
+    manha = agenda["jobs"]["daily-manha"]
+    assert manha["workflow"] == DAILY.name
+    minuto, hora, *_ = str(manha["cron"]).split()
+    assert int(hora) * 60 + int(minuto) < 10 * 60, "a reserva tem de terminar antes da abertura"
 
 
 def test_aviso_de_falha_nao_se_diz_teste(workflow: dict[Any, Any]) -> None:

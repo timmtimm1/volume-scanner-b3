@@ -394,10 +394,11 @@ def daily(
     dos mesmos numeros, em vez de dois calculos independentes que se espera que
     coincidam.
 
-    `--so-se-faltar` e para as repescagens da noite (22:15 e 23:30), que so
-    existem para o caso de a B3 ter atrasado. Na maioria das noites a passada
-    das 21:30 ja resolveu, e ai a repescagem sai na primeira consulta ao banco,
-    sem baixar, recalcular nem reconstruir o site. "Ja resolveu" e o resumo
+    `--so-se-faltar` e para disparos de reserva: hoje, os dois do workflow
+    `cripto` (21:10 e 00:10). Quando o primeiro ja resolveu, o segundo sai na
+    primeira consulta ao banco, sem baixar, recalcular nem reconstruir o site.
+    (As repescagens da B3 das 22:15 e 23:30, para quem foi criado, sairam em
+    17/11/2026: nunca tinham rodado.) "Ja resolveu" e o resumo
     carimbado: ele e a ultima mensagem do pregao, e so e carimbado depois de
     sair. Com o resumo desligado no config nao ha carimbo para consultar, e a
     opcao nao pula nada.

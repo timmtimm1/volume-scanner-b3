@@ -232,9 +232,9 @@ class FundamentosConfig(BaseModel):
     # de novo depois deste intervalo. O FCA da CVM, que e a fonte da ligacao,
     # e atualizado uma vez por semana.
     dias_para_rechecar_ticker: int = 7
-    # Cadastro da empresa na B3 e historico de proventos mudam pouco: uma vez
-    # por semana basta, e sao 321 consultas cada.
-    dias_para_rechecar_empresa: int = 7
+    # Cadastro da empresa na B3 e historico de proventos mudam pouco: a cada 4
+    # semanas basta (o config.yaml diz o motivo), e sao 322 consultas cada.
+    dias_para_rechecar_empresa: int = 28
     # Proventos recentes mudam sempre. 20 horas deixa a passada das 07:40 de
     # fora quando a das 21:30 ja rodou.
     horas_para_rechecar_proventos: int = 20

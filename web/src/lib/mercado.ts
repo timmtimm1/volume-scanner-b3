@@ -48,6 +48,16 @@ export function arredondarPreco(mercado: Mercado, v: number): number {
   return Math.round((v + Number.EPSILON) * fator) / fator;
 }
 
+/**
+ * O nivel de um alerta de preco no mercado: centavo na B3 (a mesma conta de
+ * `nivelEmCentavos`, que a ficha das acoes sempre usou), as casas da moeda em
+ * cripto -- um alerta em US$ 0,050411 nao pode virar US$ 0,05.
+ */
+export function nivelDoAlerta(mercado: Mercado, v: number): number {
+  if (mercado === "b3") return Math.round(Number((v * 100).toPrecision(12))) / 100;
+  return arredondarPreco(mercado, v);
+}
+
 /** Compra um passo acima da maxima do candle. */
 export function gatilhoNoMercado(mercado: Mercado, maxima: number): number {
   return arredondarPreco(mercado, maxima + passoDoPreco(mercado, maxima));
@@ -72,6 +82,11 @@ export function preco(mercado: Mercado, v: number | null | undefined): string {
   return `US$ ${formatar(v, casasDoPreco(v))}`;
 }
 
+/** "R$" ou "US$": o simbolo ao lado de um campo de preco. */
+export function simboloDaMoeda(mercado: Mercado): string {
+  return mercado === "b3" ? "R$" : "US$";
+}
+
 /** Um VALOR em dinheiro (perda, ganho, posicao): sempre com as casas pedidas. */
 export function valor(mercado: Mercado, v: number | null | undefined, casas = 2): string {
   if (v === null || v === undefined || !Number.isFinite(v)) return VAZIO;
@@ -80,6 +95,11 @@ export function valor(mercado: Mercado, v: number | null | undefined, casas = 2)
 
 export function valorComSinal(mercado: Mercado, v: number): string {
   return `${v >= 0 ? "+" : "−"}${valor(mercado, Math.abs(v))}`;
+}
+
+/** Uma DIFERENCA de preco com sinal: "+R$ 1,23", "−US$ 0,0012" (com as casas da moeda). */
+export function precoComSinal(mercado: Mercado, v: number): string {
+  return `${v >= 0 ? "+" : "−"}${preco(mercado, Math.abs(v))}`;
 }
 
 /** "150", "0,0153": so o numero da quantidade, para tabela. */

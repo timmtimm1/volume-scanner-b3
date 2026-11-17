@@ -10,6 +10,7 @@ import {
   arredondarPreco,
   diaDoMercado,
   linkDoTrade,
+  nivelDoAlerta,
   precoParaCampo,
   quantidadeParaCampo,
   regrasDoDiario,
@@ -214,3 +215,12 @@ describe("regras do diario de trades", () => {
   });
 });
 
+
+describe("nivel do alerta", () => {
+  it("B3 em centavo, como sempre; cripto nas casas da moeda", () => {
+    assert.equal(nivelDoAlerta("b3", 38.204999), 38.2);
+    assert.equal(nivelDoAlerta("b3", 0.1 + 0.2), 0.3);
+    assert.equal(nivelDoAlerta("cripto", 0.0504114999), 0.050411);
+    assert.equal(nivelDoAlerta("cripto", 65351.437), 65351.44); // pelo menos 2 casas
+  });
+});

@@ -3,13 +3,9 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import type { Alerta, Direcao } from "./alertas";
 import type { CandleDeHoje } from "./candle-de-hoje";
-import { direcaoDoNivel, nivelEmCentavos } from "./nivel-do-alerta";
+import { nivelDoAlerta, precoParaCampo, sufixoDoMercado, type Mercado } from "./mercado";
+import { direcaoDoNivel } from "./nivel-do-alerta";
 import type { Barra } from "./types";
-
-/** Duas casas, que e a precisao de preco na B3. */
-function duasCasas(v: number): string {
-  return v.toFixed(2);
-}
 
 /**
  * A camada pessoal da ficha: os alertas deste papel e o formulario de criar.
@@ -26,7 +22,12 @@ export function useAlertasDoPapel(
   barras: Barra[],
   pregaoDoEvento: string | undefined,
   hoje: CandleDeHoje | null,
+  /** Cripto: as rotas leem o schema de cripto, e o nivel guarda as casas da moeda. */
+  mercado: Mercado = "b3",
 ) {
+  const sufixo = sufixoDoMercado(mercado);
+  const doMercado = mercado === "b3" ? "" : `&mercado=${mercado}`;
+  const nivel = useCallback((v: number) => nivelDoAlerta(mercado, v), [mercado]);
   const [alertas, setAlertas] = useState<Alerta[]>([]);
   const [autenticado, setAutenticado] = useState<boolean | null>(null);
   const [escolhendo, setEscolhendo] = useState(false);
@@ -54,7 +55,7 @@ export function useAlertasDoPapel(
     const minha = ++busca.current;
     let cancelada = false;
     const valendo = () => !cancelada && minha === busca.current;
-    fetch(`/api/alertas/?ticker=${ticker}`)
+    fetch(`/api/alertas/?ticker=${ticker}${doMercado}`)
       .then(async (r) => {
         if (!valendo()) return;
         if (r.status === 401) {
@@ -75,24 +76,24 @@ export function useAlertasDoPapel(
     return () => {
       cancelada = true;
     };
-  }, [ticker]);
+  }, [ticker, doMercado]);
 
   /** Busca os alertas deste papel quando a ficha abre. */
   useEffect(() => buscar(), [buscar]);
 
   const escolherNoGrafico = useCallback(
     (valor: number) => {
-      setPreco(duasCasas(valor));
+      setPreco(precoParaCampo(mercado, nivel(valor)));
       if (precoDeReferencia !== null) {
         setDirecao(valor >= precoDeReferencia ? "acima" : "abaixo");
       }
       setEscolhendo(false);
     },
-    [precoDeReferencia],
+    [precoDeReferencia, mercado, nivel],
   );
 
   async function salvar() {
-    const valor = Number(preco.replace(",", "."));
+    const valor = nivel(Number(preco.replace(",", ".")));
     if (!Number.isFinite(valor) || valor <= 0) {
       setErro("informe um preço válido");
       return;
@@ -104,7 +105,7 @@ export function useAlertasDoPapel(
     setSalvando(true);
     setErro(null);
     try {
-      const r = await fetch("/api/alertas/", {
+      const r = await fetch(`/api/alertas/${sufixo}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker, preco: valor, direcao, tradeDate: pregaoDoAlerta }),
@@ -125,7 +126,7 @@ export function useAlertasDoPapel(
 
   async function apagar(id: number) {
     setErro(null);
-    const r = await fetch(`/api/alertas/${id}/`, { method: "DELETE" });
+    const r = await fetch(`/api/alertas/${id}/${sufixo}`, { method: "DELETE" });
     if (r.ok) setAlertas((atual) => atual.filter((a) => a.id !== id));
     else setErro("não foi possível apagar");
   }
@@ -140,7 +141,7 @@ export function useAlertasDoPapel(
     if (!pregaoDoAlerta) {
       throw new Error("sem pregão de referência para este papel");
     }
-    const r = await fetch("/api/alertas/", {
+    const r = await fetch(`/api/alertas/${sufixo}`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -164,11 +165,11 @@ export function useAlertasDoPapel(
    * A direcao sai do preco de agora, como no clique do celular.
    */
   async function criarNoGrafico(valor: number): Promise<void> {
-    const nivel = nivelEmCentavos(valor);
-    if (!(nivel > 0)) return;
+    const n = nivel(valor);
+    if (!(n > 0)) return;
     setErro(null);
     try {
-      await criarAlertaEm(nivel, direcaoDoNivel(nivel, precoDeReferencia));
+      await criarAlertaEm(n, direcaoDoNivel(n, precoDeReferencia));
     } catch (e) {
       setErro(e instanceof Error ? e.message : "não foi possível criar");
     }
@@ -186,7 +187,7 @@ export function useAlertasDoPapel(
   async function moverAlerta(id: number, valor: number): Promise<void> {
     const antes = alertas.find((a) => a.id === id);
     if (!antes || !antes.ativo) return;
-    const preco = nivelEmCentavos(valor);
+    const preco = nivel(valor);
     if (!(preco > 0)) return;
     const direcaoNova = direcaoDoNivel(preco, precoDeReferencia, antes.direcao);
     if (preco === antes.preco && direcaoNova === antes.direcao) return;
@@ -196,7 +197,7 @@ export function useAlertasDoPapel(
     setErro(null);
     trocar({ ...antes, preco, direcao: direcaoNova });
     try {
-      const r = await fetch(`/api/alertas/${id}/`, {
+      const r = await fetch(`/api/alertas/${id}/${sufixo}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ preco, direcao: direcaoNova }),
@@ -218,6 +219,9 @@ export function useAlertasDoPapel(
   }
 
   return {
+    mercado,
+    /** Arredonda um nivel para o mercado (centavo na B3, casas da moeda em cripto). */
+    nivel,
     alertas,
     autenticado,
     escolhendo,

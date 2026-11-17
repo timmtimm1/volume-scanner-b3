@@ -1,5 +1,6 @@
 "use client";
 
+import { sufixoDoMercado, type Mercado } from "./mercado";
 import { useEffect, useState } from "react";
 import type { TipoDeOperacao } from "./posicao";
 // So o tipo: um `import` de valor de "./trades" puxaria `pg` para o navegador
@@ -32,7 +33,10 @@ export function useTradesDoPapel(
   ticker: string,
   autenticado: boolean | null,
   iniciais: TradeResumo[] = [],
+  /** Os trades de cripto moram em outro schema: a rota precisa do `?mercado=cripto`. */
+  mercado: Mercado = "b3",
 ) {
+  const doMercado = mercado === "b3" ? "" : `&mercado=${mercado}`;
   const [trades, setTrades] = useState<TradeResumo[]>(iniciais);
   const [salvando, setSalvando] = useState(false);
   const [erro, setErro] = useState<string | null>(null);
@@ -45,7 +49,7 @@ export function useTradesDoPapel(
   useEffect(() => {
     if (autenticado !== true) return;
     let cancelado = false;
-    fetch(`/api/trades/?ticker=${ticker}`)
+    fetch(`/api/trades/?ticker=${ticker}${doMercado}`)
       .then(async (r) => {
         if (cancelado || !r.ok) return;
         const corpo = (await r.json()) as { trades: TradeResumo[] };
@@ -57,12 +61,12 @@ export function useTradesDoPapel(
     return () => {
       cancelado = true;
     };
-  }, [ticker, autenticado]);
+  }, [ticker, autenticado, doMercado]);
 
   /** Para recarregar sob demanda -- por exemplo, depois de um erro. */
   async function recarregar(): Promise<void> {
     try {
-      const r = await fetch(`/api/trades/?ticker=${ticker}`);
+      const r = await fetch(`/api/trades/?ticker=${ticker}${doMercado}`);
       if (!r.ok) return;
       const corpo = (await r.json()) as { trades: TradeResumo[] };
       setTrades(corpo.trades);
@@ -75,7 +79,7 @@ export function useTradesDoPapel(
     setSalvando(true);
     setErro(null);
     try {
-      const r = await fetch("/api/trades/operacoes/", {
+      const r = await fetch(`/api/trades/operacoes/${sufixoDoMercado(mercado)}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ ticker, ...entrada }),

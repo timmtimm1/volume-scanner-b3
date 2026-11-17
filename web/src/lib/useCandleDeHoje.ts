@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import type { CandleDeHoje } from "./candle-de-hoje";
+import { sufixoDoMercado, type Mercado } from "./mercado";
 
 /**
  * A cada quanto a ficha aberta pergunta de novo. O servidor guarda cada
@@ -19,7 +20,7 @@ const INTERVALO_MS = 5 * 60 * 1000;
  * Uma resposta vazia nao apaga o candle que ja estava na tela: fornecedor fora
  * do ar nao pode sumir com o dado, e a hora do candle mostra de quando ele e.
  */
-export function useCandleDeHoje(ticker: string): CandleDeHoje | null {
+export function useCandleDeHoje(ticker: string, mercado: Mercado = "b3"): CandleDeHoje | null {
   // O ticker vai junto do candle: trocando de papel, o candle do anterior deixa
   // de valer na hora, sem precisar zerar estado dentro do efeito.
   const [estado, setEstado] = useState<{ ticker: string; candle: CandleDeHoje } | null>(
@@ -35,7 +36,9 @@ export function useCandleDeHoje(ticker: string): CandleDeHoje | null {
       controle?.abort();
       controle = new AbortController();
       try {
-        const r = await fetch(`/api/cotacao/${ticker}/`, { signal: controle.signal });
+        const r = await fetch(`/api/cotacao/${ticker}/${sufixoDoMercado(mercado)}`, {
+          signal: controle.signal,
+        });
         if (!r.ok) return;
         const { candle } = (await r.json()) as { candle: CandleDeHoje | null };
         if (ativo && candle) setEstado({ ticker, candle });
@@ -58,7 +61,7 @@ export function useCandleDeHoje(ticker: string): CandleDeHoje | null {
       clearInterval(relogio);
       document.removeEventListener("visibilitychange", aoVoltar);
     };
-  }, [ticker]);
+  }, [ticker, mercado]);
 
   return estado?.ticker === ticker ? estado.candle : null;
 }

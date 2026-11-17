@@ -13,13 +13,29 @@
  * LE esse estado e marca a mercado os pregoes novos -- nunca recalcula media.
  * `posicao.ts` e o calculo puro dos dois lados desta divisao; aqui e so
  * leitura/escrita do Postgres em cima dele.
+ *
+ * Os dois mercados usam este modulo. Cripto roda dentro de `noMercado("cripto",
+ * ...)` (as rotas leem `?mercado=cripto`): a conexao troca o schema no SQL e as
+ * regras (taxa, casas, calendario) vem de `regrasDoDiario` do mercado do pedido.
  */
 
 import type { PoolClient } from "pg";
 import { conexaoDeAlertas } from "./db";
-import { diaNaB3 } from "./candle-de-hoje";
-import { CATEGORIAS_DE_SETUP, type CategoriaDoSetup } from "./config";
+import {
+  CATEGORIAS_DE_SETUP,
+  CATEGORIAS_DO_ESTUDO,
+  type CategoriaDoDiario,
+} from "./config";
 import { DiarioInvalido, validarCamposDoDiario } from "./diario";
+import {
+  diaDoMercado,
+  regrasDoDiario,
+  textos,
+  tickerValido,
+  type Mercado,
+  type RegrasDoDiario,
+} from "./mercado";
+import { mercadoDoPedido } from "./mercado-servidor";
 import { faltaAMigration } from "./perfil";
 import {
   OperacaoInvalida,
@@ -30,7 +46,7 @@ import {
   type OperacaoOrdenavel,
   type TipoDeOperacao,
 } from "./posicao";
-import { TICKER } from "./ticker";
+import { CATEGORIA_DO_SINAL } from "./setups-tela";
 
 export { OperacaoInvalida } from "./posicao";
 
@@ -61,6 +77,8 @@ export type SnapshotDoTrade = {
 
 export type TradeResumo = {
   id: number;
+  /** De qual schema o trade veio: os ids repetem entre os dois. */
+  mercado: Mercado;
   ticker: string;
   abertoEm: string;
   encerradoEm: string | null;
@@ -75,9 +93,11 @@ export type TradeResumo = {
   /** O setup (linha de `setups`) de onde o trade nasceu, pelo botao "Entrei". */
   setupId: number | null;
   /** A familia do setup; null = sem setup. */
-  categoriaSetup: CategoriaDoSetup | null;
+  categoriaSetup: CategoriaDoDiario | null;
   /** O stop do trade, para o resultado em R; null = sem stop. */
   stop: number | null;
+  /** O sinal do estudo de cripto (`sinais_estudo`) de onde o trade nasceu. */
+  sinalEstudoId: number | null;
 };
 
 export type TradeDetalhe = TradeResumo & {
@@ -133,6 +153,8 @@ type LinhaTrade = {
   setup_id?: string | number | null;
   categoria_setup?: string | null;
   stop?: string | number | null;
+  // Ausente antes da migration 0027.
+  sinal_estudo_id?: string | number | null;
 };
 
 type LinhaOperacao = {
@@ -140,9 +162,10 @@ type LinhaOperacao = {
   trade_id: string | number;
   tipo: string;
   data: Date | string;
-  quantidade: number;
+  // numeric(28, 10) desde a migration 0027: o pg devolve texto.
+  quantidade: string | number;
   preco: string | number;
-  quantidade_apos: number;
+  quantidade_apos: string | number;
   preco_medio_apos: string | number;
   custo_comprado_apos: string | number;
   realizado_apos: string | number;
@@ -151,7 +174,7 @@ type LinhaOperacao = {
 type LinhaSnapshot = {
   trade_id: string | number;
   trade_date: Date | string;
-  quantidade: number;
+  quantidade: string | number;
   preco_medio: string | number;
   custo_comprado: string | number;
   realizado: string | number;
@@ -196,6 +219,16 @@ function paraSnapshot(r: LinhaSnapshot): SnapshotDoTrade {
   };
 }
 
+const CATEGORIAS_DO_DIARIO: readonly string[] = [...CATEGORIAS_DE_SETUP, ...CATEGORIAS_DO_ESTUDO];
+
+const idOuNull = (v: string | number | null | undefined): number | null =>
+  v === null || v === undefined ? null : Number(v);
+
+/** As regras do diario no mercado deste pedido. */
+function regras(): RegrasDoDiario {
+  return regrasDoDiario(mercadoDoPedido());
+}
+
 function montarResumo(
   r: LinhaTrade,
   operacoes: OperacaoDoTrade[],
@@ -204,6 +237,7 @@ function montarResumo(
   const ultimaOp = operacoes.at(-1);
   return {
     id: Number(r.id),
+    mercado: mercadoDoPedido(),
     ticker: r.ticker,
     abertoEm: dia(r.aberto_em),
     encerradoEm: r.encerrado_em === null ? null : dia(r.encerrado_em),
@@ -213,11 +247,12 @@ function montarResumo(
     realizado: ultimaOp?.realizadoApos ?? 0,
     ultimoSnapshot,
     operacoes,
-    setupId: r.setup_id === null || r.setup_id === undefined ? null : Number(r.setup_id),
-    categoriaSetup: (CATEGORIAS_DE_SETUP as readonly string[]).includes(r.categoria_setup ?? "")
-      ? (r.categoria_setup as CategoriaDoSetup)
+    setupId: idOuNull(r.setup_id),
+    categoriaSetup: CATEGORIAS_DO_DIARIO.includes(r.categoria_setup ?? "")
+      ? (r.categoria_setup as CategoriaDoDiario)
       : null,
-    stop: r.stop === null || r.stop === undefined ? null : Number(r.stop),
+    stop: idOuNull(r.stop),
+    sinalEstudoId: idOuNull(r.sinal_estudo_id),
   };
 }
 
@@ -347,7 +382,7 @@ async function recalcular(client: PoolClient, tradeId: number, desde: string): P
   // Se a lista estiver vazia ou a sequencia for invalida, `aplicarOperacoes`
   // lanca `OperacaoInvalida` e o catch de `comTransacao` desfaz tudo -- nada
   // de posicao errada fica gravado.
-  const { ordenadas, estados, abertoEm, encerradoEm } = aplicarOperacoes(operacoes);
+  const { ordenadas, estados, abertoEm, encerradoEm } = aplicarOperacoes(operacoes, regras());
 
   for (let i = 0; i < ordenadas.length; i++) {
     const est = estados[i];
@@ -441,7 +476,7 @@ async function recalcular(client: PoolClient, tradeId: number, desde: string): P
        (trade_id, trade_date, quantidade, preco_medio, custo_comprado,
         realizado, fechamento, valor_posicao, resultado, sem_negocio)
      SELECT $1, * FROM unnest(
-       $2::date[], $3::int[], $4::numeric[], $5::numeric[],
+       $2::date[], $3::numeric[], $4::numeric[], $5::numeric[],
        $6::numeric[], $7::numeric[], $8::numeric[], $9::numeric[], $10::boolean[])
      ON CONFLICT (trade_id, trade_date) DO UPDATE SET
        quantidade = EXCLUDED.quantidade, preco_medio = EXCLUDED.preco_medio,
@@ -466,11 +501,13 @@ async function recalcular(client: PoolClient, tradeId: number, desde: string): P
 /**
  * A data de uma operacao precisa ser um pregao que ja aconteceu. Vale para
  * registrar e para editar: mover uma operacao para um sabado quebraria a
- * marcacao do mesmo jeito que registra-la ali.
+ * marcacao do mesmo jeito que registra-la ali. Em cripto todo dia tem negocio,
+ * e "hoje" e o dia UTC do candle diario.
  */
 async function garantirPregao(client: PoolClient, data: string): Promise<void> {
-  const hoje = diaNaB3(new Date());
+  const hoje = diaDoMercado(mercadoDoPedido(), new Date());
   if (data > hoje) throw new OperacaoInvalida("data da operacao nao pode ser futura");
+  if (regras().todoDia) return;
 
   const { rows } = await client.query<{ existe: boolean }>(
     `SELECT EXISTS (SELECT 1 FROM volume_scanner.daily_bars WHERE trade_date = $1) AS existe`,
@@ -488,8 +525,13 @@ async function garantirPregao(client: PoolClient, data: string): Promise<void> {
 
 /** `validarCamposDoDiario` com o erro na classe que as rotas ja tratam como 400. */
 function validarDiario(campos: Record<string, unknown>) {
+  const r = regras();
   try {
-    return validarCamposDoDiario(campos, CATEGORIAS_DE_SETUP);
+    return validarCamposDoDiario(
+      campos,
+      [...CATEGORIAS_DE_SETUP, ...r.categoriasDoEstudo],
+      r.casasDoPreco,
+    );
   } catch (erro) {
     if (erro instanceof DiarioInvalido) throw new OperacaoInvalida(erro.message);
     throw erro;
@@ -521,6 +563,32 @@ async function conferirSetup(
 }
 
 /**
+ * Confere o sinal do estudo que o trade novo declara: existe, e da mesma moeda
+ * e e de um setup de COMPRA que o diario aceita. Devolve a categoria a gravar.
+ */
+async function conferirSinal(client: PoolClient, sinalId: number, ticker: string): Promise<string> {
+  const { rows } = await client.query<{ moeda: string; setup: string; lado: string }>(
+    `SELECT moeda, setup, lado FROM volume_scanner.sinais_estudo WHERE id = $1`,
+    [sinalId],
+  );
+  if (rows.length === 0) throw new OperacaoInvalida("sinal nao encontrado");
+  if (rows[0].moeda !== ticker) throw new OperacaoInvalida("esse sinal e de outra moeda");
+  const categoria = CATEGORIA_DO_SINAL[rows[0].setup];
+  if (rows[0].lado !== "compra" || !categoria || !regras().categoriasDoEstudo.includes(categoria)) {
+    throw new OperacaoInvalida("o diario so registra sinal de compra");
+  }
+  return categoria;
+}
+
+/** O id do sinal do estudo que veio no pedido; null sem. */
+function sinalDoPedido(v: unknown): number | null {
+  if (v === undefined || v === null || v === "") return null;
+  const n = Number(v);
+  if (!Number.isInteger(n) || n <= 0) throw new OperacaoInvalida("sinal invalido");
+  return n;
+}
+
+/**
  * Registra uma compra ou venda. Compra sem trade aberto do papel abre um;
  * venda sem trade aberto e erro -- nao ha posicao para vender.
  *
@@ -532,10 +600,13 @@ async function conferirSetup(
 export async function registrarOperacao(entrada: unknown): Promise<TradeDetalhe> {
   const e = comoObjeto(entrada);
 
+  const mercado = mercadoDoPedido();
   const ticker = String(e.ticker ?? "").toUpperCase();
   // Validado aqui e nao so na rota: e o ponto de entrada do dado, e o ticker
   // salvo entra depois em consultas por (ticker, data) do resto do site.
-  if (!TICKER.test(ticker)) throw new OperacaoInvalida("ticker fora do formato da B3");
+  if (!tickerValido(mercado, ticker)) {
+    throw new OperacaoInvalida(mercado === "b3" ? "ticker fora do formato da B3" : "moeda fora do formato");
+  }
 
   const pool = conexaoDeAlertas();
   const { rows: papelRows } = await pool.query<{ existe: boolean }>(
@@ -543,11 +614,12 @@ export async function registrarOperacao(entrada: unknown): Promise<TradeDetalhe>
     [ticker],
   );
   if (!papelRows[0].existe) {
-    throw new OperacaoInvalida(`papel ${ticker} nao tem barra nenhuma carregada`);
+    throw new OperacaoInvalida(`${textos(mercado).ativo} ${ticker} nao tem barra nenhuma carregada`);
   }
 
-  const { tipo, data, quantidade, preco } = validarCampos(e as EntradaDeOperacao);
+  const { tipo, data, quantidade, preco } = validarCampos(e as EntradaDeOperacao, regras());
   const diario = validarDiario(e);
+  const sinalId = sinalDoPedido(e.sinalId);
 
   const tradeId = await comTransacao(async (client) => {
     await garantirPregao(client, data);
@@ -571,19 +643,32 @@ export async function registrarOperacao(entrada: unknown): Promise<TradeDetalhe>
       if (diario.setupId !== null) {
         categoria = await conferirSetup(client, diario.setupId, ticker, categoria);
       }
+      if (sinalId !== null) {
+        if (diario.setupId !== null) throw new OperacaoInvalida("ou setup, ou sinal do estudo");
+        categoria = await conferirSinal(client, sinalId, ticker);
+      }
       try {
         // Sem campo do diario, o INSERT antigo: segue valendo num banco que
-        // ainda nao tem as colunas da migration 0018.
-        const { rows: novoRows } = temDiario
-          ? await client.query<{ id: string }>(
-              `INSERT INTO volume_scanner.trades (ticker, aberto_em, setup_id, categoria_setup, stop)
-               VALUES ($1, $2, $3, $4, $5) RETURNING id`,
-              [ticker, data, diario.setupId, categoria, diario.stop],
-            )
-          : await client.query<{ id: string }>(
-              `INSERT INTO volume_scanner.trades (ticker, aberto_em) VALUES ($1, $2) RETURNING id`,
-              [ticker, data],
-            );
+        // ainda nao tem as colunas da migration 0018. A coluna do sinal (0027)
+        // so entra quando ha sinal.
+        const { rows: novoRows } =
+          sinalId !== null
+            ? await client.query<{ id: string }>(
+                `INSERT INTO volume_scanner.trades
+                   (ticker, aberto_em, categoria_setup, stop, sinal_estudo_id)
+                 VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                [ticker, data, categoria, diario.stop, sinalId],
+              )
+            : temDiario
+              ? await client.query<{ id: string }>(
+                  `INSERT INTO volume_scanner.trades (ticker, aberto_em, setup_id, categoria_setup, stop)
+                   VALUES ($1, $2, $3, $4, $5) RETURNING id`,
+                  [ticker, data, diario.setupId, categoria, diario.stop],
+                )
+              : await client.query<{ id: string }>(
+                  `INSERT INTO volume_scanner.trades (ticker, aberto_em) VALUES ($1, $2) RETURNING id`,
+                  [ticker, data],
+                );
         id = Number(novoRows[0].id);
       } catch (erro) {
         if (ehViolacaoDeUnicidade(erro)) {
@@ -626,12 +711,15 @@ export async function editarOperacao(id: number, campos: unknown): Promise<Trade
     if (rows.length === 0) return null;
     const atual = paraOperacao(rows[0]);
 
-    const normalizado = validarCampos({
-      tipo: c.tipo ?? atual.tipo,
-      data: c.data ?? atual.data,
-      quantidade: c.quantidade ?? atual.quantidade,
-      preco: c.preco ?? atual.preco,
-    });
+    const normalizado = validarCampos(
+      {
+        tipo: c.tipo ?? atual.tipo,
+        data: c.data ?? atual.data,
+        quantidade: c.quantidade ?? atual.quantidade,
+        preco: c.preco ?? atual.preco,
+      },
+      regras(),
+    );
     if (normalizado.data !== atual.data) await garantirPregao(client, normalizado.data);
 
     await client.query(
@@ -691,7 +779,7 @@ export async function apagarOperacao(
  * Edita o setup e o stop de um trade (o diario). So os campos que vieram:
  * ausente mantem, `null` ou "" limpa. Mudar a categoria para uma diferente da
  * do setup de origem desliga o trade desse setup (o "Voce entrou" dele some):
- * o trade deixou de ser aquele setup.
+ * o trade deixou de ser aquele setup. Vale igual para o sinal do estudo.
  */
 export async function editarTrade(id: number, campos: unknown): Promise<TradeDetalhe | null> {
   const c = comoObjeto(campos);
@@ -700,6 +788,16 @@ export async function editarTrade(id: number, campos: unknown): Promise<TradeDet
   if (!temCategoria && !temStop) throw new OperacaoInvalida("nada para alterar");
   const diario = validarDiario({ categoriaSetup: c.categoriaSetup, stop: c.stop });
 
+  // A coluna do sinal (migration 0027) so existe para o mercado que tem estudo
+  // no diario: na B3 o UPDATE fica o de antes, e segue valendo num banco que
+  // ainda nao recebeu a 0027.
+  const comEstudo = regras().categoriasDoEstudo.length > 0;
+  const sinal = comEstudo
+    ? `,
+              sinal_estudo_id = CASE
+                WHEN $3 AND $1::text IS DISTINCT FROM t.categoria_setup THEN NULL
+                ELSE t.sinal_estudo_id END`
+    : "";
   try {
     const { rowCount } = await conexaoDeAlertas().query(
       `UPDATE volume_scanner.trades t
@@ -709,7 +807,7 @@ export async function editarTrade(id: number, campos: unknown): Promise<TradeDet
                 WHEN $3 AND t.setup_id IS NOT NULL
                      AND $1::text IS DISTINCT FROM
                          (SELECT s.categoria FROM volume_scanner.setups s WHERE s.id = t.setup_id)
-                THEN NULL ELSE t.setup_id END
+                THEN NULL ELSE t.setup_id END${sinal}
         WHERE t.id = $5`,
       [diario.categoriaSetup, diario.stop, temCategoria, temStop, id],
     );
@@ -724,6 +822,8 @@ export async function editarTrade(id: number, campos: unknown): Promise<TradeDet
 export type TradesDosSetups = {
   /** `setups.id` -> `trades.id` do trade que nasceu dele (o mais recente, se houver mais de um). */
   porSetup: Record<number, number>;
+  /** `sinais_estudo.id` -> `trades.id` (so no mercado que tem estudo no diario). */
+  porSinal: Record<number, number>;
   /** Papel -> `trades.id` do trade aberto dele. */
   abertoPorTicker: Record<string, number>;
 };
@@ -748,5 +848,17 @@ export async function tradesDosSetups(): Promise<TradesDosSetups> {
   } catch (erro) {
     if (!faltaAMigration(erro)) throw erro;
   }
-  return { porSetup, abertoPorTicker };
+  const porSinal: Record<number, number> = {};
+  if (regras().categoriasDoEstudo.length > 0) {
+    try {
+      const { rows } = await pool.query<{ id: string | number; sinal_estudo_id: string | number }>(
+        `SELECT id, sinal_estudo_id FROM volume_scanner.trades
+          WHERE sinal_estudo_id IS NOT NULL ORDER BY id`,
+      );
+      for (const r of rows) porSinal[Number(r.sinal_estudo_id)] = Number(r.id);
+    } catch (erro) {
+      if (!faltaAMigration(erro)) throw erro;
+    }
+  }
+  return { porSetup, porSinal, abertoPorTicker };
 }

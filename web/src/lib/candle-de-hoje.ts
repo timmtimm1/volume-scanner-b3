@@ -12,11 +12,12 @@
 
 import type { Barra } from "./types";
 
-export type Fonte = "brapi" | "yahoo";
+/** De onde veio a cotacao. A Binance so para os trades de cripto (`/api/cotacao/X?mercado=cripto`). */
+export type Fonte = "brapi" | "yahoo" | "binance";
 
 export type CandleDeHoje = {
   ticker: string;
-  /** Pregao da cotacao, AAAA-MM-DD no fuso da B3. */
+  /** Pregao da cotacao, AAAA-MM-DD no fuso da B3 (em cripto, o dia UTC do candle). */
   dia: string;
   open: number;
   high: number;

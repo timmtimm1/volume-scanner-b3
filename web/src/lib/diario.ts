@@ -11,6 +11,10 @@
  * R = resultado total / risco em reais. O risco e o que o trade pedia para
  * perder: soma, sobre as COMPRAS, de `quantidade x (preco - stop)`. Sem stop,
  * ou com alguma compra a preco igual ou abaixo do stop, nao ha R.
+ *
+ * Em cripto (dolares) a conta e a mesma. O risco e o planejado, sem a taxa: o
+ * resultado ja vem com a taxa da Binance descontada, entao um trade que bate
+ * no stop fecha um pouco abaixo de -1 R -- que e o custo de verdade.
  */
 
 export class DiarioInvalido extends Error {}
@@ -113,8 +117,13 @@ export function estatisticaPorSetup(
   return linhas;
 }
 
-/** Folga do `numeric(12, 2)` da coluna `stop`. */
+/** Bem abaixo do limite do `numeric(28, 10)` da coluna `stop`. */
 const STOP_MAXIMO = 1_000_000_000;
+
+const arredondar = (v: number, casas: number): number => {
+  const fator = 10 ** casas;
+  return Math.round((v + Number.EPSILON) * fator) / fator;
+};
 
 export type CamposDoDiario = {
   setupId: number | null;
@@ -127,12 +136,14 @@ const vazio = (v: unknown): boolean => v === undefined || v === null || v === ""
 /**
  * Valida os campos novos de um trade (setup, categoria, stop). Todos opcionais:
  * ausente, null ou "" valem "sem". Lanca `DiarioInvalido` com mensagem em
- * portugues. `categoriasValidas` e `CATEGORIAS_DE_SETUP` (parametro, para o
- * modulo seguir puro).
+ * portugues. `categoriasValidas` e `CATEGORIAS_DE_SETUP` (mais o setup do
+ * estudo, em cripto) e `casasDoStop` vem de `regrasDoDiario`: parametros, para
+ * o modulo seguir puro.
  */
 export function validarCamposDoDiario(
   entrada: { setupId?: unknown; categoriaSetup?: unknown; stop?: unknown },
   categoriasValidas: readonly string[],
+  casasDoStop = 2,
 ): CamposDoDiario {
   let setupId: number | null = null;
   if (!vazio(entrada.setupId)) {
@@ -155,9 +166,28 @@ export function validarCamposDoDiario(
     const n = Number(entrada.stop);
     if (!Number.isFinite(n) || n <= 0) throw new DiarioInvalido("o stop tem de ser um numero positivo");
     if (n > STOP_MAXIMO) throw new DiarioInvalido("o stop esta grande demais");
-    if (Math.abs(n - r2(n)) >= 1e-9) throw new DiarioInvalido("o stop aceita no maximo 2 casas decimais");
-    stop = r2(n);
+    if (Math.abs(n - arredondar(n, casasDoStop)) > Math.abs(n) * 1e-12) {
+      throw new DiarioInvalido(`o stop aceita no maximo ${casasDoStop} casas decimais`);
+    }
+    stop = arredondar(n, casasDoStop);
   }
 
   return { setupId, categoriaSetup, stop };
+}
+
+type TradeOrdenavel = { id: number; abertoEm: string; encerradoEm: string | null };
+
+/**
+ * A ordem da lista de trades, a mesma do SQL de `listarTrades`: abertos
+ * primeiro; depois o mais recente (encerramento, ou abertura de quem esta
+ * aberto) primeiro; empate pelo id maior. Serve para juntar os trades dos dois
+ * mercados numa lista so.
+ */
+export function ordenarTrades<T extends TradeOrdenavel>(trades: T[]): T[] {
+  return [...trades].sort(
+    (a, b) =>
+      Number(a.encerradoEm !== null) - Number(b.encerradoEm !== null) ||
+      (b.encerradoEm ?? b.abertoEm).localeCompare(a.encerradoEm ?? a.abertoEm) ||
+      b.id - a.id,
+  );
 }

@@ -10,7 +10,7 @@
 
 // So tipos: os testes rodam este arquivo no Node, que nao resolve import de
 // valor sem extensao.
-import type { CategoriaDoSetup, SaidaDoSetup } from "./config";
+import type { CategoriaDoDiario, CategoriaDoSetup, SaidaDoSetup } from "./config";
 import type { Perfil } from "./lote";
 import type { Mercado } from "./mercado";
 import type { LinhaDeSetup } from "./types";
@@ -376,6 +376,28 @@ export const ORDEM_DAS_CATEGORIAS: readonly CategoriaDoSetup[] = [
   "forca",
 ];
 
+/** O nome no diario: os da aba e o setup do estudo de cripto. */
+export const NOME_NO_DIARIO: Record<CategoriaDoDiario, string> = {
+  ...NOME_DO_SETUP,
+  rsi_estudo: "RSI (estudo)",
+};
+
+/**
+ * Os setups que o diario oferece, na ordem fixa: os da aba e, depois, os do
+ * estudo do mercado (`regrasDoDiario(mercado).categoriasDoEstudo`).
+ */
+export function ordemNoDiario(categoriasDoEstudo: readonly string[]): readonly CategoriaDoDiario[] {
+  return [
+    ...ORDEM_DAS_CATEGORIAS,
+    ...(categoriasDoEstudo.filter((c) => c in NOME_NO_DIARIO) as CategoriaDoDiario[]),
+  ];
+}
+
+/** O setup do estudo de onde o sinal vem -> a etiqueta do trade no diario. */
+export const CATEGORIA_DO_SINAL: Record<string, CategoriaDoDiario> = {
+  rsi_reversao: "rsi_estudo",
+};
+
 /** Os setups classicos: tudo que nao e reversao, media ou forca. */
 export function ehClassico(categoria: CategoriaDoSetup): boolean {
   return categoria !== "reversao" && categoria !== "media" && categoria !== "forca";
@@ -399,11 +421,13 @@ export function categoriaDaChave(chave: string): CategoriaDoSetup | null {
  * risco (null = capital nao definido) e quais setups ja viraram trade.
  */
 export type ContextoDoDiario = {
-  /** Ausente = B3. Em cripto o cartao fala em dolar e nao oferece o diario (outra fase). */
+  /** Ausente = B3. Em cripto o cartao fala em dolar e o diario guarda moeda fracionada. */
   mercado?: Mercado;
   perfil: Perfil | null;
   /** `setups.id` -> id do trade que nasceu dele. */
   tradePorSetup: Record<number, number>;
+  /** `sinais_estudo.id` -> id do trade que nasceu dele (so em cripto). */
+  tradePorSinal?: Record<number, number>;
   /** Papel -> id do trade aberto dele. */
   abertoPorTicker: Record<string, number>;
 };

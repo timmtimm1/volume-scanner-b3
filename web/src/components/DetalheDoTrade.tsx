@@ -11,13 +11,26 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { fmtR } from "@/lib/backtest-tela";
-import { diaNaB3 } from "@/lib/candle-de-hoje";
 import { resultadoEmRDoTrade, riscoEmReais } from "@/lib/diario";
-import { data as fmtData, numero, percentual, reais } from "@/lib/formato";
+import { data as fmtData, percentual } from "@/lib/formato";
 import { numeroDoTexto } from "@/lib/lote";
+import {
+  diaDoMercado,
+  linkDaFichaNoMercado,
+  numeroDaQuantidade,
+  preco,
+  precoParaCampo,
+  quantidadeExata,
+  quantidadeParaCampo,
+  regrasDoDiario,
+  sufixoDoMercado,
+  textos,
+  valor,
+  type Mercado,
+} from "@/lib/mercado";
 import { marcarAgora, type TipoDeOperacao } from "@/lib/posicao";
 import { precoDeAgora } from "@/lib/preco-de-agora";
-import { NOME_DO_SETUP, ORDEM_DAS_CATEGORIAS } from "@/lib/setups-tela";
+import { NOME_NO_DIARIO, ordemNoDiario } from "@/lib/setups-tela";
 import { useTema } from "@/lib/tema";
 import type { OperacaoDoTrade, SnapshotDoTrade, TradeDetalhe } from "@/lib/trades";
 import { useCandleDeHoje } from "@/lib/useCandleDeHoje";
@@ -41,8 +54,10 @@ function coresDaSuperficie() {
   };
 }
 
+const primeiraMaiuscula = (t: string) => t.charAt(0).toUpperCase() + t.slice(1);
+
 /** O resultado por pregao, em area acima/abaixo de zero. */
-function GraficoDeResultado({ snapshots }: { snapshots: SnapshotDoTrade[] }) {
+function GraficoDeResultado({ snapshots, dia }: { snapshots: SnapshotDoTrade[]; dia: string }) {
   const { tema } = useTema();
   const alvo = useRef<HTMLDivElement>(null);
   const chart = useRef<IChartApi | null>(null);
@@ -101,7 +116,7 @@ function GraficoDeResultado({ snapshots }: { snapshots: SnapshotDoTrade[] }) {
   if (snapshots.length === 0) {
     return (
       <div className="rounded-2xl border border-dashed border-linha-2 p-6 text-center text-[13px] text-tinta-3">
-        Ainda sem pregão marcado para este trade.
+        Ainda sem {dia} marcado para este trade.
       </div>
     );
   }
@@ -111,9 +126,17 @@ function GraficoDeResultado({ snapshots }: { snapshots: SnapshotDoTrade[] }) {
 
 type CamposDeOperacao = { tipo: TipoDeOperacao; data: string; quantidade: string; preco: string };
 
-function paraCampos(op: OperacaoDoTrade): CamposDeOperacao {
-  return { tipo: op.tipo, data: op.data, quantidade: String(op.quantidade), preco: String(op.preco) };
+function paraCampos(mercado: Mercado, op: OperacaoDoTrade): CamposDeOperacao {
+  return {
+    tipo: op.tipo,
+    data: op.data,
+    quantidade: quantidadeParaCampo(mercado, op.quantidade),
+    preco: precoParaCampo(mercado, op.preco),
+  };
 }
+
+/** O numero digitado, ou o proprio texto: o servidor recusa com a mensagem certa. */
+const doCampo = (texto: string): number | string => numeroDoTexto(texto) ?? texto;
 
 const campoInput =
   "num toque h-10 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento";
@@ -122,7 +145,12 @@ const campoInput =
 export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
   const router = useRouter();
   const [trade, setTrade] = useState(inicial);
-  const hoje = useCandleDeHoje(trade.ticker);
+  const mercado = trade.mercado;
+  const t = textos(mercado);
+  const regras = regrasDoDiario(mercado);
+  const sufixo = sufixoDoMercado(mercado);
+  const hoje = useCandleDeHoje(trade.ticker, mercado);
+  const diaDeHoje = diaDoMercado(mercado, new Date());
 
   const [editandoId, setEditandoId] = useState<number | null>(null);
   const [campos, setCampos] = useState<CamposDeOperacao | null>(null);
@@ -132,13 +160,13 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
   const [novaAberta, setNovaAberta] = useState(false);
   const [novosCampos, setNovosCampos] = useState<CamposDeOperacao>({
     tipo: "compra",
-    data: diaNaB3(new Date()),
+    data: diaDeHoje,
     quantidade: "",
     preco: "",
   });
 
   const aberto = trade.encerradoEm === null;
-  const precoInfo = aberto ? precoDeAgora(hoje, trade.ultimoSnapshot) : null;
+  const precoInfo = aberto ? precoDeAgora(hoje, trade.ultimoSnapshot, diaDeHoje) : null;
   const marca = marcarAgora(trade, aberto ? (precoInfo?.preco ?? null) : null);
   const emAberto = marca.resultado - trade.realizado;
   const emR = resultadoEmRDoTrade(trade, aberto ? (precoInfo?.preco ?? null) : null);
@@ -152,7 +180,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
 
   function abrirDiario() {
     setSetupForm(trade.categoriaSetup ?? "");
-    setStopForm(trade.stop === null ? "" : String(trade.stop).replace(".", ","));
+    setStopForm(trade.stop === null ? "" : precoParaCampo(mercado, trade.stop));
     setErroDiario(null);
     setEditandoDiario(true);
   }
@@ -162,7 +190,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
     setErroDiario(null);
     try {
       const texto = stopForm.trim();
-      const r = await fetch(`/api/trades/${trade.id}/`, {
+      const r = await fetch(`/api/trades/${trade.id}/${sufixo}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -186,9 +214,9 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
     setNovaAberta(true);
     setNovosCampos({
       tipo: "compra",
-      data: diaNaB3(new Date()),
+      data: diaDeHoje,
       quantidade: "",
-      preco: precoInfo ? precoInfo.preco.toFixed(2) : "",
+      preco: precoInfo ? precoParaCampo(mercado, precoInfo.preco) : "",
     });
     setErro(null);
   }
@@ -197,15 +225,15 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
     setOcupado("nova");
     setErro(null);
     try {
-      const r = await fetch("/api/trades/operacoes/", {
+      const r = await fetch(`/api/trades/operacoes/${sufixo}`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           ticker: trade.ticker,
           tipo: novosCampos.tipo,
           data: novosCampos.data,
-          quantidade: Number(novosCampos.quantidade),
-          preco: Number(novosCampos.preco.replace(",", ".")),
+          quantidade: doCampo(novosCampos.quantidade),
+          preco: doCampo(novosCampos.preco),
         }),
       });
       const corpo = (await r.json().catch(() => null)) as { trade?: TradeDetalhe; erro?: string } | null;
@@ -221,7 +249,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
 
   function iniciarEdicao(op: OperacaoDoTrade) {
     setEditandoId(op.id);
-    setCampos(paraCampos(op));
+    setCampos(paraCampos(mercado, op));
     setErro(null);
   }
 
@@ -230,14 +258,14 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
     setOcupado(id);
     setErro(null);
     try {
-      const r = await fetch(`/api/trades/operacoes/${id}/`, {
+      const r = await fetch(`/api/trades/operacoes/${id}/${sufixo}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           tipo: campos.tipo,
           data: campos.data,
-          quantidade: Number(campos.quantidade),
-          preco: Number(campos.preco.replace(",", ".")),
+          quantidade: doCampo(campos.quantidade),
+          preco: doCampo(campos.preco),
         }),
       });
       const corpo = (await r.json().catch(() => null)) as { trade?: TradeDetalhe; erro?: string } | null;
@@ -257,7 +285,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
     setOcupado(id);
     setErro(null);
     try {
-      const r = await fetch(`/api/trades/operacoes/${id}/`, { method: "DELETE" });
+      const r = await fetch(`/api/trades/operacoes/${id}/${sufixo}`, { method: "DELETE" });
       const corpo = (await r.json().catch(() => null)) as
         | { apagado?: boolean; trade?: TradeDetalhe | null; erro?: string }
         | null;
@@ -265,7 +293,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
       // `trade` volta null quando a operacao apagada era a ultima do trade --
       // o trade inteiro some junto, e nao ha mais nada para mostrar aqui.
       if (!corpo.trade) {
-        router.push("/trades");
+        router.push(`/trades${sufixo}`);
         return;
       }
       setTrade(corpo.trade);
@@ -280,22 +308,22 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
 
   const caixaResultado = (
     <section className="cartao flex flex-col gap-3 p-4 md:p-5">
-      <h2 className="text-[16px] font-extrabold">Resultado por pregão</h2>
-      <GraficoDeResultado snapshots={trade.snapshots} />
+      <h2 className="text-[16px] font-extrabold">Resultado por {t.dia[0]}</h2>
+      <GraficoDeResultado snapshots={trade.snapshots} dia={t.dia[0]} />
     </section>
   );
 
   const caixaPregoes = (
     <section className="cartao flex flex-col gap-3 p-4 md:p-5">
-      <h2 className="text-[16px] font-extrabold">Pregões marcados</h2>
+      <h2 className="text-[16px] font-extrabold">{primeiraMaiuscula(t.dia[1])} marcados</h2>
       <div className="overflow-x-auto">
         {/* No celular sai Acoes e Valor: com as cinco colunas, Resultado -- o numero
             que interessa -- ficava escondido atras da rolagem horizontal. */}
         <table className="w-full border-collapse text-[13px] sm:min-w-[480px]">
           <thead>
             <tr className="text-left">
-              <th className="rotulo pb-2 pr-3 font-bold">Pregão</th>
-              <th className="rotulo hidden pb-2 pr-3 text-right font-bold sm:table-cell">Ações</th>
+              <th className="rotulo pb-2 pr-3 font-bold">{primeiraMaiuscula(t.dia[0])}</th>
+              <th className="rotulo hidden pb-2 pr-3 text-right font-bold sm:table-cell">{t.unidades}</th>
               <th className="rotulo pb-2 pr-3 text-right font-bold">Fechou</th>
               <th className="rotulo hidden pb-2 pr-3 text-right font-bold sm:table-cell">Valor</th>
               <th className="rotulo pb-2 text-right font-bold">Resultado</th>
@@ -306,23 +334,23 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
               <tr key={s.data} className="border-t border-linha">
                 <td className="num py-2 pr-3 font-semibold">{fmtData(s.data)}</td>
                 <td className="num hidden py-2 pr-3 text-right sm:table-cell">
-                  {numero(s.quantidade, 0)}
+                  {numeroDaQuantidade(mercado, s.quantidade)}
                 </td>
                 <td className="num py-2 pr-3 text-right">
-                  {reais(s.fechamento)}
+                  {preco(mercado, s.fechamento)}
                   {s.semNegocio && (
                     <span className="block text-[10px] font-semibold text-tinta-3">sem negócio</span>
                   )}
                 </td>
                 <td className="num hidden py-2 pr-3 text-right sm:table-cell">
-                  {reais(s.valorPosicao)}
+                  {valor(mercado, s.valorPosicao)}
                 </td>
                 <td
                   className={`num py-2 text-right font-bold ${
                     s.resultado >= 0 ? "text-alta" : "text-baixa"
                   }`}
                 >
-                  {reais(s.resultado)}
+                  {valor(mercado, s.resultado)}
                 </td>
               </tr>
             ))}
@@ -349,7 +377,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
 
       {!aberto && (
         <p className="text-[12px] font-semibold text-tinta-3">
-          Trade encerrado: uma nova compra na ficha do papel abre outro trade.
+          Trade encerrado: uma nova compra abre outro trade.
         </p>
       )}
 
@@ -376,19 +404,35 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
               <input
                 type="date"
                 value={novosCampos.data}
-                max={diaNaB3(new Date())}
+                max={diaDeHoje}
                 onChange={(e) => setNovosCampos((c) => ({ ...c, data: e.target.value }))}
                 className={campoInput}
               />
             </label>
             <label className="flex flex-col gap-1">
-              <span className="rotulo">Quantidade</span>
+              <span className="flex items-center justify-between gap-2">
+                <span className="rotulo">Quantidade</span>
+                {novosCampos.tipo === "venda" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNovosCampos((c) => ({
+                        ...c,
+                        quantidade: quantidadeParaCampo(mercado, trade.quantidade),
+                      }))
+                    }
+                    className="toque text-[11px] font-bold text-acento hover:underline"
+                  >
+                    tudo
+                  </button>
+                )}
+              </span>
               <input
                 type="text"
-                inputMode="numeric"
+                inputMode={regras.casasDaQuantidade > 0 ? "decimal" : "numeric"}
                 value={novosCampos.quantidade}
                 onChange={(e) => setNovosCampos((c) => ({ ...c, quantidade: e.target.value }))}
-                placeholder="100"
+                placeholder={regras.casasDaQuantidade > 0 ? "0,0153" : "100"}
                 className={campoInput}
               />
             </label>
@@ -404,6 +448,12 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
               />
             </label>
           </div>
+          {novosCampos.tipo === "venda" && regras.taxa > 0 && (
+            <p className="text-[11px] font-semibold text-tinta-3">
+              Na venda, {(regras.taxa * 100).toLocaleString("pt-BR")}% sai dos dólares recebidos. Se a
+              corretora deixar um resto pequeno demais para vender, use “tudo” para fechar o trade.
+            </p>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
@@ -456,7 +506,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                     <input
                       type="date"
                       value={campos.data}
-                      max={diaNaB3(new Date())}
+                      max={diaDeHoje}
                       onChange={(e) => setCampos((c) => (c ? { ...c, data: e.target.value } : c))}
                       className={campoInput}
                     />
@@ -465,7 +515,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                     <span className="rotulo">Quantidade</span>
                     <input
                       type="text"
-                      inputMode="numeric"
+                      inputMode={regras.casasDaQuantidade > 0 ? "decimal" : "numeric"}
                       value={campos.quantidade}
                       onChange={(e) =>
                         setCampos((c) => (c ? { ...c, quantidade: e.target.value } : c))
@@ -516,7 +566,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                   {op.tipo === "compra" ? "Compra" : "Venda"}
                 </span>
                 <span className="num text-[13px] font-semibold text-tinta-2">
-                  {numero(op.quantidade, 0)} × {reais(op.preco)}
+                  {quantidadeExata(mercado, op.quantidade)} × {preco(mercado, op.preco)}
                 </span>
                 <div className="ml-auto flex gap-1.5">
                   <button
@@ -536,8 +586,8 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                   </button>
                 </div>
                 <span className="num w-full text-[11px] font-semibold text-tinta-3">
-                  depois: {numero(op.quantidadeApos, 0)} · PM {reais(op.precoMedioApos)} · realizado{" "}
-                  {reais(op.realizadoApos)}
+                  depois: {quantidadeExata(mercado, op.quantidadeApos)} · PM{" "}
+                  {preco(mercado, op.precoMedioApos)} · realizado {valor(mercado, op.realizadoApos)}
                 </span>
               </div>
             )}
@@ -553,7 +603,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-0.5">
             <Link
-              href={`/papel/${trade.ticker}`}
+              href={linkDaFichaNoMercado(mercado, trade.ticker)}
               className="text-[24px] font-extrabold leading-none tracking-tight transition-colors hover:text-acento"
             >
               {trade.ticker}
@@ -570,7 +620,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                 marca.resultado >= 0 ? "text-alta" : "text-baixa"
               }`}
             >
-              {reais(marca.resultado)}
+              {valor(mercado, marca.resultado)}
             </span>
             <span
               className={`num text-[13px] font-bold ${marca.resultado >= 0 ? "text-alta" : "text-baixa"}`}
@@ -590,32 +640,42 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
         <div className="grid grid-cols-2 gap-2.5 md:grid-cols-4">
           <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
             <span className="text-[11px] font-bold text-tinta-3">Quantidade</span>
-            <span className="num text-[16px] font-extrabold">{numero(trade.quantidade, 0)}</span>
+            <span className="num text-[16px] font-extrabold">
+              {quantidadeExata(mercado, trade.quantidade)}
+            </span>
           </div>
           <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
             <span className="text-[11px] font-bold text-tinta-3">Preço médio</span>
-            <span className="num text-[16px] font-extrabold">{reais(trade.precoMedio)}</span>
+            <span className="num text-[16px] font-extrabold">{preco(mercado, trade.precoMedio)}</span>
           </div>
           <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
             <span className="text-[11px] font-bold text-tinta-3">Custo</span>
-            <span className="num text-[16px] font-extrabold">{reais(trade.custoComprado)}</span>
+            <span className="num text-[16px] font-extrabold">{valor(mercado, trade.custoComprado)}</span>
           </div>
           {precoInfo && (
             <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
               <span className="text-[11px] font-bold text-tinta-3">{precoInfo.rotulo}</span>
-              <span className="num text-[16px] font-extrabold">{reais(precoInfo.preco)}</span>
+              <span className="num text-[16px] font-extrabold">{preco(mercado, precoInfo.preco)}</span>
             </div>
           )}
         </div>
 
         <div className="flex items-center justify-between text-[12px] font-semibold text-tinta-3">
           <span>
-            realizado <strong className="num text-tinta-2">{reais(trade.realizado)}</strong>
+            realizado <strong className="num text-tinta-2">{valor(mercado, trade.realizado)}</strong>
           </span>
           <span>
-            em aberto <strong className="num text-tinta-2">{reais(emAberto)}</strong>
+            em aberto <strong className="num text-tinta-2">{valor(mercado, emAberto)}</strong>
           </span>
         </div>
+
+        {regras.taxa > 0 && (
+          <p className="text-[12px] font-semibold text-tinta-3">
+            Com a taxa de {(regras.taxa * 100).toLocaleString("pt-BR")}% da Binance: na compra ela sai da
+            moeda (a quantidade é a que fica na conta) e o preço médio já a inclui; na venda, sai dos
+            dólares.
+          </p>
+        )}
 
         <div className="flex flex-col gap-2.5 rounded-2xl bg-painel-2 p-3.5">
           {editandoDiario ? (
@@ -629,9 +689,9 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                     className="toque h-10 w-full min-w-0 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento"
                   >
                     <option value="">Sem setup</option>
-                    {ORDEM_DAS_CATEGORIAS.map((c) => (
+                    {ordemNoDiario(regras.categoriasDoEstudo).map((c) => (
                       <option key={c} value={c}>
-                        {NOME_DO_SETUP[c]}
+                        {NOME_NO_DIARIO[c]}
                       </option>
                     ))}
                   </select>
@@ -672,19 +732,19 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                 <span>
                   setup{" "}
                   <strong className="text-[13px] text-tinta">
-                    {trade.categoriaSetup ? NOME_DO_SETUP[trade.categoriaSetup] : "sem setup"}
+                    {trade.categoriaSetup ? NOME_NO_DIARIO[trade.categoriaSetup] : "sem setup"}
                   </strong>
                 </span>
                 <span>
                   stop{" "}
                   <strong className="num text-[13px] text-tinta">
-                    {trade.stop === null ? "—" : reais(trade.stop)}
+                    {trade.stop === null ? "—" : preco(mercado, trade.stop)}
                   </strong>
                 </span>
                 <span>
                   risco{" "}
                   <strong className="num text-[13px] text-tinta">
-                    {risco === null ? "—" : reais(risco)}
+                    {risco === null ? "—" : valor(mercado, risco)}
                   </strong>
                 </span>
                 <button

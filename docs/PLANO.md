@@ -714,9 +714,19 @@ Pela regra da casa, setup que falha continua visível, com aviso: a aba Cripto m
 
 `/cripto` (entradas de hoje, volume fora do normal, em andamento, encerrados e o capital em dólar), `/cripto/[moeda]` (gráfico diário com níveis e setups) e `/cripto/backtest`. As consultas são as mesmas das ações: a página roda a leitura dentro de `noMercado("cripto", ...)` e a conexão troca o schema no SQL. O lote é em fração de moeda (`calcularLoteFracionado`), com mínimo de US$ 5 de posição.
 
+### Diário de trades em cripto (17/11/2026)
+
+Decisões do usuário: o mesmo diário das ações, com filtro Tudo / Ações / Cripto; valores em dólar; quantidade fracionada; taxa da Binance de 0,1% por lado, saindo da moeda comprada (o padrão da Binance sem BNB); botão "Entrei" nos cartões de cripto, inclusive no sinal de compra do RSI do estudo, que vira o setup "RSI (estudo)".
+
+- **Banco** (migration 0027, nos dois schemas): quantidade e posição passam a `numeric(28, 10)`, preço e stop a dez casas, preço médio a dez casas; `trades.sinal_estudo_id` liga o trade ao sinal do estudo. Na B3 nada muda no valor.
+- **Contas** (`regrasDoDiario` em `web/src/lib/mercado.ts`): compra de q a p custa q × p e deixa q × 0,999 na posição; o preço médio é o custo dividido pelas moedas que ficaram. Venda de q a p realiza q × (p × 0,999 − PM). Na B3, taxa zero, ação inteira e centavo: as contas de antes. O risco do R é o planejado, sem taxa: um trade que bate no stop fecha um pouco abaixo de −1 R, que é o custo de verdade.
+- **Calendário**: todo dia é dia; a data é o dia UTC do candle (depois das 21h de Brasília já é o dia seguinte).
+- **Site**: os ids repetem entre os schemas, então rota e link levam `?mercado=cripto`. O preço de agora de um trade aberto vem da Binance (`/api/cotacao/MOEDA?mercado=cripto`). A venda tem o botão "tudo", para fechar o trade quando a corretora deixa um resto pequeno demais para vender.
+- **Marcação noturna e Telegram**: a mesma etapa do `scanner daily` marca os trades de cripto no workflow `cripto`; o bloco "Seus trades" do resumo de cripto fala em moeda e dólar.
+- Fica de fora: venda a descoberto (a compressão na venda do estudo não tem "Entrei") e o cartão "Seu trade" na ficha da moeda.
+
 ### O que ficou para a próxima fase
 
-- **Diário de trades em cripto**: as tabelas de trades guardam quantidade inteira e preço com duas casas. Precisam de migration própria e de revisão das contas do diário.
 - **Alerta de preço durante o dia** (o "confirmou" na hora): a checagem de rompimento usa brapi e Yahoo, que não cotam cripto.
 - **Ajustes por setup** (alerta e saída) na aba Cripto: hoje vale o `config-cripto.yaml`.
 - **Página de backtest completa** (curva, ano a ano, lista de trades), como a das ações: a de cripto mostra o resumo por setup.

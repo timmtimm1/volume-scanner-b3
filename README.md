@@ -1595,9 +1595,15 @@ gh workflow run backtest-enviar.yml -f mercado=cripto
 
 **Os 13 setups de compra que tiveram trades suficientes falharam em cripto.** Todos foram bem em 2017–2021 e nenhum ganhou da moeda sorteada em 2022–2026; a tabela está na seção 15 do plano. Por isso o semáforo da aba está vermelho e nenhum setup de cripto tem alerta ligado. A aba continua mostrando as entradas (a regra da casa é não esconder o que falhou), mas como histórico ruim.
 
+### Diário de trades em cripto
+
+Os trades de cripto entram no mesmo `/trades`, com o filtro Tudo / Ações / Cripto (`/trades?mercado=cripto`). Quantidade fracionada, valores em dólar e a taxa de 0,1% da Binance do jeito que ela cobra sem BNB: na compra sai da moeda (0,0153 BTC deixa 0,0152847 na conta, e o preço médio já inclui a taxa), na venda sai dos dólares. O registro é pelo botão "Entrei" dos cartões da aba Cripto (inclusive o sinal de compra do RSI do estudo) ou por "Registrar compra" no `/trades`. As contas estão na seção 15 do plano.
+
+Depois do merge, rode o workflow `cripto` uma vez (ou espere o das 21:10): ele aplica a migration 0027 no schema de cripto, e até lá o banco recusa quantidade fracionada.
+
 ### O que ainda não tem em cripto
 
-Diário de trades, alerta de preço durante o dia, ajustes por setup e a página de backtest completa (curva e ano a ano). Estão na lista da seção 15.
+Alerta de preço durante o dia, ajustes por setup e a página de backtest completa (curva e ano a ano). Estão na lista da seção 15.
 
 ## Valuation
 

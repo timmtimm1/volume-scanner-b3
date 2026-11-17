@@ -177,7 +177,7 @@ def payload_do_resumo(
             linhas_trades.append(
                 {
                     "ticker": str(linha["ticker"]),
-                    "quantidade": int(linha["quantidade"]),
+                    "quantidade": float(linha["quantidade"]),
                     "resultado": resultado,
                     # None em vez de dividir por zero: trade sem custo comprado
                     # (nao deveria existir, mas a mensagem nao pode quebrar por isso).

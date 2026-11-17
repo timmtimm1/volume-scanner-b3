@@ -296,6 +296,9 @@ def _linha_do_resumo(
 
 
 CABECALHO_TRADES = f"{'':1}{'Papel':<6} {'Ações':>5} {'R$':>10} {'%':>6}"
+# Em cripto a quantidade e fracionada ("0,00077") e precisa de mais espaco; o
+# valor em dolar perde uma coluna. Continua em 32 colunas.
+CABECALHO_TRADES_CRIPTO = f"{'':1}{'Moeda':<6} {'Qtd':>7} {'US$':>9} {'%':>6}"
 
 
 def _linha_do_trade(linha: Mapping[str, Any]) -> str:
@@ -309,11 +312,16 @@ def _linha_do_trade(linha: Mapping[str, Any]) -> str:
     resultado = float(linha.get("resultado") or 0.0)
     bolinha = "🟢" if resultado > 0 else "🔴" if resultado < 0 else "⚪"
     encerrado = bool(linha.get("encerrado"))
-    quantidade = "-" if encerrado else str(linha.get("quantidade"))
+    quantidade = (
+        "-" if encerrado else mercado.quantidade_curta(float(linha.get("quantidade") or 0.0))
+    )
     sinal = "+" if resultado >= 0 else "-"
     valor = f"{sinal}{br(abs(resultado))}"
     ticker = str(linha["ticker"])
-    return f"{bolinha}{ticker:<6} {quantidade:>5} {valor:>10} {pct(linha.get('resultado_pct')):>6}"
+    pct_texto = pct(linha.get("resultado_pct"))
+    if mercado.e_cripto():
+        return f"{bolinha}{ticker:<6} {quantidade:>7} {valor:>9} {pct_texto:>6}"
+    return f"{bolinha}{ticker:<6} {quantidade:>5} {valor:>10} {pct_texto:>6}"
 
 
 def _bloco_de_trades(trades: list[Any], base_url: str | None) -> list[str]:
@@ -331,13 +339,17 @@ def _bloco_de_trades(trades: list[Any], base_url: str | None) -> list[str]:
         linhas_tabela.extend(_linha_do_trade(t) for t in encerrados)
     corpo = "\n".join(linhas_tabela)
 
+    cripto = mercado.e_cripto()
+    cabecalho = CABECALHO_TRADES_CRIPTO if cripto else CABECALHO_TRADES
     partes = [
         "",
         "<b>Seus trades</b>",
-        f"<pre>{CABECALHO_TRADES}\n{corpo}</pre>",
+        f"<pre>{cabecalho}\n{corpo}</pre>",
     ]
     if base_url:
-        partes.append(f'<a href="{base_url.rstrip("/")}/trades/">abrir trades</a>')
+        # O diario e um so, com filtro: o link de cripto ja abre filtrado.
+        filtro = "?mercado=cripto" if cripto else ""
+        partes.append(f'<a href="{base_url.rstrip("/")}/trades/{filtro}">abrir trades</a>')
     return partes
 
 

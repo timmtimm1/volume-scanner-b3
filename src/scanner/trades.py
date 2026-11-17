@@ -150,7 +150,9 @@ def marcar_a_mercado(
     if marcado.empty:
         return _sem_snapshots()
 
-    quantidade = marcado["quantidade_apos"].astype("int64")
+    # Float e nao int: em cripto a posicao e fracionada (0,0152847 BTC, ja sem a
+    # taxa da Binance). Na B3 continua inteira, so que em float.
+    quantidade = marcado["quantidade_apos"].astype(float)
     preco_medio = marcado["preco_medio_apos"].astype(float)
     fechamento = marcado["fechamento"].astype(float)
     realizado = marcado["realizado_apos"].astype(float)

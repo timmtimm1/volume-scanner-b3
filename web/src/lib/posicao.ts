@@ -12,7 +12,14 @@
  * calcula a posicao e guarda nas colunas `*_apos`; o job noturno em Python so
  * le esse estado e marca a mercado. Aqui e o mesmo calculo, do lado de quem
  * grava.
+ *
+ * O que muda de um mercado para o outro (taxa, casas da quantidade e do preco)
+ * chega em `regras` (`regrasDoDiario` de `mercado.ts`). Com as regras da B3
+ * (taxa zero, acoes inteiras, centavos) as contas sao exatamente as de antes do
+ * diario de cripto.
  */
+
+import type { RegrasDoDiario } from "./mercado";
 
 export class OperacaoInvalida extends Error {}
 
@@ -32,14 +39,24 @@ export type OperacaoValidada = {
   preco: number;
 };
 
-/** Arredonda para 2 casas, na base das colunas `numeric(*, 2)`. */
-function r2(v: number): number {
-  return Math.round((v + Number.EPSILON) * 100) / 100;
+/** Arredonda para `casas` casas decimais. */
+function arredondar(v: number, casas: number): number {
+  const fator = 10 ** casas;
+  return Math.round((v + Number.EPSILON) * fator) / fator;
 }
 
-/** Arredonda para 6 casas, na base de `preco_medio_apos numeric(18, 6)`. */
-function r6(v: number): number {
-  return Math.round((v + Number.EPSILON) * 1_000_000) / 1_000_000;
+/** Arredonda para 2 casas, na base das colunas de dinheiro `numeric(16, 2)`. */
+function r2(v: number): number {
+  return arredondar(v, 2);
+}
+
+/**
+ * Se `v` tem no maximo `casas` casas decimais. A comparacao e contra o
+ * arredondado, com folga relativa ao tamanho do numero: `38.209999...` de ponto
+ * flutuante passa como 38,21, e 0,123456789 nao passa como 8 casas.
+ */
+function temAteAsCasas(v: number, casas: number): boolean {
+  return Math.abs(v - arredondar(v, casas)) <= Math.abs(v) * 1e-12;
 }
 
 const DATA = /^(\d{4})-(\d{2})-(\d{2})$/;
@@ -58,19 +75,15 @@ function dataValida(texto: string): boolean {
 }
 
 /**
- * Preco com no maximo 2 casas decimais -- a precisao de `trade_operacoes.preco
- * numeric(12, 2)`. Comparar contra o arredondado evita que `38.209999...` de
- * ponto flutuante passe como se tivesse 2 casas.
- */
-function precoComDuasCasas(v: number): boolean {
-  return Math.abs(v - r2(v)) < 1e-9;
-}
-
-/**
  * Valida e normaliza os campos de uma operacao. Lanca `OperacaoInvalida` com
- * mensagem em portugues (sem acento) quando algo nao bate.
+ * mensagem em portugues (sem acento) quando algo nao bate. A quantidade e o
+ * preco aceitam as casas do mercado: acoes inteiras e centavos na B3, ate 8
+ * casas de moeda e 10 de preco em cripto.
  */
-export function validarCampos(entrada: EntradaDeOperacao): OperacaoValidada {
+export function validarCampos(
+  entrada: EntradaDeOperacao,
+  regras: RegrasDoDiario,
+): OperacaoValidada {
   const tipo = entrada.tipo;
   if (tipo !== "compra" && tipo !== "venda") {
     throw new OperacaoInvalida("tipo tem de ser 'compra' ou 'venda'");
@@ -82,19 +95,35 @@ export function validarCampos(entrada: EntradaDeOperacao): OperacaoValidada {
   }
 
   const quantidade = Number(entrada.quantidade);
-  if (!Number.isInteger(quantidade) || quantidade <= 0) {
-    throw new OperacaoInvalida("quantidade tem de ser um inteiro positivo");
+  if (regras.casasDaQuantidade === 0) {
+    if (!Number.isInteger(quantidade) || quantidade <= 0) {
+      throw new OperacaoInvalida("quantidade tem de ser um inteiro positivo");
+    }
+  } else {
+    if (!Number.isFinite(quantidade) || quantidade <= 0) {
+      throw new OperacaoInvalida("quantidade tem de ser um numero positivo");
+    }
+    if (!temAteAsCasas(quantidade, regras.casasDaQuantidade)) {
+      throw new OperacaoInvalida(
+        `quantidade aceita no maximo ${regras.casasDaQuantidade} casas decimais`,
+      );
+    }
   }
 
   const preco = Number(entrada.preco);
   if (!Number.isFinite(preco) || preco <= 0) {
     throw new OperacaoInvalida("preco tem de ser um numero positivo");
   }
-  if (!precoComDuasCasas(preco)) {
-    throw new OperacaoInvalida("preco aceita no maximo 2 casas decimais");
+  if (!temAteAsCasas(preco, regras.casasDoPreco)) {
+    throw new OperacaoInvalida(`preco aceita no maximo ${regras.casasDoPreco} casas decimais`);
   }
 
-  return { tipo, data, quantidade, preco };
+  return {
+    tipo,
+    data,
+    quantidade: arredondar(quantidade, regras.casasDaQuantidade),
+    preco: arredondar(preco, regras.casasDoPreco),
+  };
 }
 
 export type OperacaoOrdenavel = {
@@ -127,9 +156,16 @@ export type ResultadoDaAplicacao<T extends OperacaoOrdenavel> = {
  *
  * Ordena por (data, id) antes de aplicar: e a mesma ordem que `marcar_a_mercado`
  * usa no Python (merge_asof por data, desempate no maior id).
+ *
+ * Com taxa (cripto): a compra de q a p custa q x p e deixa q x (1 - taxa) na
+ * posicao -- a taxa sai da moeda comprada, como a Binance cobra sem BNB --, e o
+ * preco medio e o custo da posicao dividido pelas moedas que ficaram. A venda
+ * de q a p realiza q x (p x (1 - taxa) - PM): a taxa sai dos dolares. Sem taxa
+ * (B3), as duas contas sao as de sempre.
  */
 export function aplicarOperacoes<T extends OperacaoOrdenavel>(
   operacoes: T[],
+  regras: RegrasDoDiario,
 ): ResultadoDaAplicacao<T> {
   if (operacoes.length === 0) {
     throw new OperacaoInvalida("trade sem nenhuma operacao");
@@ -162,19 +198,25 @@ export function aplicarOperacoes<T extends OperacaoOrdenavel>(
     }
 
     if (op.tipo === "compra") {
+      const recebida = arredondar(op.quantidade * (1 - regras.taxa), regras.casasDaPosicao);
       custoComprado = r2(custoComprado + op.quantidade * op.preco);
-      precoMedio = r6(
-        (quantidade * precoMedio + op.quantidade * op.preco) / (quantidade + op.quantidade),
+      precoMedio = arredondar(
+        (quantidade * precoMedio + op.quantidade * op.preco) / (quantidade + recebida),
+        regras.casasDoPrecoMedio,
       );
-      quantidade += op.quantidade;
+      quantidade = arredondar(quantidade + recebida, regras.casasDaPosicao);
     } else {
-      if (op.quantidade > quantidade) {
+      // Folga de meia casa da posicao: "vender tudo" com o numero que a tela
+      // mostrou nao pode falhar por sujeira de ponto flutuante.
+      const folga = 0.5 * 10 ** -regras.casasDaPosicao;
+      if (op.quantidade > quantidade + folga) {
         throw new OperacaoInvalida(
           `venda de ${op.quantidade} maior que a posicao de ${quantidade} em ${op.data}`,
         );
       }
-      realizado = r2(realizado + op.quantidade * (op.preco - precoMedio));
-      quantidade -= op.quantidade;
+      const vendida = Math.min(op.quantidade, quantidade);
+      realizado = r2(realizado + vendida * (op.preco * (1 - regras.taxa) - precoMedio));
+      quantidade = arredondar(quantidade - vendida, regras.casasDaPosicao);
     }
 
     estados.push({ quantidade, precoMedio, custoComprado, realizado });

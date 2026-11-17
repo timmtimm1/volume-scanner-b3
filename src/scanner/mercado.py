@@ -16,7 +16,7 @@ comando (`SCANNER_MERCADO=cripto scanner daily`).
 
 O que muda de um mercado para o outro mora aqui, para o resto do codigo nao
 espalhar `if cripto`: o schema, o menor passo de preco (`tick`), o custo por
-lado do backtest e o piso de liquidez.
+lado do backtest, o piso de liquidez e como se escreve a quantidade de um trade.
 """
 
 from __future__ import annotations
@@ -145,3 +145,28 @@ def tick(fechamento: F64, ajuste: F64) -> F64:
     cheio = np.take_along_axis(passo, np.maximum(ultimo, 0), axis=0)
     cheio[ultimo < 0] = np.nan
     return np.asarray(cheio, dtype=np.float64)
+
+
+def quantidade_curta(quantidade: float) -> str:
+    """A posicao de um trade em poucos caracteres, para a tabela do Telegram.
+
+    B3: acoes inteiras, como sempre ("70"). Cripto: fracionada, em no maximo 7
+    caracteres -- tres algarismos significativos abaixo de 1, ate cinco casas
+    ("0,0153", "0,00077"), duas casas ate mil ("12,5"), milhar com ponto
+    ("123.456") e, acima de um milhao, "1,2mi".
+    """
+    if not e_cripto():
+        return str(round(quantidade))
+    q = abs(quantidade)
+    if q >= 1_000_000:
+        texto = f"{quantidade / 1_000_000:.1f}".replace(".", ",") + "mi"
+    elif q >= 1_000:
+        texto = f"{quantidade:,.0f}".replace(",", ".")
+    elif q >= 1:
+        texto = f"{quantidade:.2f}".rstrip("0").rstrip(".").replace(".", ",")
+    elif q > 0:
+        casas = min(5, 2 - math.floor(math.log10(q)))
+        texto = f"{quantidade:.{casas}f}".rstrip("0").rstrip(".").replace(".", ",")
+    else:
+        texto = "0"
+    return texto

@@ -366,8 +366,7 @@ export function CartaoDeEntrada({ e, candles, diario, hoje = null }: Props) {
             </>
           )}
         </span>
-        {/* o diario de trades ainda e so da B3 (quantidade inteira, preco em centavos) */}
-        {mercado === "b3" && <BotaoEntrei s={s} diario={diario} />}
+        <BotaoEntrei s={s} diario={diario} />
       </footer>
     </article>
   );

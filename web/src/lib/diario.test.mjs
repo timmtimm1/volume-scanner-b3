@@ -10,8 +10,12 @@ import {
   resultadoEmRDoTrade,
   riscoEmReais,
   validarCamposDoDiario,
+  ordenarTrades,
 } from "./diario.ts";
 import { aplicarOperacoes, marcarAgora } from "./posicao.ts";
+import { regrasDoDiario } from "./mercado.ts";
+
+const B3 = regrasDoDiario("b3");
 
 const compra = (quantidade, preco) => ({ tipo: "compra", quantidade, preco });
 const venda = (quantidade, preco) => ({ tipo: "venda", quantidade, preco });
@@ -19,7 +23,7 @@ const venda = (quantidade, preco) => ({ tipo: "venda", quantidade, preco });
 /** Monta o trade como o site o devolve: estado depois da ultima operacao. */
 function trade(operacoes, stop, extra = {}) {
   const ord = operacoes.map((o, i) => ({ id: i + 1, data: `2026-09-${10 + i}`, ...o }));
-  const { estados, encerradoEm } = aplicarOperacoes(ord);
+  const { estados, encerradoEm } = aplicarOperacoes(ord, B3);
   const e = estados.at(-1);
   return { stop, operacoes, encerradoEm, categoriaSetup: null, ...e, ...extra };
 }
@@ -150,9 +154,34 @@ describe("validarCamposDoDiario", () => {
     }
   });
 
+  it("em cripto o stop aceita as dez casas do preco", () => {
+    const cripto = (e) => validarCamposDoDiario(e, CATEGORIAS_DE_SETUP, 10);
+    assert.equal(cripto({ stop: "0.0000041987" }).stop, 0.0000041987);
+    assert.throws(() => cripto({ stop: 0.00000419871 }), /10 casas/);
+    // e a B3 segue com duas
+    assert.throws(() => v({ stop: 0.0000041987 }), /2 casas/);
+  });
+
   it("recusa setupId que nao e inteiro positivo", () => {
     for (const setupId of [0, -3, 1.5, "x"]) {
       assert.throws(() => v({ setupId }), DiarioInvalido);
     }
   });
 });
+
+describe("ordenarTrades", () => {
+  it("abertos primeiro, depois o mais recente, empate pelo id maior", () => {
+    const t = [
+      { id: 1, abertoEm: "2026-09-01", encerradoEm: "2026-09-10", mercado: "b3" },
+      { id: 1, abertoEm: "2026-11-17", encerradoEm: null, mercado: "cripto" },
+      { id: 4, abertoEm: "2026-10-01", encerradoEm: null, mercado: "b3" },
+      { id: 2, abertoEm: "2026-11-01", encerradoEm: "2026-11-15", mercado: "cripto" },
+      { id: 3, abertoEm: "2026-11-02", encerradoEm: "2026-11-15", mercado: "b3" },
+    ];
+    assert.deepEqual(
+      ordenarTrades(t).map((x) => `${x.mercado}${x.id}`),
+      ["cripto1", "b34", "b33", "cripto2", "b31"],
+    );
+  });
+});
+

@@ -11,6 +11,8 @@
  * indicacao de quanto comprar: o usuario decide.
  */
 
+import type { Mercado } from "./mercado";
+
 export class PerfilInvalido extends Error {}
 
 export type Perfil = {
@@ -89,13 +91,16 @@ export function calcularLote(e: EntradaDoLote): Lote {
 /**
  * Le um numero digitado do jeito brasileiro: "10.000,50", "10000,5", "10000.5"
  * e "10.000" (ponto de milhar) valem. Null quando nao e um numero.
+ *
+ * "0.153" e 0,153, nao 153: milhar nunca comeca em zero. Em cripto isso e
+ * quantidade comum (0,153 ETH).
  */
 export function numeroDoTexto(texto: string): number | null {
   const t = texto.trim().replace(/\s/g, "");
   if (t === "") return null;
   let normal: string;
   if (t.includes(",")) normal = t.replace(/\./g, "").replace(",", ".");
-  else if (/^\d{1,3}(\.\d{3})+$/.test(t)) normal = t.replace(/\./g, "");
+  else if (/^[1-9]\d{0,2}(\.\d{3})+$/.test(t)) normal = t.replace(/\./g, "");
   else normal = t;
   if (!/^\d+(\.\d+)?$/.test(normal)) return null;
   const n = Number(normal);
@@ -195,4 +200,9 @@ export function calcularLoteFracionadoVenda(e: EntradaDoLote): Lote {
     pctDoCapital: perdaMaxima / capital,
     limitadoPeloCapital: pelaRegraDoCapital < pelaRegraDoRisco,
   };
+}
+
+/** O lote de compra no mercado: acoes inteiras na B3, moeda fracionada em cripto. */
+export function loteNoMercado(mercado: Mercado, e: EntradaDoLote): Lote {
+  return mercado === "b3" ? calcularLote(e) : calcularLoteFracionado(e);
 }

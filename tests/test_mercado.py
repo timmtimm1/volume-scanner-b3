@@ -124,3 +124,29 @@ def test_tabelas_e_backtest_seguem_o_mercado_do_processo(
     ).stdout.split()
     assert saida[:2] == [schema, rotulo]
     assert float(saida[2]) == (0.0015 if valor == "cripto" else 0.0008)
+
+
+def test_quantidade_curta_da_b3_e_o_inteiro_de_sempre(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv(mercado.VARIAVEL, raising=False)
+    assert mercado.quantidade_curta(70.0) == "70"
+    assert mercado.quantidade_curta(99_999.0) == "99999"
+
+
+@pytest.mark.parametrize(
+    "quantidade,texto",
+    [
+        (0.0152847, "0,0153"),
+        (0.000769, "0,00077"),
+        (0.5, "0,5"),
+        (12.5, "12,5"),
+        (3.0, "3"),
+        (123_456.7, "123.457"),
+        (1_234_567.0, "1,2mi"),
+        (0.0, "0"),
+    ],
+)
+def test_quantidade_curta_de_cripto_cabe_em_sete_caracteres(
+    cripto: None, quantidade: float, texto: str
+) -> None:
+    assert mercado.quantidade_curta(quantidade) == texto
+    assert len(texto) <= 7

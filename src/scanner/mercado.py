@@ -21,12 +21,20 @@ lado do backtest e o piso de liquidez.
 
 from __future__ import annotations
 
+import math
 import os
+from typing import TYPE_CHECKING
 
-import numpy as np
-import numpy.typing as npt
+# Este modulo e importado por `scanner.calendar`, que o passo "Hoje e pregao?"
+# do workflow `rompimentos` roda com o Python do runner, SEM as dependencias
+# instaladas. Por isso nada de fora da biblioteca padrao no nivel do modulo: o
+# numpy entra so dentro de `tick`, que trabalha com matriz. Em 17/11/2026 o
+# `import numpy` aqui em cima derrubou todas as passadas do pregao.
+if TYPE_CHECKING:
+    import numpy as np
+    import numpy.typing as npt
 
-F64 = npt.NDArray[np.float64]
+    F64 = npt.NDArray[np.float64]
 
 B3 = "b3"
 CRIPTO = "cripto"
@@ -112,9 +120,9 @@ def tick_do_preco(preco: float) -> float:
     """
     if not e_cripto():
         return CENTAVO
-    if not np.isfinite(preco) or preco <= 0:
+    if not math.isfinite(preco) or preco <= 0:
         return float("nan")
-    return float(10.0 ** (np.floor(np.log10(preco)) - CASAS_SIGNIFICATIVAS))
+    return float(10.0 ** (math.floor(math.log10(preco)) - CASAS_SIGNIFICATIVAS))
 
 
 def tick(fechamento: F64, ajuste: F64) -> F64:
@@ -124,6 +132,8 @@ def tick(fechamento: F64, ajuste: F64) -> F64:
     que o codigo fazia com `CENTAVO * ajuste`). Cripto: relativo ao fechamento
     do proprio dia; dia sem negocio herda o passo do ultimo dia negociado.
     """
+    import numpy as np
+
     if not e_cripto():
         return CENTAVO * ajuste
     with np.errstate(divide="ignore", invalid="ignore"):

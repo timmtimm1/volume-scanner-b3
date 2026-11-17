@@ -725,9 +725,12 @@ Decisões do usuário: o mesmo diário das ações, com filtro Tudo / Ações / 
 - **Marcação noturna e Telegram**: a mesma etapa do `scanner daily` marca os trades de cripto no workflow `cripto`; o bloco "Seus trades" do resumo de cripto fala em moeda e dólar.
 - Fica de fora: venda a descoberto (a compressão na venda do estudo não tem "Entrei") e o cartão "Seu trade" na ficha da moeda.
 
+### Régua e alertas na ficha da moeda (17/11/2026)
+
+Pedido do usuário: a régua e o alerta no gráfico de cripto, como na ficha das ações. A ficha da moeda usa as mesmas peças (`useAlertasDoPapel`, `useTradesDoPapel`, `Grafico` com `regua` e `edicaoDeAlertas`), com o mercado passado adiante: as rotas `/api/alertas` leem `?mercado=cripto`, o nível do alerta e o ponto da régua guardam as casas da moeda (`nivelDoAlerta` em `mercado.ts`; antes a régua arredondava para centavo) e tudo fala em dólar. A ficha mostra também a linha do preço médio do trade aberto. Os alertas manuais de cripto são conferidos pela mesma passada de 15 em 15 minutos (`cripto-rompimentos`) que confere os dos setups.
+
 ### O que ficou para a próxima fase
 
-- **Alerta de preço durante o dia** (o "confirmou" na hora): a checagem de rompimento usa brapi e Yahoo, que não cotam cripto.
 - **Ajustes por setup** (alerta e saída) na aba Cripto: hoje vale o `config-cripto.yaml`.
 - **Página de backtest completa** (curva, ano a ano, lista de trades), como a das ações: a de cripto mostra o resumo por setup.
 - **Estudo de padrões próprio de cripto**, compra e venda.

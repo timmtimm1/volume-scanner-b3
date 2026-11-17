@@ -776,3 +776,28 @@ Não consideram setor, dívida, ciclo, qualidade do lucro nem nada que não este
 
 Múltiplos contra a própria história (P/L e EV/EBITDA médios de 5 anos), que foi oferecido e não escolhido; valuation em data passada na lista geral (a ficha já calcula para o pregão que está aberta); ajuste por bonificação pequena (10%, 20%), que a regra do salto não distingue de um gap.
 
+
+## 17. Tendência por médias móveis (17/11/2026)
+
+Pedido do usuário: escolher, no scanner e na aba Cripto, os ativos em tendência de alta, lateral ou baixa pela inclinação das médias móveis, e procurar o setup no gráfico deles. Nada de aba nova; as médias não aparecem no gráfico; o usuário escolhe quais combinar.
+
+### Como funciona
+
+- **Pipeline** (`scanner/tendencia.py`, etapa 7 de 9 do `scanner daily`, nos dois mercados): para o último pregão, cada média (MME e MMA de 9, 20, 50, 80 e 200) vale +1 (subindo), −1 (caindo) ou 0 (sem histórico). "Subindo" é a média de hoje acima da de k pregões atrás: 9 contra 1 (a virada do Larry Williams), 20 contra 5, 50 contra 10, 80 e 200 contra 20 — as convenções que o projeto já usava. Preço ajustado por desdobramento (`matrizes.montar`). Tabela `tendencias` (migration 0028), uma linha por ativo, trocada a cada noite, com a liquidez de hoje pela regra do backtest (mediana de 60 pregões, com 48 negociados, acima do piso do mercado).
+- **Site** (`web/src/lib/tendencia.ts`, `PainelDeTendencia`): alta = todas as médias marcadas subindo; baixa = todas caindo; lateral = discordam; sem histórico em alguma = fica de fora. Começa em MME 9 + 80; a escolha fica no navegador, por mercado.
+- É descrição da direção das médias no último fechamento, não previsão. Não alimenta alerta, setup, semáforo nem backtest.
+
+### O estudo que escolheu o ponto de partida
+
+Sobre os trades da saída escolhida de cada setup (176 mil sinais da B3 de 1995 a 2026; 42 mil de cripto de 2017 a 2026), as 62 combinações de médias (31 de cada tipo). Ganho = R médio do setup com a combinação em alta menos o R fora dela, cada setup pesando igual. Escolha em 1995–2015 (cripto 2017–2021), conferência em 2016–2026 (cripto 2022–2026).
+
+| Médias subindo | B3 escolha → conferência | Cripto escolha → conferência |
+|---|---|---|
+| MME 9 | +0,19 → +0,20 R | +0,52 → +0,08 R |
+| MME 9 + 20 | +0,16 → +0,13 R | +0,50 → +0,01 R |
+| MME 9 + 80 | +0,13 → +0,10 R | +0,52 → +0,03 R |
+| MME 9 + 80 + 200 | +0,03 → +0,03 R | +0,56 → +0,05 R |
+| MME 200 | −0,08 → −0,06 R | +0,25 → +0,01 R |
+| Preço acima da MMA 200, subindo (a etiqueta "em alta" dos setups) | 0,00 → +0,02 R | +0,44 → −0,13 R |
+
+Leitura: a direção curta (MME 9) é a que separa, nos dois mercados e nos dois períodos; as médias longas sozinhas não ajudam, e em cripto só pareciam ajudar no ciclo de alta de 2017–2021. Com 62 combinações testadas, a chance de uma "melhor" ser sorte é alta: por isso o ponto de partida é uma combinação simples que se confirmou, e a escolha final é do usuário. A etiqueta de tendência dos setups e o semáforo continuam na definição antiga (MMA 200); trocá-los pede refazer a suíte.

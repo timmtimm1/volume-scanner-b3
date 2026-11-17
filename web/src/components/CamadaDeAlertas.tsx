@@ -24,8 +24,9 @@ import type { IChartApi, ISeriesApi } from "lightweight-charts";
 import type { PointerEvent as EventoDePonteiro, RefObject } from "react";
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { Alerta, Direcao } from "@/lib/alertas";
-import { percentual, reais } from "@/lib/formato";
-import { direcaoDoNivel, nivelEmCentavos } from "@/lib/nivel-do-alerta";
+import { percentual } from "@/lib/formato";
+import { nivelDoAlerta, preco as fmtPreco, type Mercado } from "@/lib/mercado";
+import { direcaoDoNivel } from "@/lib/nivel-do-alerta";
 
 /** Altura da faixa que pega o mouse em volta da linha, em pixels. */
 const FAIXA = 10;
@@ -46,6 +47,8 @@ type Props = {
   /** Move a linha desenhada no canvas durante o arrasto, antes de salvar. */
   moverLinha: (id: number, preco: number) => void;
   cor: string;
+  /** Centavo e reais na B3; as casas da moeda e dolar em cripto. */
+  mercado: Mercado;
 };
 
 type Geometria = {
@@ -77,6 +80,7 @@ export function CamadaDeAlertas({
   aoApagar,
   moverLinha,
   cor,
+  mercado,
 }: Props) {
   const raiz = useRef<HTMLDivElement>(null);
   const [geometria, setGeometria] = useState<Geometria | null>(null);
@@ -151,7 +155,7 @@ export function CamadaDeAlertas({
     const y = clienteY - el.getBoundingClientRect().top;
     const bruto = s.coordinateToPrice(y);
     if (bruto === null) return null;
-    const preco = nivelEmCentavos(Number(bruto));
+    const preco = nivelDoAlerta(mercado, Number(bruto));
     return preco > 0 ? { preco, y } : null;
   }
 
@@ -238,7 +242,7 @@ export function CamadaDeAlertas({
                 title="Arraste para mudar o nível"
               >
                 <span className="num whitespace-nowrap">
-                  {seta(direcao)} {reais(preco)}
+                  {seta(direcao)} {fmtPreco(mercado, preco)}
                   {longe && <span className="font-semibold opacity-80"> · {longe}</span>}
                 </span>
                 <button
@@ -247,7 +251,7 @@ export function CamadaDeAlertas({
                   // ponteiro pela etiqueta e o alerta nao era apagado.
                   onPointerDown={(e) => e.stopPropagation()}
                   onClick={() => aoApagar(a.id)}
-                  aria-label={`Apagar alerta de ${reais(a.preco)}`}
+                  aria-label={`Apagar alerta de ${fmtPreco(mercado, a.preco)}`}
                   title="Apagar alerta"
                   className="flex h-[18px] w-[18px] cursor-pointer items-center justify-center rounded text-white/80 transition-colors hover:bg-white/20 hover:text-white"
                 >
@@ -284,7 +288,7 @@ export function CamadaDeAlertas({
               >
                 <span className="num whitespace-nowrap">
                   {direcaoDoNivel(fantasma.preco, referencia) === "acima" ? "▲ Subir até" : "▼ Cair até"}{" "}
-                  {reais(fantasma.preco)}
+                  {fmtPreco(mercado, fantasma.preco)}
                   {distancia(fantasma.preco) && (
                     <span className="font-semibold opacity-80"> · {distancia(fantasma.preco)}</span>
                   )}

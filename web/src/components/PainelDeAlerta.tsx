@@ -3,7 +3,8 @@
 import Link from "next/link";
 import { useId, useRef, useState } from "react";
 import type { Alerta } from "@/lib/alertas";
-import { percentual, reais } from "@/lib/formato";
+import { percentual } from "@/lib/formato";
+import { preco as fmtPreco, precoParaCampo, simboloDaMoeda, type Mercado } from "@/lib/mercado";
 import { lerNivelDigitado } from "@/lib/nivel-do-alerta";
 import type { EstadoDosAlertas } from "@/lib/useAlertasDoPapel";
 
@@ -17,10 +18,16 @@ import type { EstadoDosAlertas } from "@/lib/useAlertasDoPapel";
 function NivelEditavel({
   alerta,
   mover,
+  mercado,
+  nivel,
 }: {
   alerta: Alerta;
   mover: (id: number, preco: number) => Promise<void>;
+  mercado: Mercado;
+  /** O arredondamento do mercado (centavo na B3, casas da moeda em cripto). */
+  nivel: (v: number) => number;
 }) {
+  const reais = (v: number | null) => fmtPreco(mercado, v);
   const [texto, setTexto] = useState<string | null>(null);
   // Enter e Esc fecham o campo, e fechar tira o foco: sem esta marca, o
   // `onBlur` que vem junto salvaria de novo -- ou salvaria o que o Esc mandou
@@ -33,7 +40,7 @@ function NivelEditavel({
         type="button"
         onClick={() => {
           fechado.current = false;
-          setTexto(alerta.preco.toFixed(2).replace(".", ","));
+          setTexto(precoParaCampo(mercado, alerta.preco));
         }}
         title="Clique para digitar o nível exato"
         className="num rounded-md px-1 font-extrabold text-tinta underline decoration-linha-2 decoration-dashed underline-offset-4 transition-colors hover:bg-linha hover:text-acento"
@@ -43,7 +50,7 @@ function NivelEditavel({
     );
   }
 
-  const valor = lerNivelDigitado(texto);
+  const valor = lerNivelDigitado(texto, nivel);
   function salvar(fechandoPorFora: boolean) {
     if (fechado.current) return;
     if (valor === null) {
@@ -57,7 +64,7 @@ function NivelEditavel({
 
   return (
     <span className="inline-flex items-center gap-1">
-      <span className="text-tinta-3">R$</span>
+      <span className="text-tinta-3">{simboloDaMoeda(mercado)}</span>
       <input
         autoFocus
         type="text"
@@ -98,6 +105,7 @@ export function PainelDeAlerta({
   computador?: boolean;
 }) {
   const id = useId();
+  const reais = (v: number | null) => fmtPreco(estado.mercado, v);
   const {
     alertas,
     autenticado,
@@ -151,7 +159,7 @@ export function PainelDeAlerta({
             <span className="flex-1 font-semibold text-tinta-2">
               {a.direcao === "acima" ? "Subir até" : "Cair até"}{" "}
               {computador && a.ativo ? (
-                <NivelEditavel alerta={a} mover={moverAlerta} />
+                <NivelEditavel alerta={a} mover={moverAlerta} mercado={estado.mercado} nivel={estado.nivel} />
               ) : (
                 <strong className="num text-tinta">{reais(a.preco)}</strong>
               )}
@@ -241,14 +249,18 @@ export function PainelDeAlerta({
           Nível
         </label>
         <div className="flex h-12 items-center gap-2 rounded-xl border border-linha bg-painel-2 px-3.5 focus-within:border-acento">
-          <span className="text-[14px] font-bold text-tinta-3">R$</span>
+          <span className="text-[14px] font-bold text-tinta-3">{simboloDaMoeda(estado.mercado)}</span>
           <input
             id={`${id}-nivel`}
             type="text"
             inputMode="decimal"
             value={preco}
             onChange={(e) => setPreco(e.target.value)}
-            placeholder="0,00"
+            placeholder={
+              estado.precoDeReferencia !== null
+                ? precoParaCampo(estado.mercado, estado.precoDeReferencia)
+                : "0,00"
+            }
             className="num min-w-0 flex-1 bg-transparent text-[18px] font-extrabold outline-none placeholder:text-tinta-3"
           />
           {distancia !== null && (

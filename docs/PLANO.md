@@ -650,3 +650,47 @@ O Suporte caiu de fraco para falhou nesta rodada sem a regra dele mudar: o resul
 
 **Envio da rodada pelo GitHub** (`backtest-enviar.yml`, `scanner/backtest/pacote.py`). O endereço do banco de produção vive só nos segredos do GitHub, e pedir para o usuário achar a credencial no painel travou o envio da pior fase. Agora `scripts/backtest_setups.py empacotar` grava a rodada num JSON compactado, sem os trades; o arquivo sobe cifrado (chave no segredo `BACKTEST_CHAVE`) numa release, e o workflow abre, aplica as migrations e grava. Migration 0021: só a lista de categorias.
 
+## 16. Valuation simples (16/11/2026)
+
+Pedido do usuário: "métodos básicos de valuation no app, nada muito complexo e que dê para automatizar para todas as empresas listadas". Decisões dele, por perguntas:
+
+| Pergunta | Escolha |
+|---|---|
+| Métodos | Graham, Bazin e fluxo de caixa simples (DCF) |
+| Onde aparece | Na ficha do papel e numa lista geral |
+| Como mostra | Preço justo, diferença para o preço de hoje e semáforo por método |
+| Premissas do DCF | Padrão automático, com ajuste na tela |
+
+### As três contas
+
+Todas saem do balanço da CVM que a aba Fundamentos já usa e do fechamento do pregão (`web/src/lib/valuation.ts`).
+
+- **Graham**: raiz de 22,5 × lucro por ação × valor patrimonial por ação. Lucro de 12 meses e patrimônio dos controladores, do último trimestre publicado. Não se aplica com prejuízo ou patrimônio negativo.
+- **Bazin**: provento médio por ação dos últimos 3 anos dividido por 6%. Janelas de 12 meses pela data com; ano sem provento conta como zero.
+- **Fluxo de caixa**: o lucro por ação cresce por 5 anos, depois 4% ao ano para sempre, e tudo é trazido a valor de hoje. Padrão: crescimento = o do lucro de 12 meses da própria empresa nos últimos 2 anos, limitado entre 0% e 15% (4% sem histórico); desconto = juro do Tesouro prefixado de 10 anos (ou a Selic) + 5 pontos. Na ficha, crescimento e desconto têm controle deslizante e o número recalcula na hora. É a versão mais simples do método: usa o lucro como se fosse o caixa do acionista, sem separar investimento, capital de giro nem dívida.
+
+O semáforo de cada método: verde com o preço mais de 10% abaixo do resultado, vermelho mais de 10% acima, amarelo no meio. O resumo conta quantos métodos concordam ("2 de 3 métodos: abaixo do preço justo"), sem tirar média entre eles.
+
+### O que precisou ser consertado no caminho
+
+**Proventos não eram ajustados por desdobramento.** A B3 informa o provento pelo valor por ação da época, e é assim que ele fica no banco. Depois de um desdobramento de 1 para 3, um dividendo antigo de R$ 2,00 era somado inteiro contra um preço três vezes menor. Apareceu na primeira versão da lista: Direcional com preço teto de Bazin de R$ 40,83 para um preço de R$ 10,50. O mesmo erro já estava no **dividend yield de 12 meses** da ficha, desde a estreia da aba.
+
+A correção (`fatorDoSalto` e `fatorAteODia`, em `web/src/lib/fundamentos.ts`): os desdobramentos são reconhecidos pelo salto de abertura nas barras, com a mesma regra do motor de suportes em Python (`gatilhos/matrizes.py`), e cada provento é levado para a escala das ações do dia que a ficha está mostrando. Com isso o Bazin da Direcional foi para R$ 19,35.
+
+Limite conhecido: a detecção só alcança os 400 pregões de barras do banco, e o Bazin olha 3 anos. Desdobramento mais antigo que as barras não é visto. Para esse caso (e para pagamento extraordinário), o Bazin não é calculado quando o provento médio passa de 30% do preço de hoje; a tela diz "fora de escala".
+
+### Onde aparece
+
+- **Ficha**, aba Fundamentos, bloco "Preço justo": os três resultados, o resumo, a conta de cada método com os números usados e os dois controles do fluxo de caixa.
+- **`/valuation`**: todas as empresas com balanço e preço no último pregão, ordenável por método, com busca e filtro de liquidez. Cinco consultas no total (`valuation-dados.ts`), e cada empresa passa pela mesma `indicadoresNaData` da ficha, com as seis camadas de conferência da contagem de ações: o número da lista é o da ficha.
+
+Só para quem está logado, como os setups.
+
+### O que estas contas não são
+
+Não consideram setor, dívida, ciclo, qualidade do lucro nem nada que não esteja nos três ou quatro números de entrada. Banco e seguradora passam pelo Graham e pelo fluxo de caixa como qualquer empresa. Empresa cíclica no pico do lucro parece barata nos três. Servem para olhar todas as empresas com a mesma régua e decidir onde vale abrir o balanço, não para dizer quanto uma empresa vale.
+
+### Fora desta fase
+
+Múltiplos contra a própria história (P/L e EV/EBITDA médios de 5 anos), que foi oferecido e não escolhido; valuation em data passada na lista geral (a ficha já calcula para o pregão que está aberta); ajuste por bonificação pequena (10%, 20%), que a regra do salto não distingue de um gap.
+

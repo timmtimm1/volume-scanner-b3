@@ -43,6 +43,8 @@ type Props = {
   fundamentos: Fundamentos | null;
   /** Suportes e resistencias do trecho do grafico (aba Setups). */
   niveis?: NivelDoGrafico[];
+  /** Juro anual longo (fracao) para a taxa de desconto do bloco "Preço justo". */
+  juro?: number | null;
 };
 
 /**
@@ -127,7 +129,14 @@ function Quadro({ rotulo, valor, nota }: { rotulo: string; valor: string; nota?:
 
 const corDaDirecao = (v: number | null) => ((v ?? 0) >= 0 ? "text-alta" : "text-baixa");
 
-export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = [] }: Props) {
+export function FichaDoPapel({
+  ticker,
+  barras,
+  eventos,
+  fundamentos,
+  niveis = [],
+  juro = null,
+}: Props) {
   const params = useSearchParams();
   const pedido = params.get("data");
   const hoje = useCandleDeHoje(ticker);
@@ -263,9 +272,17 @@ export function FichaDoPapel({ ticker, barras, eventos, fundamentos, niveis = []
   // Montado aqui, e nao no JSX, para a checagem de nulo valer para o TypeScript
   // nos tres lugares que perguntam se ha fundamentos. Criar o elemento nao
   // executa o componente: ele so roda se entrar na arvore.
+  // O bloco "Preço justo" so existe para quem esta logado (como os setups).
+  const logado = estadoDosAlertas.autenticado === true;
+  const valuation = useMemo(() => (logado ? { juro } : null), [logado, juro]);
   const painelDeFundamentos =
     fundamentos !== null && dataDosFundamentos !== null ? (
-      <PainelDeFundamentos dados={fundamentos} barras={barras} data={dataDosFundamentos} />
+      <PainelDeFundamentos
+        dados={fundamentos}
+        barras={barras}
+        data={dataDosFundamentos}
+        valuation={valuation}
+      />
     ) : null;
 
   // So as abas que tem o que mostrar; Noticias sempre existe. Aba escolhida

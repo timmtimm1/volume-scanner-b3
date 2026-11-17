@@ -25,12 +25,14 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from scanner import mercado
+
 revision: str = "0016"
 down_revision: str | None = "0015"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-SCHEMA = "volume_scanner"
+SCHEMA = mercado.schema()
 SAIDAS = "saida IN ('alvo1', 'alvo2', 'alvo3', 'minimas', 'mme9')"
 GRUPOS = "grupo IN ('todos', 'alta', 'contra')"
 

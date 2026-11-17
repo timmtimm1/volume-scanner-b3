@@ -20,9 +20,11 @@ e devolver um calendario errado em silencio seria pior do que falhar.
 
 from __future__ import annotations
 
-from datetime import date, datetime, time, timedelta
+from datetime import UTC, date, datetime, time, timedelta
 from functools import lru_cache
 from zoneinfo import ZoneInfo
+
+from scanner import mercado
 
 # Fuso da B3. "Hoje" para o pregao e o dia em Sao Paulo, nao o do servidor: o
 # runner do Actions roda em UTC, e das 21h a meia-noite de Brasilia ele ja esta
@@ -131,6 +133,9 @@ FIM_DO_PREGAO = time(18, 30)
 
 def hoje_na_b3(agora: datetime | None = None) -> date:
     """O dia corrente em Sao Paulo, independente do fuso da maquina."""
+    if mercado.e_cripto():
+        # "Hoje" em cripto e o dia UTC em andamento, o do candle ainda aberto.
+        return (agora.astimezone(UTC) if agora is not None else datetime.now(UTC)).date()
     momento = agora if agora is not None else datetime.now(FUSO_B3)
     return momento.astimezone(FUSO_B3).date()
 
@@ -147,6 +152,12 @@ def ultimo_pregao_encerrado(agora: datetime | None = None) -> date:
     Brasilia ele ja esta no dia seguinte. Numa maquina em Brasilia, o mesmo
     comando pedia o pregao de ontem.
     """
+    if mercado.e_cripto():
+        # O candle diario de cripto fecha a meia-noite UTC (21h de Brasilia) e
+        # leva a data UTC do dia que terminou: o ultimo encerrado e sempre a
+        # vespera, no relogio UTC.
+        utc = agora.astimezone(UTC) if agora is not None else datetime.now(UTC)
+        return utc.date() - timedelta(days=1)
     momento = (agora if agora is not None else datetime.now(FUSO_B3)).astimezone(FUSO_B3)
     hoje = momento.date()
     if is_trading_day(hoje) and momento.time() >= FIM_DO_PREGAO:
@@ -160,7 +171,13 @@ def is_holiday(day: date) -> bool:
 
 
 def is_trading_day(day: date) -> bool:
-    """True se houve pregao: dia util que nao e feriado de bolsa."""
+    """True se houve pregao: dia util que nao e feriado de bolsa.
+
+    Em cripto (`SCANNER_MERCADO=cripto`) todo dia e dia de negociacao: nao ha
+    feriado, fim de semana nem ano fora da politica.
+    """
+    if mercado.e_cripto():
+        return True
     _check_year(day.year)
     return day.weekday() < 5 and day not in holidays(day.year)
 

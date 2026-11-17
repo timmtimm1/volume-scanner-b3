@@ -46,6 +46,7 @@ import numpy.typing as npt
 import pandas as pd
 from sqlalchemy import Engine
 
+from scanner import mercado
 from scanner.backtest.simulador import (
     ABERTO,
     ALVO,
@@ -61,7 +62,7 @@ from scanner.backtest.simulador import (
 from scanner.backtest.suite import CUSTO
 from scanner.calendar import next_trading_day
 from scanner.config import PadraoDoSetup, ScannerConfig, SetupsConfig
-from scanner.gatilhos.classicos import CENTAVO, NOMES
+from scanner.gatilhos.classicos import NOMES
 from scanner.gatilhos.regra import Analise, analisar, niveis, setups, setups_classicos
 from scanner.storage.repository import (
     atualizar_setups,
@@ -221,7 +222,7 @@ def avancar_pela_saida(abertos: pd.DataFrame, a: Analise) -> pd.DataFrame:
         return vazio
     m = a.m
     ultimo = len(m.datas) - 1
-    tick = CENTAVO * a.ajuste
+    tick = mercado.tick(m.fechamento, a.ajuste)
     precos = Precos.de(m.abertura, m.maxima, m.minima, m.fechamento, tick)
     esc0 = a.ajuste[d0, col]
     gatilho = _num(f["maxima"]) * esc0 + tick[d0, col]
@@ -321,6 +322,17 @@ def resultados(gravados: pd.DataFrame, a: Analise) -> pd.DataFrame:
     return pd.DataFrame(out)
 
 
+def _acima_da_maxima(maxima: float) -> Decimal:
+    """O preco do alerta: um passo de preco acima da maxima do candle.
+
+    Na B3 o passo e 1 centavo e o preco tem duas casas. Em cripto o passo e
+    relativo ao preco (`mercado.tick_do_preco`) e as casas acompanham.
+    """
+    passo = mercado.tick_do_preco(maxima)
+    casas = max(2, int(-np.floor(np.log10(passo)))) if mercado.e_cripto() else 2
+    return Decimal(str(round(maxima + passo, casas)))
+
+
 def criar_alertas(
     engine: Engine,
     gravados: pd.DataFrame,
@@ -346,7 +358,7 @@ def criar_alertas(
             engine,
             str(linha["ticker"]),
             candle,
-            Decimal(str(round(float(linha["maxima"]) + 0.01, 2))),
+            _acima_da_maxima(float(linha["maxima"])),
             "acima",
             expira_em=next_trading_day(candle),
             setup_id=int(linha["id"]),

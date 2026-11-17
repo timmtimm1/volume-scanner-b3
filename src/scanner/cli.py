@@ -13,7 +13,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 import pandas as pd
 import typer
 
-from scanner import __version__
+from scanner import __version__, mercado
 from scanner.calendar import hoje_na_b3, ultimo_pregao_encerrado
 from scanner.config import load_config
 
@@ -446,6 +446,20 @@ def daily(
     if dry_run:
         # A carga grava; num ensaio ela fica de fora e vale o que ja esta la.
         etapa(1, "[dry-run] carga pulada; vale o que ja esta no banco")
+    elif mercado.e_cripto():
+        # Cripto nao tem arquivo do pregao para esperar: o candle fecha a
+        # meia-noite UTC e a Binance responde na hora. Dia ainda aberto nao se
+        # processa -- o candle dele muda a cada negocio.
+        from scanner.cripto.carga import carregar as carregar_cripto
+
+        if dia >= hoje:
+            typer.secho(
+                f"[pulado] o candle de {dia.isoformat()} ainda nao fechou (fecha as 21h de "
+                "Brasilia). Use --date ultimo.",
+                fg=typer.colors.YELLOW,
+            )
+            return
+        etapa(1, carregar_cripto(engine, config.cripto))
     else:
         from scanner.ingest.download import DownloadTemporarioError
 

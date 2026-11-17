@@ -99,3 +99,22 @@ jobs:
       ela ja enviou, esta nao repete nada: o resumo fica marcado como enviado.
       Nesta passada, pregao ainda ausente vira aviso no Telegram, em vez de
       silencio.
+
+  cripto-noite:
+    workflow: cripto.yml
+    cron: "10 21 * * *"
+    porque: >-
+      21:10, todos os dias. O candle diario de cripto fecha as 21:00 de
+      Brasilia (meia-noite UTC) e a Binance ja responde com ele fechado; os dez
+      minutos sao folga. Cripto nao tem fim de semana nem feriado, por isso o
+      cron nao tem dia da semana.
+
+  cripto-reserva:
+    workflow: cripto.yml
+    cron: "10 0 * * *"
+    porque: >-
+      00:10, todos os dias. Reserva da noite: se as 21:10 a Binance ou o GitHub
+      falharam, esta processa o mesmo candle (`ultimo` continua sendo o que
+      fechou as 21:00). Se a primeira ja resolveu, sai na primeira consulta ao
+      banco, pelo `--so-se-faltar` que o workflow sempre pede.
+

@@ -1526,6 +1526,66 @@ O que cada parte faz:
 O número que importa é o setup **contra o controle**: em 2016–2026 o controle ganhou
 uns +0,05 R por trade só por estar comprado num mercado que subiu.
 
+## Cripto
+
+A aba **Cripto** aplica os mesmos setups às 50 maiores criptomoedas (seção 15 do [plano](docs/PLANO.md)). Não é um segundo sistema: é o mesmo `scanner daily`, com a variável `SCANNER_MERCADO=cripto`, gravando num schema separado do mesmo banco (`cripto_scanner`). Ações e criptos nunca dividem tabela, universo nem alerta.
+
+| | B3 | Cripto |
+|---|---|---|
+| Dado | COTAHIST | candle diário da Binance, par com USDT |
+| Universo | filtro de liquidez | 50 maiores por valor de mercado (CoinGecko), sem stablecoin |
+| Dia | pregão | todo dia; o candle fecha às 21h de Brasília |
+| Passo de preço | 1 centavo | a 5ª casa significativa do preço |
+| Custo no backtest | 0,08% por lado | 0,15% por lado |
+| Backtest | escolhe em 1995–2015, confere em 2016–2026 | escolhe em 2017–2021, confere em 2022–2026 |
+| Config | `config.yaml` | `config-cripto.yaml` |
+| Workflow | `daily.yml` | `cripto.yml`, todo dia às 21:10 e 00:10 (cron externo) |
+
+Tudo que muda de um mercado para o outro está em [`src/scanner/mercado.py`](src/scanner/mercado.py) e, no site, em [`web/src/lib/mercado.ts`](web/src/lib/mercado.ts).
+
+### Rodar na máquina
+
+```bash
+export SCANNER_MERCADO=cripto
+uv run alembic upgrade head            # cria o schema cripto_scanner
+uv run scanner daily --date ultimo     # carga, z-score, setups, níveis e resumo
+```
+
+A primeira carga traz 400 dias de cada moeda; as seguintes, só o candle que falta.
+
+### A agenda
+
+Dois jobs no cron-job.org, no mesmo formato dos outros (fuso `America/Sao_Paulo`): POST em `https://api.github.com/repos/<owner>/<repo>/actions/workflows/cripto.yml/dispatches` com corpo `{"ref":"main"}`, às `10 21 * * *` (`cripto-noite`) e `10 0 * * *` (`cripto-reserva`). O jeito mais rápido é clonar um job que já existe e trocar o endereço e o horário. A fonte de verdade é o [`cron-externo.yml`](.github/cron-externo.yml). Sem os jobs, o workflow só roda à mão (Actions → cripto → Run workflow); um dia perdido se resolve sozinho na execução seguinte, que carrega os candles que faltam.
+
+### O backtest de cripto
+
+```bash
+export SCANNER_MERCADO=cripto
+# do Brasil, o api.binance.com é 25 vezes mais rápido que o espelho usado no Actions
+SCANNER_BINANCE_URL=https://api.binance.com/api/v3 \
+  uv run python scripts/cripto_historico.py data/cripto          # ~25 min, 684 moedas
+uv run python scripts/backtest_setups.py processar data/cripto/barras.pkl data/cripto/v1
+uv run python scripts/backtest_setups.py relatorio data/cripto/v1
+uv run python scripts/backtest_setups.py empacotar data/cripto/v1
+```
+
+Para a produção, o pacote sobe cifrado na mesma release do backtest das ações, com outro nome, e o workflow grava no schema de cripto:
+
+```bash
+openssl enc -aes-256-cbc -pbkdf2 -pass file:data/backtest_chave.txt \
+  -in data/cripto/v1/rodada.json.gz -out rodada-cripto.json.gz.enc
+gh release upload backtest-rodada rodada-cripto.json.gz.enc --clobber
+gh workflow run backtest-enviar.yml -f mercado=cripto
+```
+
+### O que o backtest disse
+
+**Os 13 setups de compra que tiveram trades suficientes falharam em cripto.** Todos foram bem em 2017–2021 e nenhum ganhou da moeda sorteada em 2022–2026; a tabela está na seção 15 do plano. Por isso o semáforo da aba está vermelho e nenhum setup de cripto tem alerta ligado. A aba continua mostrando as entradas (a regra da casa é não esconder o que falhou), mas como histórico ruim.
+
+### O que ainda não tem em cripto
+
+Diário de trades, alerta de preço durante o dia, ajustes por setup e a página de backtest completa (curva e ano a ano). Estão na lista da seção 15.
+
 ## Valuation
 
 Três contas simples de "preço justo", para todas as empresas com balanço na CVM (seção 16 do [plano](docs/PLANO.md)):

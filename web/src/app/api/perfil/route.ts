@@ -7,15 +7,22 @@
 
 import { NextResponse } from "next/server";
 import { ehDono } from "@/auth";
+import { mercadoDe } from "@/lib/mercado";
+import { noMercado } from "@/lib/mercado-servidor";
 import { PerfilInvalido, faltaAMigration, gravarPerfil, lerPerfil } from "@/lib/perfil";
 
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+/** `?mercado=cripto` le e grava o perfil de cripto (capital em dolares), guardado a parte. */
+function mercadoDoPedido(pedido: Request) {
+  return mercadoDe(new URL(pedido.url).searchParams.get("mercado"));
+}
+
+export async function GET(pedido: Request) {
   if (!(await ehDono())) {
     return NextResponse.json({ erro: "nao autorizado" }, { status: 401 });
   }
-  return NextResponse.json({ perfil: await lerPerfil() });
+  return NextResponse.json({ perfil: await noMercado(mercadoDoPedido(pedido), lerPerfil) });
 }
 
 export async function PUT(pedido: Request) {
@@ -29,7 +36,9 @@ export async function PUT(pedido: Request) {
     return NextResponse.json({ erro: "pedido invalido" }, { status: 400 });
   }
   try {
-    return NextResponse.json({ perfil: await gravarPerfil(corpo) });
+    return NextResponse.json({
+      perfil: await noMercado(mercadoDoPedido(pedido), () => gravarPerfil(corpo)),
+    });
   } catch (erro) {
     if (erro instanceof PerfilInvalido) {
       return NextResponse.json({ erro: erro.message }, { status: 400 });

@@ -19,12 +19,14 @@ from collections.abc import Sequence
 import sqlalchemy as sa
 from alembic import op
 
+from scanner import mercado
+
 revision: str = "0020"
 down_revision: str | None = "0019"
 branch_labels: str | Sequence[str] | None = None
 depends_on: str | Sequence[str] | None = None
 
-SCHEMA = "volume_scanner"
+SCHEMA = mercado.schema()
 
 
 def upgrade() -> None:

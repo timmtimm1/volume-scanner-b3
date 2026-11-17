@@ -23,15 +23,19 @@ import numpy as np
 import numpy.typing as npt
 import pandas as pd
 
+from scanner import mercado
 from scanner.backtest.simulador import ABERTO, MOTIVOS
 
 F64 = npt.NDArray[np.float64]
 
-ESCOLHA = (1995, 2015)
-CONFERENCIA = (2016, 2026)
+# Os anos dependem do mercado do processo: 1995-2015 e 2016-2026 na B3,
+# 2017-2021 e 2022-2026 em cripto (`scanner.mercado`).
+ESCOLHA, CONFERENCIA = mercado.periodos()
+ROTULO_ESCOLHA = f"{ESCOLHA[0]}-{ESCOLHA[1]}"
+ROTULO_CONFERENCIA = f"{CONFERENCIA[0]}-{CONFERENCIA[1]}"
 PERIODOS: dict[str, tuple[int, int]] = {
-    "1995-2015": ESCOLHA,
-    "2016-2026": CONFERENCIA,
+    ROTULO_ESCOLHA: ESCOLHA,
+    ROTULO_CONFERENCIA: CONFERENCIA,
     "tudo": (ESCOLHA[0], CONFERENCIA[1]),
 }
 GRUPOS = ("todos", "alta", "contra")
@@ -201,14 +205,14 @@ def nivel_da_conferencia(expectativa: float, ic_baixo: float, diferenca: float) 
 def escolher(g: pd.DataFrame) -> pd.DataFrame:
     """Por setup: a combinacao escolhida em 1995-2015 e como ela foi em 2016-2026."""
     linhas: list[dict[str, object]] = []
-    dentro = g[(g["periodo"] == "1995-2015") & (g["n"] >= MINIMO_PARA_ESCOLHER)]
+    dentro = g[(g["periodo"] == ROTULO_ESCOLHA) & (g["n"] >= MINIMO_PARA_ESCOLHER)]
     fora = {
         (str(x["setup"]), str(x["saida"]), str(x["grupo"])): x
-        for x in g[g["periodo"] == "2016-2026"].to_dict("records")
+        for x in g[g["periodo"] == ROTULO_CONFERENCIA].to_dict("records")
     }
     for setup, parte in g.groupby("setup", observed=True):
         candidatos = dentro[dentro["setup"] == setup]
-        combinacoes = len(parte[parte["periodo"] == "1995-2015"])
+        combinacoes = len(parte[parte["periodo"] == ROTULO_ESCOLHA])
         if candidatos.empty:
             linhas.append(
                 {"setup": setup, "nivel": FALHOU, "passou": False, "combinacoes": combinacoes}

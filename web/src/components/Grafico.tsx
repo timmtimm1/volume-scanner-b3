@@ -133,6 +133,8 @@ type Props = {
   /** Setas dos setups do papel (so logado). */
   setups?: MarcaDeSetup[];
   /** Entrada, stop e alvo do setup em aberto do papel (so logado). */
+  /** Casas decimais do eixo de preco: 2 na B3; em cripto, as da moeda (ate 10). */
+  casasDoPreco?: number;
   linhasDeSetup?: LinhaDeSetup[];
   /**
    * O trade aberto do papel, ja marcado a mercado, para a linha tracejada do
@@ -232,6 +234,7 @@ export function Grafico({
   posicao = null,
   regua,
   edicaoDeAlertas,
+  casasDoPreco = 2,
 }: Props) {
   const idBase = useId();
   const { tema } = useTema();
@@ -401,7 +404,7 @@ export function Grafico({
       borderDownColor: SERIE.baixa,
       wickUpColor: SERIE.alta,
       wickDownColor: SERIE.baixa,
-      priceFormat: { type: "price", precision: 2, minMove: 0.01 },
+      priceFormat: { type: "price", precision: casasDoPreco, minMove: 10 ** -casasDoPreco },
     });
     serie.current = candles;
     /**
@@ -529,7 +532,7 @@ export function Grafico({
       // ao antigo perde o sentido.
       limparRegua();
     };
-  }, [barras, eventos, destaque]);
+  }, [barras, eventos, destaque, casasDoPreco]);
 
   // A superficie acompanha o tema sem reconstruir o grafico (e sem perder zoom).
   useEffect(() => {

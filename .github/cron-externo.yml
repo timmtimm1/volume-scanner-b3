@@ -122,3 +122,13 @@ jobs:
       fechou as 21:00). Se a primeira ja resolveu, sai na primeira consulta ao
       banco, pelo `--so-se-faltar` que o workflow sempre pede.
 
+  cripto-rompimentos:
+    workflow: cripto-rompimentos.yml
+    cron: "7-59/15 * * * *"
+    porque: >-
+      De 15 em 15 minutos (minutos 07, 22, 37 e 52), todos os dias, 24 horas:
+      96 passadas por dia. Confere se alguma entrada armada da aba Cripto passou
+      do preco de compra e avisa no Telegram. Cripto nao fecha, entao nao ha
+      janela de horario nem dia da semana. O minuto 7 evita a fila da hora
+      cheia e nao coincide com os disparos do pregao nem do cripto.
+

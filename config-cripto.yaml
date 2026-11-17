@@ -40,27 +40,29 @@ setups:
   toques_gatilho: 3
   toques_nivel: 2
   prazo_pregoes: 20
-  # Sem alerta de preco durante o dia: a checagem de rompimento e da B3 (brapi
-  # e Yahoo). Em cripto o aviso e o resumo das 21h com as entradas armadas.
-  alerta: false
+  # Aviso de toda entrada que confirmar (decisao do usuario em 17/11/2026):
+  # cada setup armado ganha um alerta "acima da maxima", conferido de 15 em 15
+  # minutos contra a maxima do dia UTC na Binance (workflow cripto-rompimentos).
+  alerta: true
   medias: [[MME, 9], [MMA, 20]]
   # A saida de cada setup e a que o backtest de cripto escolheu em 2017-2021
-  # (rodada v1, 16/11/2026). Na conferencia de 2022-2026 TODOS falharam: o
-  # semaforo da aba fica vermelho, e por isso nenhum tem alerta ligado.
+  # (rodada v1, 16/11/2026). Na conferencia de 2022-2026 todos falharam (o
+  # semaforo fica vermelho), mas o usuario quer o aviso de todas as entradas
+  # (17/11/2026): o alerta vai ligado em todos, e a cor esta no cartao.
   # Contracao e reversao no suporte nao chegaram a 100 trades para escolher.
   padroes:
-    reversao: {alerta: false, saida: alvo3}
-    media: {alerta: false, saida: mme9}
-    forca: {alerta: false, saida: alvo1}
-    "9.1": {alerta: false, saida: mme9}
-    "9.2": {alerta: false, saida: mme9}
-    "9.3": {alerta: false, saida: mme9}
-    "9.4": {alerta: false, saida: mme9}
-    "123": {alerta: false, saida: mme9}
-    pfr: {alerta: false, saida: mme9}
-    "123_suporte": {alerta: false, saida: alvo3}
-    pfr_suporte: {alerta: false, saida: mme9}
-    mma20: {alerta: false, saida: mme9}
-    pullback: {alerta: false, saida: mme9}
-    contracao: {alerta: false, saida: alvo3}
-    rompimento: {alerta: false, saida: alvo3}
+    reversao: {alerta: true, saida: alvo3}
+    media: {alerta: true, saida: mme9}
+    forca: {alerta: true, saida: alvo1}
+    "9.1": {alerta: true, saida: mme9}
+    "9.2": {alerta: true, saida: mme9}
+    "9.3": {alerta: true, saida: mme9}
+    "9.4": {alerta: true, saida: mme9}
+    "123": {alerta: true, saida: mme9}
+    pfr: {alerta: true, saida: mme9}
+    "123_suporte": {alerta: true, saida: alvo3}
+    pfr_suporte: {alerta: true, saida: mme9}
+    mma20: {alerta: true, saida: mme9}
+    pullback: {alerta: true, saida: mme9}
+    contracao: {alerta: true, saida: alvo3}
+    rompimento: {alerta: true, saida: alvo3}

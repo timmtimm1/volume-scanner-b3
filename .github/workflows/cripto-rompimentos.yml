@@ -1,0 +1,72 @@
+name: cripto rompimentos
+
+# Os avisos de entrada da aba Cripto: de 15 em 15 minutos, 24 horas por dia,
+# confere se alguma entrada armada passou do preco de compra e avisa no
+# Telegram (decisao do usuario em 17/11/2026: toda entrada, de qualquer cor).
+#
+# E o `scanner alerta checar` das acoes com SCANNER_MERCADO=cripto: le os
+# alertas do schema de cripto, que o pipeline das 21h cria para cada setup
+# armado, e pergunta a Binance a MAXIMA do dia UTC de cada moeda
+# (`scanner/cotacoes/binance.py`). Com a maxima, um pico que tocou o gatilho
+# entre duas passadas tambem conta, como na regra da confirmacao.
+#
+# Disparado pelo cron externo (cron-job.org), como os outros: agenda em
+# .github/cron-externo.yml. Cripto nao tem feriado nem fim de semana, entao nao
+# ha a guarda de "hoje e pregao?" do rompimentos.yml.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: cripto-rompimentos
+  cancel-in-progress: false
+
+jobs:
+  checar:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    env:
+      SCANNER_MERCADO: cripto
+      SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
+      SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
+      SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
+      SCANNER_WEB_BASE_URL: ${{ vars.SCANNER_WEB_BASE_URL }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Instalar dependencias
+        id: deps
+        run: uv sync --locked --no-dev
+
+      - name: Checar as entradas de cripto
+        id: checagem
+        run: uv run --no-sync scanner alerta checar --migrar-antes
+
+      - name: Avisar no Telegram se algo falhou
+        if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
+        shell: bash
+        env:
+          RES_DEPS: ${{ steps.deps.outcome }}
+          RES_CHECAGEM: ${{ steps.checagem.outcome }}
+        run: |
+          onde="passo desconhecido"
+          if [ "$RES_DEPS" = failure ]; then
+            onde="instalacao das dependencias"
+          elif [ "$RES_CHECAGEM" = failure ]; then
+            onde="migrations ou checagem das entradas de cripto"
+          fi
+          texto=$(printf '⚠️ <b>A checagem das entradas de cripto falhou</b>\nOnde: %s\n\nOs alertas continuam ativos e a proxima passada tenta de novo.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
+            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$texto"

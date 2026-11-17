@@ -10,6 +10,7 @@ import {
   contar,
   escolhaDoTexto,
   nomeDaEscolha,
+  passaNoFiltro,
 } from "./tendencia.ts";
 
 const todas = (v) => ({
@@ -81,12 +82,17 @@ describe("alternar", () => {
 });
 
 describe("escolhaDoTexto", () => {
-  it("le o que o painel guardou", () => {
-    const texto = JSON.stringify({ tipo: "MMA", periodos: [200, 9], estado: "baixa" });
+  it("le o que o filtro guardou", () => {
+    const texto = JSON.stringify({ tipo: "MMA", periodos: [200, 9], filtro: "baixa" });
     assert.deepEqual(escolhaDoTexto(texto), {
       escolha: { tipo: "MMA", periodos: [9, 200] },
-      estado: "baixa",
+      filtro: "baixa",
     });
+  });
+
+  it("sem nada guardado, nao filtra: Todas, com MME 20 + 80", () => {
+    assert.deepEqual(escolhaDoTexto(null), { escolha: ESCOLHA_PADRAO, filtro: "todas" });
+    assert.equal(escolhaDoTexto(JSON.stringify({ tipo: "MME", periodos: [9], filtro: "x" })).filtro, "todas");
   });
 
   it("qualquer coisa estranha volta ao padrao", () => {
@@ -95,3 +101,14 @@ describe("escolhaDoTexto", () => {
     }
   });
 });
+
+describe("passaNoFiltro", () => {
+  it("todas deixa passar tudo, inclusive sem historico; os outros, so o proprio estado", () => {
+    assert.equal(passaNoFiltro(null, "todas"), true);
+    assert.equal(passaNoFiltro("baixa", "todas"), true);
+    assert.equal(passaNoFiltro("alta", "alta"), true);
+    assert.equal(passaNoFiltro("lateral", "alta"), false);
+    assert.equal(passaNoFiltro(null, "alta"), false);
+  });
+});
+

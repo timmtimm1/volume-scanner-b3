@@ -354,6 +354,41 @@ def test_bloco_de_trades_nao_estoura_a_largura_do_celular() -> None:
         assert len(linha) <= LARGURA_DO_CELULAR, f"{len(linha)} colunas: {linha}"
 
 
+def test_bloco_de_trades_de_cripto_fala_em_moeda_e_dolar(monkeypatch: pytest.MonkeyPatch) -> None:
+    resumo = resumir(barras(["AAAA3"]))
+    trades = trades_frame(
+        [
+            {
+                "ticker": "BTC",
+                "quantidade": 0.000769,
+                "resultado": -1_234.56,
+                "custo_comprado": 50_000.0,
+                "encerrado": False,
+            },
+            {
+                "ticker": "RENDER",
+                "quantidade": 1_234_567.0,
+                "resultado": 12.3,
+                "custo_comprado": 100.0,
+                "encerrado": False,
+            },
+        ]
+    )
+    payload = payload_do_resumo(resumo, trades)
+    monkeypatch.setenv("SCANNER_MERCADO", "cripto")
+    texto = format_resumo(payload, "https://exemplo.app")
+
+    bloco = texto[texto.index("<b>Seus trades</b>") :]
+    tabela = bloco[bloco.index("<pre>") + len("<pre>") : bloco.index("</pre>")]
+    assert "Moeda" in tabela and "US$" in tabela and "Ações" not in tabela
+    assert "0,00077" in tabela  # fracionada, e nao "0"
+    assert "1,2mi" in tabela
+    for linha in tabela.splitlines():
+        assert len(linha) <= LARGURA_DO_CELULAR, f"{len(linha)} colunas: {linha}"
+    # o link ja abre o diario filtrado em cripto
+    assert 'href="https://exemplo.app/trades/?mercado=cripto"' in bloco
+
+
 def test_top_n_invalido_falha_alto() -> None:
     from pydantic import ValidationError
 

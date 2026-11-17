@@ -220,7 +220,7 @@ class Trade(Base):
         CheckConstraint(
             "categoria_setup IS NULL OR categoria_setup IN ('reversao', 'forca', 'media', "
             "'9.1', '9.2', '9.3', '9.4', '123', 'pfr', '123_suporte', 'pfr_suporte', "
-            "'mma20', 'pullback', 'contracao', 'rompimento')",
+            "'mma20', 'pullback', 'contracao', 'rompimento', 'rsi_estudo')",
             name="ck_trades_categoria_setup",
         ),
         CheckConstraint("stop IS NULL OR stop > 0", name="ck_trades_stop_positivo"),
@@ -241,7 +241,15 @@ class Trade(Base):
         ForeignKey(f"{SCHEMA}.setups.id", ondelete="SET NULL", name="fk_trades_setup"),
     )
     categoria_setup: Mapped[str | None] = mapped_column(Text)
-    stop: Mapped[Decimal | None] = mapped_column(Numeric(12, 2))
+    # Dez casas desde a migration 0027: em cripto o stop e de moeda a 0,000004.
+    stop: Mapped[Decimal | None] = mapped_column(Numeric(28, 10))
+    # Trade que nasceu do sinal de reversao no RSI do estudo de cripto (0027).
+    sinal_estudo_id: Mapped[int | None] = mapped_column(
+        BigInteger,
+        ForeignKey(
+            f"{SCHEMA}.sinais_estudo.id", ondelete="SET NULL", name="fk_trades_sinal_estudo"
+        ),
+    )
 
 
 class TradeOperacao(Base):
@@ -271,10 +279,12 @@ class TradeOperacao(Base):
     )
     tipo: Mapped[str] = mapped_column(Text, nullable=False)
     data: Mapped[date] = mapped_column(Date, nullable=False)
-    quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
-    preco: Mapped[Decimal] = mapped_column(Numeric(12, 2), nullable=False)
-    quantidade_apos: Mapped[int] = mapped_column(Integer, nullable=False)
-    preco_medio_apos: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    # Quantidade fracionada e preco com dez casas desde a migration 0027
+    # (cripto). Na B3 o site continua aceitando so acoes inteiras e centavos.
+    quantidade: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    preco: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    quantidade_apos: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    preco_medio_apos: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
     custo_comprado_apos: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     realizado_apos: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     criado_em: Mapped[datetime] = mapped_column(
@@ -299,8 +309,8 @@ class TradeSnapshot(Base):
         BigInteger, ForeignKey(f"{SCHEMA}.trades.id", ondelete="CASCADE"), primary_key=True
     )
     trade_date: Mapped[date] = mapped_column(Date, primary_key=True)
-    quantidade: Mapped[int] = mapped_column(Integer, nullable=False)
-    preco_medio: Mapped[Decimal] = mapped_column(Numeric(18, 6), nullable=False)
+    quantidade: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
+    preco_medio: Mapped[Decimal] = mapped_column(Numeric(28, 10), nullable=False)
     custo_comprado: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     realizado: Mapped[Decimal] = mapped_column(Numeric(16, 2), nullable=False)
     # Mesma precisao de DailyBar.close: e de onde este valor vem.

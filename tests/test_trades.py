@@ -230,6 +230,38 @@ def test_trade_aberto_depois_de_ate_nao_gera_nada() -> None:
     assert saida.empty
 
 
+def test_posicao_fracionada_de_cripto_marca_sem_arredondar_a_quantidade() -> None:
+    """Compra de 0,0153 BTC a 65.000 com a taxa saindo da moeda: ficam 0,0152847.
+
+    O preco medio e o custo dividido pelas moedas que sobraram (994,50 /
+    0,0152847). O Python nao recalcula nada disso; so nao pode truncar a
+    quantidade para inteiro, como fazia antes da migration 0027 (dava zero).
+    """
+    operacoes = pd.DataFrame(
+        [
+            {
+                "id": 1,
+                "trade_id": 1,
+                "data": date(2026, 11, 17),
+                "quantidade_apos": Decimal("0.0152847000"),
+                "preco_medio_apos": Decimal("65065.0650650651"),
+                "custo_comprado_apos": Decimal("994.50"),
+                "realizado_apos": Decimal("0.00"),
+            }
+        ]
+    )
+    bars = _bars_df({date(2026, 11, 17): 66_000.0}, ticker="BTC")
+    trades = _trades_df(ticker="BTC", aberto_em=date(2026, 11, 17))
+
+    saida = marcar_a_mercado(trades, operacoes, bars, date(2026, 11, 17))
+
+    linha = saida.iloc[0]
+    assert float(linha["quantidade"]) == pytest.approx(0.0152847)
+    assert float(linha["valor_posicao"]) == pytest.approx(1008.79)  # 0,0152847 x 66.000
+    # 0,0152847 x (66.000 - 65.065,065...) = 14,29
+    assert float(linha["resultado"]) == pytest.approx(14.29)
+
+
 TRADES_COLS = ["id", "ticker", "aberto_em", "encerrado_em", "ultimo_snapshot"]
 OPERACOES_COLS = [
     "id",

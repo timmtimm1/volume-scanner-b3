@@ -750,7 +750,8 @@ def trades_do_pregao(engine: Engine, dia: date) -> pd.DataFrame:
     with engine.connect() as conn:
         frame = pd.read_sql(stmt, conn)
 
-    frame["quantidade"] = frame["quantidade"].astype("int64")
+    # Fracionada em cripto (migration 0027): float nos dois mercados.
+    frame["quantidade"] = pd.to_numeric(frame["quantidade"], errors="coerce").astype(float)
     frame["resultado"] = pd.to_numeric(frame["resultado"], errors="coerce").astype(float)
     frame["custo_comprado"] = pd.to_numeric(frame["custo_comprado"], errors="coerce").astype(float)
     frame["encerrado"] = frame["encerrado"].astype(bool)

@@ -1,6 +1,6 @@
 /**
  * O que o historico guarda para quem sai e volta: os filtros, quantas linhas
- * estavam abertas, o evento escolhido na previa e a altura da rolagem.
+ * estavam abertas, o papel escolhido na previa e a altura da rolagem.
  *
  * Fica no `sessionStorage` da aba. Abrir a ficha e voltar devolve a tela como
  * estava; fechar a aba esquece.
@@ -18,18 +18,17 @@ export type EstadoDoHistorico = {
   ate: string;
   ordemZ: OrdemDoZ;
   linhas: number;
-  /** `chaveDoEvento` do evento na previa, ou null para o primeiro da lista. */
+  /**
+   * O ticker do papel na previa, ou null para o primeiro da lista. Ate
+   * 18/11/2026 era "TICKER|data" (uma linha por evento); um valor salvo assim
+   * nao casa com nenhum papel e a previa volta ao primeiro, sem erro.
+   */
   selecionado: string | null;
   rolagem: number;
 };
 
 /** O teto do controle de z minimo da tela. */
 export const TETO_DO_CORTE = 8;
-
-/** Um evento e um papel num pregao: o par e unico no historico. */
-export function chaveDoEvento(e: { ticker: string; tradeDate: string }): string {
-  return `${e.ticker}|${e.tradeDate}`;
-}
 
 const DATA = /^\d{4}-\d{2}-\d{2}$/;
 

@@ -64,3 +64,41 @@ export function linhaDoHistorico(e: Evento): LinhaDoHistorico {
     volumeFinancial: e.volumeFinancial,
   };
 }
+
+/**
+ * Um papel na lista do historico: o evento mais recente dele (o que a linha
+ * mostra e o grafico centraliza) e quantos eventos ele teve.
+ */
+export type PapelDoHistorico = LinhaDoHistorico & {
+  /** Quantos eventos do papel passaram nos filtros. A linha mostra o ultimo. */
+  eventos: number;
+};
+
+/**
+ * Junta os eventos por papel: uma linha por papel, e nao uma por evento
+ * (pedido de 18/11/2026). Antes um papel agitado aparecia cinco vezes seguidas
+ * na lista; agora aparece uma, e os outros eventos dele ficam marcados no
+ * grafico (o candle dourado).
+ *
+ * Recebe os eventos JA filtrados (z minimo, periodo, busca): a linha leva o
+ * ultimo evento que passou, e a contagem e dos que passaram. A ordem da saida e
+ * a do evento mais recente de cada papel, do mais novo para o mais antigo; no
+ * mesmo pregao, a ordem em que chegaram (a do banco, maior z primeiro).
+ */
+export function agruparPorPapel(eventos: LinhaDoHistorico[]): PapelDoHistorico[] {
+  const porPapel = new Map<string, PapelDoHistorico>();
+  for (const e of eventos) {
+    const atual = porPapel.get(e.ticker);
+    if (!atual) {
+      porPapel.set(e.ticker, { ...e, eventos: 1 });
+    } else if (e.tradeDate > atual.tradeDate) {
+      porPapel.set(e.ticker, { ...e, eventos: atual.eventos + 1 });
+    } else {
+      atual.eventos += 1;
+    }
+  }
+  // `sort` e estavel: no mesmo pregao fica a ordem de chegada.
+  return [...porPapel.values()].sort((a, b) =>
+    a.tradeDate === b.tradeDate ? 0 : a.tradeDate > b.tradeDate ? -1 : 1,
+  );
+}

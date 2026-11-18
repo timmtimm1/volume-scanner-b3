@@ -13,13 +13,13 @@ import {
   useSyncExternalStore,
 } from "react";
 import {
-  chaveDoEvento,
   type EstadoDoHistorico,
   lerEstadoDoHistorico,
   type OrdemDoZ,
   TETO_DO_CORTE,
   temFiltro,
 } from "@/lib/estado-do-historico";
+import { agruparPorPapel } from "@/lib/historico";
 import {
   data as fmtData,
   dinheiro,
@@ -106,12 +106,16 @@ const noServidor = () => false;
  * Filtra por papel, faixa de z e periodo, como a Tela 3 do plano pede. O
  * periodo vai ate onde os eventos carregados alcancam; o cabecalho diz qual e.
  *
- * No computador, clicar num evento mostra o grafico dele na previa ao lado, sem
- * sair da lista; as setas passam de evento em evento e o Enter abre a ficha. No
+ * Uma linha por papel, e nao por evento (pedido de 18/11/2026): a linha mostra
+ * o evento mais recente do papel que passou nos filtros e quantos ele teve; os
+ * outros ficam marcados no grafico, no candle dourado.
+ *
+ * No computador, clicar num papel mostra o grafico dele na previa ao lado, sem
+ * sair da lista; as setas passam de papel em papel e o Enter abre a ficha. No
  * celular, o toque abre a ficha, como sempre.
  *
  * Quem abre a ficha e volta encontra a tela como deixou: filtros, linhas
- * abertas, evento escolhido e rolagem.
+ * abertas, papel escolhido e rolagem.
  */
 export function TabelaDoHistorico(props: Props) {
   // No servidor e na hidratacao nao ha estado salvo: o HTML estatico sai com os
@@ -156,13 +160,14 @@ function Tabela({
   const computador = useComputador();
   const ate = eventos[0]?.tradeDate;
   const de = eventos.at(-1)?.tradeDate;
-  // Quantos cruzaram o limiar do alerta. O rotulo ao lado diz "acima de Nσ",
-  // e nao "notificados": o historico e carga retroativa, e evento antigo nunca
-  // foi notificado.
+  // Quantos papeis cruzaram o limiar do alerta ao menos uma vez (a lista e de
+  // papeis). O rotulo ao lado diz "acima de Nσ", e nao "notificados": o
+  // historico e carga retroativa, e evento antigo nunca foi notificado.
   const acimaDoLimiar = useMemo(
-    () => eventos.filter((e) => e.zLog >= limiarDoAlerta).length,
+    () => new Set(eventos.filter((e) => e.zLog >= limiarDoAlerta).map((e) => e.ticker)).size,
     [eventos, limiarDoAlerta],
   );
+  const totalDePapeis = useMemo(() => new Set(eventos.map((e) => e.ticker)).size, [eventos]);
 
   const [corte, setCorte] = useState(inicial?.corte ?? minimo);
   const [busca, setBusca] = useState(inicial?.busca ?? "");
@@ -183,7 +188,7 @@ function Tabela({
     linhas: inicial?.linhas ?? LINHAS_POR_VEZ,
   });
   const linhasNaTela = leva.chave === chaveDosFiltros ? leva.linhas : LINHAS_POR_VEZ;
-  // O evento da previa. Null (ou um evento que o filtro tirou da lista) mostra
+  // O papel da previa. Null (ou um papel que o filtro tirou da lista) mostra
   // o primeiro da lista -- o mesmo criterio da previa do scanner.
   const [selecionado, setSelecionado] = useState<string | null>(inicial?.selecionado ?? null);
 
@@ -215,31 +220,35 @@ function Tabela({
     );
   }, [eventos, corte, busca, desde, atePeriodo]);
 
+  // Uma linha por papel, com o ultimo evento que passou nos filtros acima. O
+  // filtro de tendencia vem depois: ele e do papel, nao do evento.
+  const papeis = useMemo(() => agruparPorPapel(semTendencia), [semTendencia]);
+
   const contagemDaTendencia = useMemo(() => {
-    const n = { todas: semTendencia.length, alta: 0, lateral: 0, baixa: 0 };
-    for (const e of semTendencia) {
-      const s = estadoDoPapel.get(e.ticker) ?? null;
+    const n = { todas: papeis.length, alta: 0, lateral: 0, baixa: 0 };
+    for (const p of papeis) {
+      const s = estadoDoPapel.get(p.ticker) ?? null;
       if (s) n[s]++;
     }
     return n;
-  }, [semTendencia, estadoDoPapel]);
+  }, [papeis, estadoDoPapel]);
 
   const visiveis = useMemo(() => {
-    const filtrados = semTendencia.filter((e) =>
-      passaNoFiltro(estadoDoPapel.get(e.ticker) ?? null, filtro),
+    const filtrados = papeis.filter((p) =>
+      passaNoFiltro(estadoDoPapel.get(p.ticker) ?? null, filtro),
     );
     if (!ordemZ) return filtrados;
+    // O z da linha: o do ultimo evento do papel, o mesmo que a celula mostra.
     const sinal = ordemZ === "desc" ? -1 : 1;
     return [...filtrados].sort((a, b) => sinal * (a.zLog - b.zLog));
-  }, [semTendencia, estadoDoPapel, filtro, ordemZ]);
+  }, [papeis, estadoDoPapel, filtro, ordemZ]);
 
   const indiceDaPrevia = useMemo(() => {
-    const i =
-      selecionado === null ? -1 : visiveis.findIndex((e) => chaveDoEvento(e) === selecionado);
+    const i = selecionado === null ? -1 : visiveis.findIndex((p) => p.ticker === selecionado);
     return i >= 0 ? i : visiveis.length > 0 ? 0 : -1;
   }, [visiveis, selecionado]);
   const previa = indiceDaPrevia >= 0 ? visiveis[indiceDaPrevia] : null;
-  const chaveDaPrevia = previa ? chaveDoEvento(previa) : null;
+  const chaveDaPrevia = previa ? previa.ticker : null;
 
   function alternarOrdemZ() {
     setOrdemZ((atual) => (atual === "desc" ? "asc" : atual === "asc" ? null : "desc"));
@@ -348,7 +357,7 @@ function Tabela({
         if (proximo >= linhasNaTela) {
           setLeva({ chave: chaveDosFiltros, linhas: linhasNaTela + LINHAS_POR_VEZ });
         }
-        const chave = chaveDoEvento(visiveis[proximo]);
+        const chave = visiveis[proximo].ticker;
         focarDepois.current = chave;
         setSelecionado(chave);
         return;
@@ -387,7 +396,7 @@ function Tabela({
   const caixaTabela = (
     <section className="cartao overflow-hidden p-2 md:p-3">
       <div className={`hidden gap-2 px-3 py-2 md:grid ${colunas}`}>
-        <span className="rotulo">Pregão</span>
+        <span className="rotulo">Último evento</span>
         <span className="rotulo">Papel</span>
         <button
           type="button"
@@ -415,7 +424,7 @@ function Tabela({
 
       <div className="flex flex-col gap-0.5">
         {visiveis.slice(0, linhasNaTela).map((e) => {
-          const chave = chaveDoEvento(e);
+          const chave = e.ticker;
           const naPrevia = computador && chave === chaveDaPrevia;
           return (
             <Link
@@ -448,6 +457,12 @@ function Tabela({
               <span className="order-1 flex min-w-0 flex-col md:order-2">
                 <span className="flex items-center gap-1.5">
                   <span className="text-[15px] font-extrabold md:text-[14px]">{e.ticker}</span>
+                  {/* So com mais de um: "1 evento" em quase toda linha seria ruido. */}
+                  {e.eventos > 1 && (
+                    <span className="num shrink-0 rounded-full bg-evento-fundo px-1.5 py-px text-[11px] font-bold text-evento-tinta">
+                      {e.eventos} eventos
+                    </span>
+                  )}
                   <EtiquetaDeTendencia estado={estadoDe(e.ticker)} />
                 </span>
                 {nomeDaEmpresa(e.empresa) && (
@@ -517,7 +532,7 @@ function Tabela({
             <h1 className="text-[22px] font-extrabold tracking-tight">Histórico de eventos</h1>
             <p className="num text-[13px] font-semibold text-tinta-3">
               {de && ate
-                ? `${fmtData(de)} a ${fmtData(ate)} · os ${numero(eventos.length, 0)} eventos mais recentes`
+                ? `${fmtData(de)} a ${fmtData(ate)} · ${numero(totalDePapeis, 0)} papéis nos ${numero(eventos.length, 0)} eventos mais recentes`
                 : "sem eventos no período"}
             </p>
           </div>
@@ -616,7 +631,7 @@ function Tabela({
 
           <span className="flex flex-col items-start gap-1 self-center lg:items-end lg:pb-3">
             <span className="num text-[12px] font-bold text-tinta-3">
-              {numero(visiveis.length, 0)} de {numero(eventos.length, 0)}
+              {numero(visiveis.length, 0)} de {numero(totalDePapeis, 0)} papéis
             </span>
             {filtrado && (
               <button
@@ -633,7 +648,7 @@ function Tabela({
 
       {visiveis.length === 0 ? (
         <div className="rounded-2xl border border-dashed border-linha-2 p-8 text-center text-[13px] font-semibold text-tinta-3">
-          Nenhum evento com esses filtros.
+          Nenhum papel com esses filtros.
         </div>
       ) : (
         <ArranjoDaPagina pagina="historico">

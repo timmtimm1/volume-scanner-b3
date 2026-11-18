@@ -1,10 +1,10 @@
 /**
  * Barras de um papel, para a previa do historico no computador.
  *
- * Estatica como a ficha: um JSON por papel com evento, gerado no build e
- * servido do CDN. Clicar de evento em evento no historico nao toca no banco.
- * Papel fora da lista do build (o que cruzou o limiar depois do ultimo deploy)
- * e gerado no primeiro pedido, como a ficha dele.
+ * Estatica como a ficha: um JSON por papel com evento recente, gerado no build
+ * e servido do CDN. Papel fora da lista do build (evento mais antigo, ou que
+ * cruzou o limiar depois do ultimo deploy) e gerado no primeiro pedido e fica
+ * guardado ate o proximo deploy, como a ficha dele.
  *
  * Leva so o que o grafico desenha: as barras e as datas dos eventos do papel
  * (o candle desses dias sai dourado). O resto do evento ja esta na linha do
@@ -12,7 +12,7 @@
  */
 
 import { NextResponse } from "next/server";
-import { papeisComEvento, papel } from "@/lib/db";
+import { papeisComEventoRecente, papel } from "@/lib/db";
 import { TICKER } from "@/lib/ticker";
 
 // O GET de rota e dinamico por padrao desde o Next 15. Aqui nada depende de
@@ -20,7 +20,7 @@ import { TICKER } from "@/lib/ticker";
 export const dynamic = "force-static";
 
 export async function generateStaticParams() {
-  const tickers = await papeisComEvento();
+  const tickers = await papeisComEventoRecente();
   return tickers.map((ticker) => ({ ticker }));
 }
 

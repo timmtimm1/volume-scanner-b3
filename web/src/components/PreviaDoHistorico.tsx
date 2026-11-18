@@ -4,8 +4,10 @@
  * A previa do evento escolhido no historico, ao lado da lista (computador).
  *
  * O grafico e o da ficha -- candles, volume, Bollinger e as medias de quem
- * olha --, centrado no pregao do evento, que sai dourado. So para ver: sem
- * regua e sem alertas, que moram na ficha completa, a um clique.
+ * olha --, centrado no ultimo evento do papel. Todos os eventos dele saem
+ * dourados: a lista tem uma linha por papel, e e aqui que se ve cada evento.
+ * So para ver: sem regua e sem alertas, que moram na ficha completa, a um
+ * clique.
  *
  * Fica fixo na tela enquanto a lista rola, para trocar de evento sem perder o
  * lugar na lista.
@@ -22,7 +24,7 @@ import {
   percentual,
   reais,
 } from "@/lib/formato";
-import type { LinhaDoHistorico } from "@/lib/types";
+import type { PapelDoHistorico } from "@/lib/historico";
 import { useBarrasDoPapel } from "@/lib/useBarrasDoPapel";
 
 /**
@@ -45,7 +47,8 @@ export function PreviaDoHistorico({
   limiarDoAlerta,
   aoAbrir,
 }: {
-  evento: LinhaDoHistorico;
+  /** O papel escolhido, com o ultimo evento dele e quantos teve. */
+  evento: PapelDoHistorico;
   limiarDoAlerta: number;
   /** Chamado antes de ir para a ficha, para o historico guardar onde estava. */
   aoAbrir: () => void;
@@ -63,7 +66,8 @@ export function PreviaDoHistorico({
           <span className="flex items-baseline gap-2">
             <span className="text-[22px] font-extrabold leading-tight">{evento.ticker}</span>
             <span className="num text-[13px] font-semibold text-tinta-3">
-              {fmtData(evento.tradeDate)}
+              último evento {fmtData(evento.tradeDate)}
+              {evento.eventos > 1 && ` · ${evento.eventos} eventos, dourados no gráfico`}
             </span>
           </span>
           {nome && <span className="truncate text-[13px] font-bold text-tinta-2">{nome}</span>}

@@ -383,12 +383,35 @@ export async function niveisDoPapel(ticker: string, desde: string): Promise<Nive
   }
 }
 
-/** Papeis que ganham pagina estatica: os que tem ao menos um evento. */
-export async function papeisComEvento(): Promise<string[]> {
+/**
+ * Quantos pregoes para tras o build gera a ficha (e as barras) de quem teve
+ * evento. Os papeis do scanner do dia e dos links do Telegram da semana.
+ */
+export const PREGOES_PRE_GERADOS = 5;
+
+/**
+ * Os papeis com evento nos ultimos `pregoes` pregoes: os que o build gera.
+ *
+ * Antes eram todos os que tiveram evento nos 400 pregoes do banco (~305
+ * fichas, ~52 MB por deploy), e a Vercel guarda cada deploy inteiro: em
+ * 17/11/2026 a conta bateu o limite de 10 GB do plano gratuito. Os outros
+ * papeis continuam com ficha, gerada no primeiro acesso e guardada ate o
+ * proximo deploy (`dynamicParams`).
+ */
+export async function papeisComEventoRecente(
+  pregoes: number = PREGOES_PRE_GERADOS,
+): Promise<string[]> {
   const { rows } = await conexao().query<{ ticker: string }>(
     `SELECT DISTINCT ticker FROM volume_scanner.volume_metrics
-      WHERE z_log >= $1 ORDER BY ticker`,
-    [Z_MINIMO_DO_SITE],
+      WHERE z_log >= $1
+        AND trade_date >= (
+          SELECT MIN(trade_date) FROM (
+            SELECT DISTINCT trade_date FROM volume_scanner.volume_metrics
+             ORDER BY trade_date DESC LIMIT $2
+          ) recentes
+        )
+      ORDER BY ticker`,
+    [Z_MINIMO_DO_SITE, pregoes],
   );
   return rows.map((r) => r.ticker);
 }
@@ -633,7 +656,7 @@ export async function fundamentos(
  * a desdobramento ou grupamento. Quem decide se e mesmo e `fatorDoSalto`, com
  * a mesma regra do motor em Python. So alcanca a janela de barras do banco.
  */
-export const SALTOS_DE_ABERTURA = `
+const SALTOS_DE_ABERTURA = `
   SELECT ticker, trade_date, salto FROM (
     SELECT ticker, trade_date,
            open / NULLIF(lag(close) OVER (PARTITION BY ticker ORDER BY trade_date), 0) AS salto
@@ -643,7 +666,7 @@ export const SALTOS_DE_ABERTURA = `
    WHERE salto < 0.62 OR salto > 1.6
    ORDER BY ticker, trade_date`;
 
-export function desdobramentosDosSaltos(
+function desdobramentosDosSaltos(
   linhas: { ticker: unknown; trade_date: unknown; salto: unknown }[],
 ): Record<string, Desdobramento[]> {
   const porPapel: Record<string, Desdobramento[]> = {};

@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { casas, linhaDoHistorico } from "./historico.ts";
+import { agruparPorPapel, casas, linhaDoHistorico } from "./historico.ts";
 
 /** Um evento como `lerEventos` o devolve, com os campos que a Tela 3 usa. */
 const evento = (extra = {}) => ({
@@ -105,5 +105,54 @@ describe("linhaDoHistorico", () => {
     assert.equal(doisDigitos(l.zExcess), doisDigitos(cru.zExcess));
     assert.equal(umDigito(l.retDay * 100), umDigito(cru.retDay * 100));
     assert.equal(l.avgTicket.toFixed(0), cru.avgTicket.toFixed(0));
+  });
+});
+
+describe("agruparPorPapel", () => {
+  /** Uma linha da tabela, so com o que o agrupamento le. */
+  const linha = (ticker, tradeDate, zLog = 4) => ({ ticker, tradeDate, zLog, empresa: null });
+
+  it("deixa cada papel uma vez so, com o evento mais recente e a contagem", () => {
+    const papeis = agruparPorPapel([
+      linha("PETR4", "2026-11-14", 3.5),
+      linha("VALE3", "2026-11-14", 6.2),
+      linha("PETR4", "2026-11-10", 7.1),
+      linha("PETR4", "2026-11-03", 4.0),
+    ]);
+    assert.deepEqual(
+      papeis.map((p) => [p.ticker, p.tradeDate, p.zLog, p.eventos]),
+      [
+        ["PETR4", "2026-11-14", 3.5, 3],
+        ["VALE3", "2026-11-14", 6.2, 1],
+      ],
+    );
+  });
+
+  it("ordena pelo evento mais recente, mesmo que cheguem fora de ordem", () => {
+    const papeis = agruparPorPapel([
+      linha("ITUB4", "2026-10-01"),
+      linha("BBAS3", "2026-11-12"),
+      linha("ITUB4", "2026-11-13"),
+    ]);
+    assert.deepEqual(
+      papeis.map((p) => [p.ticker, p.tradeDate, p.eventos]),
+      [
+        ["ITUB4", "2026-11-13", 2],
+        ["BBAS3", "2026-11-12", 1],
+      ],
+    );
+  });
+
+  it("no mesmo pregao mantem a ordem do banco (maior z primeiro)", () => {
+    const papeis = agruparPorPapel([
+      linha("AAAA3", "2026-11-14", 9),
+      linha("BBBB3", "2026-11-14", 5),
+      linha("CCCC3", "2026-11-14", 3),
+    ]);
+    assert.deepEqual(papeis.map((p) => p.ticker), ["AAAA3", "BBBB3", "CCCC3"]);
+  });
+
+  it("lista vazia continua vazia", () => {
+    assert.deepEqual(agruparPorPapel([]), []);
   });
 });

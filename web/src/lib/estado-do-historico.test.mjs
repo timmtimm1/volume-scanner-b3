@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { chaveDoEvento, lerEstadoDoHistorico, temFiltro } from "./estado-do-historico.ts";
+import { lerEstadoDoHistorico, temFiltro } from "./estado-do-historico.ts";
 
 const MINIMO = 3;
 const LEVA = 100;
@@ -87,11 +87,5 @@ describe("temFiltro", () => {
     assert.equal(temFiltro({ ...PADRAO, desde: "2026-09-01" }, MINIMO), true);
     assert.equal(temFiltro({ ...PADRAO, ate: "2026-09-01" }, MINIMO), true);
     assert.equal(temFiltro({ ...PADRAO, ordemZ: "asc" }, MINIMO), true);
-  });
-});
-
-describe("chaveDoEvento", () => {
-  it("papel e pregao", () => {
-    assert.equal(chaveDoEvento({ ticker: "VALE3", tradeDate: "2026-10-08" }), "VALE3|2026-10-08");
   });
 });

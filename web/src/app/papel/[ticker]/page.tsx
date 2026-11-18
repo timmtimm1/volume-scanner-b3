@@ -1,13 +1,16 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { FichaDoPapel } from "@/components/FichaDoPapel";
-import { fundamentos, niveisDoPapel, papeisComEvento, papel } from "@/lib/db";
+import { fundamentos, niveisDoPapel, papeisComEventoRecente, papel } from "@/lib/db";
 import { TICKER } from "@/lib/ticker";
-import { juroLongo } from "@/lib/valuation-dados";
 
-/** Uma pagina estatica por papel que teve ao menos um evento. */
+/**
+ * Uma pagina estatica por papel com evento nos ultimos pregoes (o scanner do
+ * dia e os links do Telegram da semana). As outras fichas sao geradas no
+ * primeiro acesso -- ver `papeisComEventoRecente` para o porque.
+ */
 export async function generateStaticParams() {
-  const tickers = await papeisComEvento();
+  const tickers = await papeisComEventoRecente();
   return tickers.map((ticker) => ({ ticker }));
 }
 
@@ -30,11 +33,9 @@ export default async function Papel({
   if (!TICKER.test(ticker)) notFound();
 
   // As duas em paralelo: o build faz isso uma vez por papel com ficha.
-  const [dados, balancos, juro] = await Promise.all([
+  const [dados, balancos] = await Promise.all([
     papel(ticker),
     fundamentos(ticker),
-    // O juro longo da taxa de desconto do "Preço justo": uma linha de uma tabela pequena.
-    juroLongo(),
   ]);
   if (dados.barras.length === 0) notFound();
   // Suportes e resistencias que chegam ao trecho do grafico (aba Setups).
@@ -52,7 +53,6 @@ export default async function Papel({
         eventos={dados.eventos}
         fundamentos={balancos}
         niveis={niveis}
-        juro={juro}
       />
     </Suspense>
   );

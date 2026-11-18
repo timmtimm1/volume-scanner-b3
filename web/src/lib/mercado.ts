@@ -232,8 +232,16 @@ export type RegrasDoDiario = {
   casasDoPrecoMedio: number;
   /** Todo dia tem negocio (cripto) ou so os pregoes da B3. */
   todoDia: boolean;
-  /** Setups do estudo que podem virar trade (so o de compra: o diario nao tem venda a descoberto). */
+  /** Setups do estudo que podem virar trade (so o de compra). */
   categoriasDoEstudo: readonly string[];
+  /**
+   * Venda a descoberto: o trade que abre com uma VENDA e fecha com a recompra.
+   * Null = o mercado nao deixa (B3, decisao do usuario de 18/11/2026). Em
+   * cripto e a operacao dos futuros, e a taxa e a deles (0,05% por lado, a de
+   * quem tira liquidez nos USDⓈ-M da Binance), cobrada em dolar sobre o valor
+   * negociado; o funding fica de fora (escolha do usuario).
+   */
+  vendido: { taxa: number } | null;
 };
 
 const REGRAS_DO_DIARIO: Record<Mercado, RegrasDoDiario> = {
@@ -245,6 +253,7 @@ const REGRAS_DO_DIARIO: Record<Mercado, RegrasDoDiario> = {
     casasDoPrecoMedio: 6,
     todoDia: false,
     categoriasDoEstudo: [],
+    vendido: null,
   },
   cripto: {
     taxa: 0.001,
@@ -254,6 +263,7 @@ const REGRAS_DO_DIARIO: Record<Mercado, RegrasDoDiario> = {
     casasDoPrecoMedio: 10,
     todoDia: true,
     categoriasDoEstudo: ["rsi_estudo"],
+    vendido: { taxa: 0.0005 },
   },
 };
 

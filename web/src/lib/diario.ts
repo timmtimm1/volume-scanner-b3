@@ -10,7 +10,9 @@
  *
  * R = resultado total / risco em reais. O risco e o que o trade pedia para
  * perder: soma, sobre as COMPRAS, de `quantidade x (preco - stop)`. Sem stop,
- * ou com alguma compra a preco igual ou abaixo do stop, nao ha R.
+ * ou com alguma compra a preco igual ou abaixo do stop, nao ha R. Na venda a
+ * descoberto (cripto) e o espelho: soma, sobre as VENDAS, de
+ * `quantidade x (stop - preco)`, com o stop acima de toda venda.
  *
  * Em cripto (dolares) a conta e a mesma. O risco e o planejado, sem a taxa: o
  * resultado ja vem com a taxa da Binance descontada, entao um trade que bate
@@ -24,6 +26,11 @@ type OperacaoParaR = { tipo: "compra" | "venda"; quantidade: number; preco: numb
 /** O minimo de um trade para a conta de R (o `TradeResumo` serve). */
 export type TradeParaR = {
   stop: number | null;
+  /**
+   * "venda" = venda a descoberto. Ausente, vale o tipo da primeira operacao da
+   * lista (que chega em ordem de data).
+   */
+  lado?: "compra" | "venda";
   /** Estado depois da ultima operacao. */
   quantidade: number;
   precoMedio: number;
@@ -37,18 +44,24 @@ const r2 = (v: number): number => Math.round((v + Number.EPSILON) * 100) / 100;
  * Quanto o trade arriscava, em reais. Null sem stop ou com alguma compra a
  * preco <= stop (o risco dessa compra nao existe, e o R perde o sentido).
  */
-export function riscoEmReais(trade: Pick<TradeParaR, "stop" | "operacoes">): number | null {
+export function riscoEmReais(
+  trade: Pick<TradeParaR, "stop" | "operacoes" | "lado">,
+): number | null {
   const { stop } = trade;
   if (stop === null || !(stop > 0)) return null;
+  // As operacoes que abrem ou aumentam a posicao: compras no comprado, vendas
+  // na venda a descoberto. O stop fica do lado oposto de cada uma.
+  const lado = trade.lado ?? trade.operacoes[0]?.tipo ?? "compra";
   let risco = 0;
-  let compras = 0;
+  let aberturas = 0;
   for (const op of trade.operacoes) {
-    if (op.tipo !== "compra") continue;
-    if (!(op.preco > stop)) return null;
-    risco += op.quantidade * (op.preco - stop);
-    compras++;
+    if (op.tipo !== lado) continue;
+    const distancia = lado === "compra" ? op.preco - stop : stop - op.preco;
+    if (!(distancia > 0)) return null;
+    risco += op.quantidade * distancia;
+    aberturas++;
   }
-  return compras === 0 ? null : r2(risco);
+  return aberturas === 0 ? null : r2(risco);
 }
 
 /**

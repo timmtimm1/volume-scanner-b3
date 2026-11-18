@@ -185,3 +185,35 @@ describe("ordenarTrades", () => {
   });
 });
 
+
+describe("R na venda a descoberto (cripto)", () => {
+  const CRIPTO = regrasDoDiario("cripto");
+  /** Como `trade`, com as regras de cripto (a venda abre o trade vendido). */
+  function vendido(operacoes, stop) {
+    const ord = operacoes.map((o, i) => ({ id: i + 1, data: `2026-11-${10 + i}`, ...o }));
+    const { estados, lado } = aplicarOperacoes(ord, CRIPTO);
+    return { stop, operacoes, lado, ...estados.at(-1) };
+  }
+
+  it("o risco e o stop ACIMA da venda: soma de quantidade x (stop - preco) das vendas", () => {
+    // vende 0,5 a 600 com stop em 620: arrisca 0,5 x 20 = 10
+    assert.equal(riscoEmReais(vendido([venda(0.5, 600)], 620)), 10);
+    // vender mais aumenta o risco; a recompra nao entra
+    assert.equal(riscoEmReais(vendido([venda(0.5, 600), venda(0.25, 610), compra(0.3, 590)], 620)), 12.5);
+  });
+
+  it("sem lado na entrada, vale a primeira operacao", () => {
+    assert.equal(riscoEmReais({ stop: 620, operacoes: [venda(0.5, 600)] }), 10);
+  });
+
+  it("stop abaixo da venda nao tem R", () => {
+    assert.equal(riscoEmReais(vendido([venda(0.5, 600)], 590)), null);
+  });
+
+  it("o R anda com o preco ao contrario: caiu, ganhou", () => {
+    const t = vendido([venda(0.5, 600)], 620);
+    // PM 599,70; a 580: -0,5 x (580 - 599,70) = 9,85 sobre risco 10
+    assert.equal(resultadoEmRDoTrade(t, 580), 0.985);
+    assert.ok(resultadoEmRDoTrade(t, 620) < -1, "no stop, um pouco pior que -1 R pela taxa");
+  });
+});

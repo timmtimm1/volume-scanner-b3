@@ -417,3 +417,104 @@ describe("diario em cripto: taxa da Binance saindo da moeda", () => {
     assert.equal(r.estados[1].quantidade, 7);
   });
 });
+
+describe("venda a descoberto (cripto): taxa dos futuros em dolar", () => {
+  const CRIPTO = regrasDoDiario("cripto");
+  const VENDA = { id: 1, tipo: "venda", data: "2026-11-17", quantidade: 0.5, preco: 600 };
+
+  it("a venda abre o trade vendido: quantidade negativa, PM com a taxa descontada", () => {
+    const r = aplicarOperacoes([VENDA], CRIPTO);
+    assert.equal(r.lado, "venda");
+    // 600 x (1 - 0,0005) = 599,70; custo = o valor vendido, base do percentual
+    assert.deepEqual(r.estados[0], { quantidade: -0.5, precoMedio: 599.7, custoComprado: 300, realizado: 0 });
+    assert.equal(r.encerradoEm, null);
+  });
+
+  it("a recompra realiza o que o preco caiu, menos a taxa, e fecha o trade", () => {
+    const r = aplicarOperacoes(
+      [VENDA, { id: 2, tipo: "compra", data: "2026-11-19", quantidade: 0.5, preco: 550 }],
+      CRIPTO,
+    );
+    // 0,5 x (599,70 - 550 x 1,0005) = 299,85 recebidos - 275,1375 pagos = 24,7125
+    assert.equal(r.estados[1].realizado, 24.71);
+    assert.equal(r.estados[1].quantidade, 0);
+    assert.ok(!Object.is(r.estados[1].quantidade, -0), "zerado e 0, nao -0");
+    assert.equal(r.encerradoEm, "2026-11-19");
+  });
+
+  it("vender mais muda o PM; recompras parciais realizam aos poucos", () => {
+    const r = aplicarOperacoes(
+      [
+        VENDA,
+        { id: 2, tipo: "venda", data: "2026-11-18", quantidade: 0.25, preco: 630 },
+        { id: 3, tipo: "compra", data: "2026-11-19", quantidade: 0.3, preco: 590 },
+        { id: 4, tipo: "compra", data: "2026-11-20", quantidade: 0.45, preco: 640 },
+      ],
+      CRIPTO,
+    );
+    // PM = (0,5 x 599,70 + 0,25 x 630 x 0,9995) / 0,75 = 609,695
+    assert.deepEqual(r.estados[1], { quantidade: -0.75, precoMedio: 609.695, custoComprado: 457.5, realizado: 0 });
+    // 0,3 x (609,695 - 590 x 1,0005) = 5,82
+    assert.deepEqual(r.estados[2], { quantidade: -0.45, precoMedio: 609.695, custoComprado: 457.5, realizado: 5.82 });
+    // + 0,45 x (609,695 - 640 x 1,0005) = 5,82 - 13,78125: o preco subiu, perdeu
+    assert.equal(r.estados[3].realizado, -7.96);
+    assert.equal(r.encerradoEm, "2026-11-20");
+  });
+
+  it("recomprar mais do que deve e erro", () => {
+    assert.throws(
+      () =>
+        aplicarOperacoes(
+          [VENDA, { id: 2, tipo: "compra", data: "2026-11-19", quantidade: 0.6, preco: 550 }],
+          CRIPTO,
+        ),
+      /recompra de 0.6 maior que a posicao vendida de 0.5/,
+    );
+  });
+
+  it("depois de zerado, outra venda abre outro trade", () => {
+    assert.throws(
+      () =>
+        aplicarOperacoes(
+          [
+            VENDA,
+            { id: 2, tipo: "compra", data: "2026-11-19", quantidade: 0.5, preco: 550 },
+            { id: 3, tipo: "venda", data: "2026-11-20", quantidade: 0.1, preco: 560 },
+          ],
+          CRIPTO,
+        ),
+      /trade ja encerrado em 2026-11-19/,
+    );
+  });
+
+  it("na B3 o trade continua tendo de abrir com compra", () => {
+    assert.throws(
+      () => aplicarOperacoes([{ ...VENDA, quantidade: 100, preco: 38.2 }], B3),
+      /a primeira operacao de um trade tem de ser uma compra/,
+    );
+  });
+
+  it("regras sem o campo `vendido` tambem nao deixam", () => {
+    const { vendido: _, ...semCampo } = CRIPTO;
+    assert.throws(() => aplicarOperacoes([VENDA], semCampo), /tem de ser uma compra/);
+  });
+
+  it("a mesma formula marca o vendido: o preco caiu, o resultado sobe", () => {
+    const estado = { quantidade: -0.5, precoMedio: 599.7, custoComprado: 300, realizado: 0 };
+    const m = marcarAgora(estado, 580);
+    // -0,5 x (580 - 599,70) = 9,85
+    assert.equal(m.resultado, 9.85);
+    assert.equal(m.resultadoPct, 9.85 / 300);
+    assert.equal(m.valor, -290);
+    const [s] = marcarAMercado({
+      operacoes: [{ data: "2026-11-17", estado }],
+      pregoes: ["2026-11-18"],
+      fechamentos: [{ data: "2026-11-18", close: 620 }],
+      desde: "2026-11-18",
+      ate: "2026-11-18",
+    });
+    // subiu para 620: -0,5 x (620 - 599,70) = -10,15
+    assert.equal(s.resultado, -10.15);
+    assert.equal(s.valorPosicao, -310);
+  });
+});

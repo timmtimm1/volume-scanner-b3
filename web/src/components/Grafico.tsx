@@ -58,6 +58,7 @@ import type { Barra, Evento, LinhaDeSetup, MarcaDeSetup, NivelDoGrafico } from "
 import { useMarcasDoGrafico } from "@/lib/useMarcasDoGrafico";
 import { useMedias } from "@/lib/useMedias";
 import { CamadaDeAlertas } from "./CamadaDeAlertas";
+import { CamadaDeTrade, type RegistroDeTrade } from "./CamadaDeTrade";
 import { PainelDaRegua } from "./PainelDaRegua";
 
 /** Cores das series: fixas nos dois temas. */
@@ -213,6 +214,12 @@ type Props = {
     erro: string | null;
   };
   /**
+   * Liga o botao "Trade": registrar compra ou venda clicando no candle e na
+   * altura do preco, com as linhas do preco e do stop de arrastar (pedido de
+   * 18/11/2026). So com login; sem a prop, o botao nem aparece.
+   */
+  registroDeTrade?: RegistroDeTrade;
+  /**
    * Liga os botoes "Eventos" e "Setups", que escondem o candle dourado e as
    * setas dos setups; a escolha fica guardada no navegador nesta chave. Sem
    * ela (o grafico das acoes), as marcas aparecem sempre, sem botao.
@@ -282,6 +289,7 @@ export function Grafico({
   casasDoPreco = 2,
   mercado = "b3",
   chaveDasMarcas,
+  registroDeTrade,
 }: Props) {
   const idBase = useId();
   const { tema } = useTema();
@@ -308,6 +316,13 @@ export function Grafico({
   const [modoDeCriar, setCriandoAlerta] = useState(false);
   // Sem edicao (deslogou, ou a tela encolheu para celular), o modo nao vale.
   const criandoAlerta = modoDeCriar && editavel;
+  // Modo de registrar trade clicando no grafico: exclusivo com a regua e com o
+  // alerta, que tambem querem o clique.
+  const [modoDeTrade, setRegistrandoTrade] = useState(false);
+  const registrandoTrade = modoDeTrade && registroDeTrade !== undefined;
+  // O elemento abaixo do grafico onde o balao do trade vai no celular. Estado (e
+  // nao ref) para a camada renderizar de novo quando ele aparece.
+  const [lugarDoBalao, setLugarDoBalao] = useState<HTMLDivElement | null>(null);
   const alertasAtivos = useMemo(() => alertas.filter((a) => a.ativo), [alertas]);
   // Os pixels dos pontos da regua (e do rotulo), recalculados num efeito --
   // nao no render, que nao pode ler refs do grafico (`chart.current`,
@@ -396,11 +411,13 @@ export function Grafico({
     if (escolhendoPreco) {
       setReguaLigada(false);
       limparRegua();
+      setRegistrandoTrade(false);
     }
   }
 
   function alternarRegua() {
     setCriandoAlerta(false);
+    setRegistrandoTrade(false);
     setReguaLigada((ligada) => {
       const proxima = !ligada;
       if (!proxima) limparRegua();
@@ -411,7 +428,15 @@ export function Grafico({
   function alternarCriacaoDeAlerta() {
     setReguaLigada(false);
     limparRegua();
+    setRegistrandoTrade(false);
     setCriandoAlerta((v) => !v);
+  }
+
+  function alternarRegistroDeTrade() {
+    setReguaLigada(false);
+    limparRegua();
+    setCriandoAlerta(false);
+    setRegistrandoTrade((v) => !v);
   }
 
   // Quanto a banda abriu contra a media recente: o "abrindo" em numero.
@@ -853,7 +878,8 @@ export function Grafico({
         lineWidth: 1,
         lineStyle: LineStyle.Dashed,
         axisLabelVisible: true,
-        title: `C ${numeroDaQuantidade(mercado, posicao.quantidade)} · ${valorComSinal(mercado, posicao.resultado)} (${percentual(posicao.resultadoPct, 1)})`,
+        // "C" comprado, "V" vendido (venda a descoberto: a posicao vem negativa).
+        title: `${posicao.quantidade < 0 ? "V" : "C"} ${numeroDaQuantidade(mercado, Math.abs(posicao.quantidade))} · ${valorComSinal(mercado, posicao.resultado)} (${percentual(posicao.resultadoPct, 1)})`,
       });
     }
   }, [operacoes, posicao, barras, eventos, destaque, mercado]);
@@ -1258,6 +1284,24 @@ export function Grafico({
           </button>
         )}
 
+        {registroDeTrade && (
+          <button
+            type="button"
+            onClick={alternarRegistroDeTrade}
+            aria-pressed={registrandoTrade}
+            aria-label="Trade: registrar compra ou venda clicando no candle e na altura do preço"
+            title="Registrar compra ou venda clicando no gráfico"
+            className={`inline-flex h-8 items-center gap-2 rounded-full px-3 text-[12px] font-bold transition-colors ${
+              registrandoTrade ? "bg-selecao text-acento" : "bg-painel-2 text-tinta-3 hover:text-acento"
+            }`}
+          >
+            <svg width="13" height="13" viewBox="0 0 16 16" fill="none" aria-hidden>
+              <path d="M5 13V3M2.5 5.5 5 3l2.5 2.5M11 3v10m-2.5-2.5L11 13l2.5-2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            Trade
+          </button>
+        )}
+
         {edicaoDeAlertas?.erro && (
           <span className="text-[12px] font-semibold text-baixa">{edicaoDeAlertas.erro}</span>
         )}
@@ -1360,7 +1404,9 @@ export function Grafico({
 
       <div
         className={`relative w-full ${classeDeAltura}`}
-        style={{ cursor: escolhendoPreco || reguaLigada || criandoAlerta ? "crosshair" : undefined }}
+        style={{
+          cursor: escolhendoPreco || reguaLigada || criandoAlerta || registrandoTrade ? "crosshair" : undefined,
+        }}
       >
         {/* So o alvo do lightweight-charts: ele injeta seus proprios elementos
             aqui por fora do React (createChart/appendChild), entao este div nao
@@ -1372,7 +1418,7 @@ export function Grafico({
         {/* Os alertas editaveis: etiquetas e faixas de arrasto por cima de cada
             linha, e o modo de criar. Some com a regua ligada, que usa o
             grafico inteiro. */}
-        {edicaoDeAlertas && !reguaLigada && (
+        {edicaoDeAlertas && !reguaLigada && !registrandoTrade && (
           <CamadaDeAlertas
             chart={chart}
             serie={serie}
@@ -1389,6 +1435,22 @@ export function Grafico({
             moverLinha={moverLinha}
             cor={SERIE.alerta}
             mercado={mercado}
+          />
+        )}
+
+        {/* O registro de trade pelo grafico: clique no candle e na altura,
+            linhas do preco e do stop de arrastar, e o balao de confirmar. */}
+        {registroDeTrade && registrandoTrade && (
+          <CamadaDeTrade
+            {...registroDeTrade}
+            chart={chart}
+            serie={serie}
+            aoRedesenhar={aoRedesenhar}
+            barras={barras}
+            mercado={mercado}
+            cores={{ compra: SERIE.compra, venda: SERIE.venda, stop: SERIE.baixa }}
+            aoTerminar={() => setRegistrandoTrade(false)}
+            lugarDoBalao={lugarDoBalao}
           />
         )}
 
@@ -1457,6 +1519,10 @@ export function Grafico({
           </div>
         )}
       </div>
+
+      {/* No celular o balao do trade vem para ca, abaixo do grafico: por cima
+          dele cobriria as linhas do preco e do stop que se arrastam. */}
+      {registrandoTrade && <div ref={setLugarDoBalao} />}
 
       {/* Painel da regua: sempre abaixo da area do grafico, nunca por cima dos
           candles -- em 390px um popup flutuante cobriria justo o que se quer

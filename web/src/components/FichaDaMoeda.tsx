@@ -170,13 +170,18 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           posicao={posicaoDoGrafico}
           regua={regua}
           edicaoDeAlertas={edicaoDeAlertas}
+          // Os botoes "Eventos" e "Setups" (pedido de 18/11/2026: as duas
+          // marcas juntas poluiam o grafico da moeda). A escolha vale para
+          // todas as moedas e fica guardada no navegador.
+          chaveDasMarcas="vs:marcas:cripto"
           classeDeAltura="h-[320px] md:h-[440px] lg:h-[560px]"
         />
         <p className="px-2 pt-2 text-[12px] font-semibold text-tinta-3">
           Candle diário da Binance, par {ticker}/USDT. Cada candle vai das 21h às 21h de Brasília
-          {aoVivo ? "; o último é o de hoje, em andamento, lido da Binance ao abrir a página." : "."}
+          {aoVivo ? "; o último é o de hoje, em andamento, lido da Binance ao abrir a página." : "."}{" "}
           As linhas são suportes e resistências de 2 ou mais toques; candle dourado é dia de
-          volume muito acima do normal.
+          volume muito acima do normal, e a seta embaixo do candle é um setup que armou. Os
+          botões Eventos e Setups, acima do gráfico, escondem essas marcas.
         </p>
       </section>
 

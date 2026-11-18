@@ -55,6 +55,7 @@ import { medirMovimento, type PontoDaRegua, type TradeDaRegua } from "@/lib/regu
 import { useTema } from "@/lib/tema";
 import { trechosDosNiveis } from "@/lib/niveis-grafico";
 import type { Barra, Evento, LinhaDeSetup, MarcaDeSetup, NivelDoGrafico } from "@/lib/types";
+import { useMarcasDoGrafico } from "@/lib/useMarcasDoGrafico";
 import { useMedias } from "@/lib/useMedias";
 import { CamadaDeAlertas } from "./CamadaDeAlertas";
 import { PainelDaRegua } from "./PainelDaRegua";
@@ -99,6 +100,35 @@ const SERIE = {
   // das cores acima. Verde nao: no grafico verde e alta (e compra e azul).
   setupClassico: "#7C3AED",
 };
+
+/**
+ * Um candle como o grafico desenha. O do evento fica inteiro dourado -- corpo,
+ * borda e pavio --, pareando com a barra de volume daquele dia; `dourado` falso
+ * e a cor da direcao, como qualquer candle.
+ */
+function pontoDoCandle(b: Barra, dourado: boolean) {
+  const direcao = b.close >= (b.open ?? b.close) ? SERIE.alta : SERIE.baixa;
+  const cor = dourado ? SERIE.evento : direcao;
+  return {
+    time: b.tradeDate as Time,
+    open: b.open ?? b.close,
+    high: b.high ?? b.close,
+    low: b.low ?? b.close,
+    close: b.close,
+    color: cor,
+    borderColor: cor,
+    wickColor: cor,
+  };
+}
+
+/** A barra de volume do dia, dourada no evento. */
+function pontoDoVolume(b: Barra, dourado: boolean) {
+  return {
+    time: b.tradeDate as Time,
+    value: b.volumeFinancial,
+    color: dourado ? SERIE.evento : SERIE.volume,
+  };
+}
 
 /** Tamanho do rotulo da regua, em pixels -- para ele nao sair da area do grafico. */
 const LARGURA_DO_ROTULO_DA_REGUA = 138;
@@ -182,6 +212,12 @@ type Props = {
     apagar: (id: number) => Promise<void>;
     erro: string | null;
   };
+  /**
+   * Liga os botoes "Eventos" e "Setups", que escondem o candle dourado e as
+   * setas dos setups; a escolha fica guardada no navegador nesta chave. Sem
+   * ela (o grafico das acoes), as marcas aparecem sempre, sem botao.
+   */
+  chaveDasMarcas?: string;
 };
 
 /**
@@ -245,12 +281,14 @@ export function Grafico({
   edicaoDeAlertas,
   casasDoPreco = 2,
   mercado = "b3",
+  chaveDasMarcas,
 }: Props) {
   const idBase = useId();
   const { tema } = useTema();
   const [medias, salvarMedias] = useMedias();
   const [mostrarBandas, setMostrarBandas] = useState(true);
   const [mostrarNiveis, setMostrarNiveis] = useState(true);
+  const [marcasVisiveis, alternarMarca] = useMarcasDoGrafico(chaveDasMarcas);
   const [adicionando, setAdicionando] = useState(false);
   const [tipoNovo, setTipoNovo] = useState<TipoDeMedia>("MMA");
   const [periodoNovo, setPeriodoNovo] = useState("50");
@@ -323,10 +361,15 @@ export function Grafico({
   // reconstruir o grafico sem os efeitos de bandas e marcadores rodarem junto.
   // Ela muda sempre com o `destaque`, que ja reconstroi.
   const janelaDepoisRef = useRef(janelaDepois);
+  // Tambem por ref: o botao "Eventos" repinta os candles no lugar (efeito
+  // proprio, abaixo), e reconstruir o grafico por ele perderia o zoom. A ref so
+  // serve para o grafico ja nascer com a cor certa quando reconstroi.
+  const eventosVisiveis = useRef(marcasVisiveis.eventos);
   useEffect(() => {
     aoEscolher.current = aoEscolherPreco;
     escolhendo.current = escolhendoPreco;
     janelaDepoisRef.current = janelaDepois;
+    eventosVisiveis.current = marcasVisiveis.eventos;
   });
 
   // Tela de toque ou caneta: muda so o texto da dica da regua ("toque e
@@ -418,11 +461,14 @@ export function Grafico({
     });
     serie.current = candles;
     /**
-     * O candle do evento fica inteiro dourado -- corpo, borda e pavio --
-     * pareando com a barra de volume daquele dia. E o par de barras douradas
-     * que marca o evento, sem seta nem rotulo por cima.
+     * O candle do evento fica inteiro dourado, pareando com a barra de volume
+     * daquele dia (`pontoDoCandle`). E o par de barras douradas que marca o
+     * evento, sem seta nem rotulo por cima. Escondido pelo botao "Eventos",
+     * nenhum dia sai dourado.
      */
-    const datasDeEvento = new Set(eventos.map((e) => e.tradeDate));
+    const datasDeEvento = new Set(
+      eventosVisiveis.current ? eventos.map((e) => e.tradeDate) : [],
+    );
     // Um primitivo sem desenho nenhum: so serve para o grafico avisar cada
     // redesenho, que e quando a camada dos alertas precisa remedir.
     candles.attachPrimitive({
@@ -430,22 +476,7 @@ export function Grafico({
         for (const ouvinte of ouvintesDeRedesenho.current) ouvinte();
       },
     });
-    candles.setData(
-      barras.map((b) => {
-        const direcao = b.close >= (b.open ?? b.close) ? SERIE.alta : SERIE.baixa;
-        const cor = datasDeEvento.has(b.tradeDate) ? SERIE.evento : direcao;
-        return {
-          time: b.tradeDate as Time,
-          open: b.open ?? b.close,
-          high: b.high ?? b.close,
-          low: b.low ?? b.close,
-          close: b.close,
-          color: cor,
-          borderColor: cor,
-          wickColor: cor,
-        };
-      }),
-    );
+    candles.setData(barras.map((b) => pontoDoCandle(b, datasDeEvento.has(b.tradeDate))));
 
     // Volume no mesmo eixo de tempo, ocupando a faixa de baixo.
     const volume = c.addSeries(HistogramSeries, {
@@ -456,13 +487,7 @@ export function Grafico({
     });
     serieDeVolume.current = volume;
     c.priceScale("volume").applyOptions({ scaleMargins: { top: 0.8, bottom: 0 } });
-    volume.setData(
-      barras.map((b) => ({
-        time: b.tradeDate as Time,
-        value: b.volumeFinancial,
-        color: datasDeEvento.has(b.tradeDate) ? SERIE.evento : SERIE.volume,
-      })),
-    );
+    volume.setData(barras.map((b) => pontoDoVolume(b, datasDeEvento.has(b.tradeDate))));
 
     // Bandas de Bollinger: 20 pregoes, 2 desvios.
     const bb = bollinger(barras, 20, 2);
@@ -567,6 +592,23 @@ export function Grafico({
   }, [mostrarBandas, barras, eventos, destaque]);
 
   /**
+   * O botao "Eventos": repinta no lugar so os candles (e as barras de volume)
+   * dos dias de evento, sem reconstruir o grafico -- o zoom e o candle parcial
+   * de hoje ficam como estavam. `update(..., true)` troca um ponto antigo.
+   */
+  useEffect(() => {
+    const candles = serie.current;
+    const volume = serieDeVolume.current;
+    if (!candles || !volume) return;
+    const datas = new Set(eventos.map((e) => e.tradeDate));
+    for (const b of barras) {
+      if (!datas.has(b.tradeDate)) continue;
+      candles.update(pontoDoCandle(b, marcasVisiveis.eventos), true);
+      volume.update(pontoDoVolume(b, marcasVisiveis.eventos), true);
+    }
+  }, [marcasVisiveis.eventos, barras, eventos, destaque, casasDoPreco]);
+
+  /**
    * Suportes e resistencias: uma linha por trecho, que nao entra na autoescala
    * (um nivel antigo longe do preco achataria os candles). Redesenhadas quando
    * o grafico e reconstruido -- `barras`, `eventos` e `destaque` nas
@@ -608,7 +650,8 @@ export function Grafico({
     if (!s) return;
     marcadoresDeSetup.current?.detach();
     const dias = new Set(barras.map((b) => b.tradeDate));
-    const marcas: SeriesMarker<Time>[] = setups
+    // Escondidas pelo botao "Setups": nenhuma seta (o grafico nao reconstroi).
+    const marcas: SeriesMarker<Time>[] = (marcasVisiveis.setups ? setups : [])
       .filter((m) => dias.has(m.data))
       .sort((a, b) => a.data.localeCompare(b.data))
       .map((m) => ({
@@ -628,7 +671,7 @@ export function Grafico({
         size: m.destaque ? 2 : 1,
       }));
     marcadoresDeSetup.current = createSeriesMarkers(s, marcas);
-  }, [setups, barras, eventos, destaque]);
+  }, [setups, marcasVisiveis.setups, barras, eventos, destaque]);
 
   /**
    * Entrada, stop e alvo do setup em aberto, como linhas de preco. Efeito
@@ -1044,10 +1087,41 @@ export function Grafico({
   return (
     <div className="flex min-w-0 flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
-        <Chip className="bg-evento-fundo text-evento-tinta">
-          <span className="h-3 w-2 rounded-sm bg-evento" />
-          Evento
-        </Chip>
+        {chaveDasMarcas && eventos.length > 0 ? (
+          <button
+            type="button"
+            onClick={() => alternarMarca("eventos")}
+            aria-pressed={marcasVisiveis.eventos}
+            title="Candle dourado: dia de volume muito acima do normal. Clique para esconder ou mostrar."
+            className={`inline-flex h-8 items-center gap-2 rounded-full px-3 text-[12px] font-bold transition-colors ${
+              marcasVisiveis.eventos ? "bg-evento-fundo text-evento-tinta" : "bg-painel-2 text-tinta-3"
+            }`}
+          >
+            <span className={`h-3 w-2 rounded-sm ${marcasVisiveis.eventos ? "bg-evento" : "bg-linha-2"}`} />
+            Eventos
+          </button>
+        ) : (
+          <Chip className="bg-evento-fundo text-evento-tinta">
+            <span className="h-3 w-2 rounded-sm bg-evento" />
+            Evento
+          </Chip>
+        )}
+        {chaveDasMarcas && setups.length > 0 && (
+          <button
+            type="button"
+            onClick={() => alternarMarca("setups")}
+            aria-pressed={marcasVisiveis.setups}
+            title="Setas embaixo do candle: os dias em que um setup armou. Clique para esconder ou mostrar."
+            className={`inline-flex h-8 items-center gap-2 rounded-full px-3 text-[12px] font-bold transition-colors ${
+              marcasVisiveis.setups ? "bg-selecao text-acento" : "bg-painel-2 text-tinta-3"
+            }`}
+          >
+            <svg width="10" height="12" viewBox="0 0 10 12" aria-hidden>
+              <path d="M5 0l5 6H6.5v6h-3V6H0z" fill={marcasVisiveis.setups ? SERIE.setupClassico : "currentColor"} />
+            </svg>
+            Setups
+          </button>
+        )}
         {parcial && (
           <Chip className="num bg-painel-2 text-tinta-2">
             <span className="h-3 w-2 rounded-sm border-[1.5px] border-tinta-3" />

@@ -2,20 +2,37 @@
 
 import Link from "next/link";
 import { useId, useState } from "react";
-import { diaNaB3, type CandleDeHoje } from "@/lib/candle-de-hoje";
+import type { CandleDeHoje } from "@/lib/candle-de-hoje";
 import { resultadoEmRDoTrade } from "@/lib/diario";
 import { fmtR } from "@/lib/backtest-tela";
-import { data as fmtData, numero, percentual, reais } from "@/lib/formato";
+import { data as fmtData, percentual } from "@/lib/formato";
 import { numeroDoTexto } from "@/lib/lote";
+import {
+  diaDoMercado,
+  linkDoTrade,
+  preco,
+  precoParaCampo,
+  quantidadeExata,
+  quantidadeParaCampo,
+  regrasDoDiario,
+  textos,
+  valor,
+  type Mercado,
+} from "@/lib/mercado";
 import { marcarAgora } from "@/lib/posicao";
 import { precoDeAgora } from "@/lib/preco-de-agora";
-import { NOME_DO_SETUP, ORDEM_DAS_CATEGORIAS } from "@/lib/setups-tela";
+import { NOME_NO_DIARIO, ordemNoDiario } from "@/lib/setups-tela";
 import type { EstadoDosTrades } from "@/lib/useTradesDoPapel";
 
 type Props = {
   estado: EstadoDosTrades;
-  /** O candle de hoje que `FichaDoPapel` ja busca -- este cartao nao pede cotacao de novo. */
+  /**
+   * O candle de hoje que a ficha ja tem -- este cartao nao pede cotacao de
+   * novo. Na moeda, o candle da Binance lido ao abrir a pagina.
+   */
   hoje: CandleDeHoje | null;
+  /** Ausente = B3. Em cripto: dolar, quantidade fracionada, dia UTC e a taxa da Binance. */
+  mercado?: Mercado;
 };
 
 type FormAberto = "compra" | "venda" | null;
@@ -24,15 +41,23 @@ type FormAberto = "compra" | "venda" | null;
  * "Seu trade": posicao aberta neste papel e como ela esta marcada a mercado
  * agora, com o formulario para registrar compra ou venda.
  *
+ * Serve as duas fichas, a do papel e a da moeda (pedido de 18/11/2026). O que
+ * muda de um mercado para o outro vem de `lib/mercado.ts`: na moeda o dinheiro
+ * e em dolar, a quantidade e fracionada, o dia e o UTC do candle e a venda tem
+ * o botao "tudo" (a taxa da Binance deixa um resto pequeno na conta).
+ *
  * Dado pessoal: enquanto a sessao nao resolveu ou nao ha sessao, nao renderiza
  * nada -- nem um convite para entrar, ao contrario do painel de alerta. Um
  * visitante nao pode nem saber que a posicao existe.
  */
-export function PainelDeTrade({ estado, hoje }: Props) {
+export function PainelDeTrade({ estado, hoje, mercado = "b3" }: Props) {
   const id = useId();
   const { autenticado, tradeAberto, salvando, erro, registrar } = estado;
+  const regras = regrasDoDiario(mercado);
+  const t = textos(mercado);
+  const fracionada = regras.casasDaQuantidade > 0;
   const [formAberto, setFormAberto] = useState<FormAberto>(null);
-  const [dataForm, setDataForm] = useState(() => diaNaB3(new Date()));
+  const [dataForm, setDataForm] = useState(() => diaDoMercado(mercado, new Date()));
   const [quantidadeForm, setQuantidadeForm] = useState("");
   const [precoForm, setPrecoForm] = useState("");
   // So na compra que abre o trade: ele e do trade, nao da operacao.
@@ -41,7 +66,9 @@ export function PainelDeTrade({ estado, hoje }: Props) {
 
   if (autenticado !== true) return null;
 
-  const precoInfo = tradeAberto ? precoDeAgora(hoje, tradeAberto.ultimoSnapshot) : null;
+  const diaDeHoje = diaDoMercado(mercado, new Date());
+  // Sem trade aberto, o preco de agora ainda serve para preencher a compra.
+  const precoInfo = precoDeAgora(hoje, tradeAberto?.ultimoSnapshot ?? null, diaDeHoje);
   const marca = tradeAberto ? marcarAgora(tradeAberto, precoInfo?.preco ?? null) : null;
   const emAberto = marca && tradeAberto ? marca.resultado - tradeAberto.realizado : null;
   const emR = tradeAberto ? resultadoEmRDoTrade(tradeAberto, precoInfo?.preco ?? null) : null;
@@ -49,17 +76,19 @@ export function PainelDeTrade({ estado, hoje }: Props) {
 
   function abrirForm(tipo: "compra" | "venda") {
     setFormAberto(tipo);
-    setDataForm(diaNaB3(new Date()));
+    setDataForm(diaDeHoje);
     setQuantidadeForm("");
-    setPrecoForm(precoInfo ? precoInfo.preco.toFixed(2) : "");
+    setPrecoForm(precoInfo ? precoParaCampo(mercado, precoInfo.preco) : "");
     setSetupForm("");
     setStopForm("");
   }
 
   async function enviar() {
     if (!formAberto) return;
-    const quantidade = Number(quantidadeForm);
-    const preco = Number(precoForm.replace(",", "."));
+    // "0,0153" e "1.000" viram numero; texto que nao e numero vira NaN e o
+    // servidor recusa com a mensagem certa.
+    const quantidade = numeroDoTexto(quantidadeForm) ?? Number.NaN;
+    const precoNum = numeroDoTexto(precoForm) ?? Number.NaN;
     // Texto que nao e numero segue como esta: o servidor recusa com a mensagem certa.
     const stop = numeroDoTexto(stopForm) ?? stopForm.trim();
     try {
@@ -67,7 +96,7 @@ export function PainelDeTrade({ estado, hoje }: Props) {
         tipo: formAberto,
         data: dataForm,
         quantidade,
-        preco,
+        preco: precoNum,
         ...(abreTrade && setupForm !== "" ? { categoriaSetup: setupForm } : {}),
         ...(abreTrade && stop !== "" ? { stop } : {}),
       });
@@ -83,7 +112,7 @@ export function PainelDeTrade({ estado, hoje }: Props) {
         <span className="text-[16px] font-extrabold">Seu trade</span>
         {tradeAberto && (
           <Link
-            href={`/trades/${tradeAberto.id}`}
+            href={linkDoTrade(mercado, tradeAberto.id)}
             className="text-[12px] font-bold text-acento hover:underline"
           >
             Ver trade
@@ -97,13 +126,13 @@ export function PainelDeTrade({ estado, hoje }: Props) {
             <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
               <span className="text-[12px] font-bold text-tinta-3">Quantidade</span>
               <span className="num text-[18px] font-extrabold">
-                {numero(tradeAberto.quantidade, 0)}
+                {quantidadeExata(mercado, tradeAberto.quantidade)}
               </span>
             </div>
             <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
               <span className="text-[12px] font-bold text-tinta-3">Preço médio</span>
               <span className="num text-[18px] font-extrabold">
-                {reais(tradeAberto.precoMedio)}
+                {preco(mercado, tradeAberto.precoMedio)}
               </span>
             </div>
           </div>
@@ -111,7 +140,7 @@ export function PainelDeTrade({ estado, hoje }: Props) {
           {precoInfo && (
             <div className="flex items-center justify-between rounded-xl bg-painel-2 px-3.5 py-2.5">
               <span className="num text-[12px] font-bold text-tinta-3">{precoInfo.rotulo}</span>
-              <span className="num text-[15px] font-extrabold">{reais(precoInfo.preco)}</span>
+              <span className="num text-[15px] font-extrabold">{preco(mercado, precoInfo.preco)}</span>
             </div>
           )}
 
@@ -124,7 +153,7 @@ export function PainelDeTrade({ estado, hoje }: Props) {
                     marca.resultado >= 0 ? "text-alta" : "text-baixa"
                   }`}
                 >
-                  {reais(marca.resultado)}{" "}
+                  {valor(mercado, marca.resultado)}{" "}
                   <span className="text-[13px] font-bold">{percentual(marca.resultadoPct)}</span>
                 </span>
               </div>
@@ -141,10 +170,10 @@ export function PainelDeTrade({ estado, hoje }: Props) {
               </div>
               <div className="flex items-center justify-between text-[12px] font-semibold text-tinta-3">
                 <span>
-                  realizado <strong className="num text-tinta-2">{reais(tradeAberto.realizado)}</strong>
+                  realizado <strong className="num text-tinta-2">{valor(mercado, tradeAberto.realizado)}</strong>
                 </span>
                 <span>
-                  em aberto <strong className="num text-tinta-2">{reais(emAberto)}</strong>
+                  em aberto <strong className="num text-tinta-2">{valor(mercado, emAberto)}</strong>
                 </span>
               </div>
             </div>
@@ -170,7 +199,7 @@ export function PainelDeTrade({ estado, hoje }: Props) {
       ) : (
         <>
           <p className="text-[13px] leading-relaxed text-tinta-2">
-            Nenhuma posição aberta neste papel.
+            Nenhuma posição aberta {t.ativo === "moeda" ? "nesta moeda" : "neste papel"}.
           </p>
           <button
             type="button"
@@ -187,27 +216,41 @@ export function PainelDeTrade({ estado, hoje }: Props) {
           <span className="text-[13px] font-extrabold">
             {formAberto === "compra" ? "Comprar" : "Vender"}
           </span>
-          <div className="grid grid-cols-2 gap-2.5">
+          {/* `items-end`: o "tudo" da venda deixa o rotulo da quantidade mais alto,
+              e os campos da mesma linha ficam alinhados pela base. */}
+          <div className="grid grid-cols-2 items-end gap-2.5">
             <label className="flex flex-col gap-1" htmlFor={`${id}-data`}>
               <span className="rotulo">Data</span>
               <input
                 id={`${id}-data`}
                 type="date"
                 value={dataForm}
-                max={diaNaB3(new Date())}
+                max={diaDeHoje}
                 onChange={(e) => setDataForm(e.target.value)}
                 className="num toque h-10 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento"
               />
             </label>
             <label className="flex flex-col gap-1" htmlFor={`${id}-qtd`}>
-              <span className="rotulo">Quantidade</span>
+              <span className="flex items-center justify-between gap-2">
+                <span className="rotulo">Quantidade</span>
+                {/* A posicao inteira: em cripto a taxa deixa um resto com 8 casas. */}
+                {formAberto === "venda" && tradeAberto && (
+                  <button
+                    type="button"
+                    onClick={() => setQuantidadeForm(quantidadeParaCampo(mercado, tradeAberto.quantidade))}
+                    className="toque text-[11px] font-bold text-acento hover:underline"
+                  >
+                    tudo
+                  </button>
+                )}
+              </span>
               <input
                 id={`${id}-qtd`}
                 type="text"
-                inputMode="numeric"
+                inputMode={fracionada ? "decimal" : "numeric"}
                 value={quantidadeForm}
                 onChange={(e) => setQuantidadeForm(e.target.value)}
-                placeholder="100"
+                placeholder={fracionada ? "0,0153" : "100"}
                 className="num toque h-10 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento"
               />
             </label>
@@ -234,9 +277,9 @@ export function PainelDeTrade({ estado, hoje }: Props) {
                     className="toque h-10 w-full min-w-0 rounded-xl border border-linha-2 bg-painel px-2.5 text-[13px] font-bold outline-none focus:border-acento"
                   >
                     <option value="">Sem setup</option>
-                    {ORDEM_DAS_CATEGORIAS.map((c) => (
+                    {ordemNoDiario(regras.categoriasDoEstudo).map((c) => (
                       <option key={c} value={c}>
-                        {NOME_DO_SETUP[c]}
+                        {NOME_NO_DIARIO[c]}
                       </option>
                     ))}
                   </select>
@@ -256,6 +299,13 @@ export function PainelDeTrade({ estado, hoje }: Props) {
               </>
             )}
           </div>
+          {regras.taxa > 0 && (
+            <p className="text-[11px] font-semibold leading-relaxed text-tinta-3">
+              {formAberto === "compra"
+                ? `Na compra, ${(regras.taxa * 100).toLocaleString("pt-BR")}% sai das moedas recebidas: digite a quantidade comprada, e o diário desconta a taxa.`
+                : `Na venda, ${(regras.taxa * 100).toLocaleString("pt-BR")}% sai dos dólares recebidos. Se sobrar um resto pequeno demais para vender, use “tudo” para fechar o trade.`}
+            </p>
+          )}
           <div className="flex gap-2">
             <button
               type="button"
@@ -274,7 +324,8 @@ export function PainelDeTrade({ estado, hoje }: Props) {
             </button>
           </div>
           <span className="text-[11px] font-semibold text-tinta-3">
-            {dataForm && `pregão de ${fmtData(dataForm)}`}
+            {dataForm && `${t.dia[0]} de ${fmtData(dataForm)}`}
+            {t.notaDaData && ` · ${t.notaDaData}`}
           </span>
         </div>
       )}

@@ -4,8 +4,10 @@ import Link from "next/link";
 import { useMemo } from "react";
 import { Grafico } from "@/components/Grafico";
 import { PainelDeAlerta } from "@/components/PainelDeAlerta";
+import { PainelDeTrade } from "@/components/PainelDeTrade";
 import type { Direcao } from "@/lib/alertas";
 import { fmtR } from "@/lib/backtest-tela";
+import type { CandleDeHoje } from "@/lib/candle-de-hoje";
 import { data, diaCurto, percentual } from "@/lib/formato";
 import { horaEmBrasilia } from "@/lib/cripto-hoje";
 import { casasDoPreco, gatilhoNoMercado, preco, stopNoMercado } from "@/lib/mercado";
@@ -84,6 +86,26 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
       : undefined;
   const aberto = estadoDosTrades.tradeAberto;
   const agora = ultima?.close ?? null;
+  // O candle de hoje que a pagina leu da Binance, no formato que o cartao "Seu
+  // trade" usa para o preco de agora (e para preencher o preco da compra ou da
+  // venda). Sem ele, o cartao cai no fechamento do ultimo snapshot do trade.
+  const candleDeHoje = useMemo<CandleDeHoje | null>(
+    () =>
+      aoVivo && ultima
+        ? {
+            ticker,
+            dia: ultima.tradeDate,
+            open: ultima.open ?? ultima.close,
+            high: ultima.high ?? ultima.close,
+            low: ultima.low ?? ultima.close,
+            close: ultima.close,
+            volumeAcoes: null,
+            hora: aoVivo,
+            fonte: "binance",
+          }
+        : null,
+    [aoVivo, ultima, ticker],
+  );
   const regua =
     agora !== null
       ? {
@@ -184,6 +206,10 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           botões Eventos e Setups, acima do gráfico, escondem essas marcas.
         </p>
       </section>
+
+      {/* Compra e venda da moeda (pedido de 18/11/2026): as marcas e a linha do
+          preco medio aparecem no grafico assim que o trade volta do servidor. */}
+      <PainelDeTrade estado={estadoDosTrades} hoje={candleDeHoje} mercado={MERCADO} />
 
       {/* Alertas de preco da moeda: criar (no celular, tocando no grafico), mudar
           o nivel e apagar. Avisam no Telegram pela passada de 15 em 15 minutos. */}

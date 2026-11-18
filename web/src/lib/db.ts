@@ -656,7 +656,7 @@ export async function fundamentos(
  * a desdobramento ou grupamento. Quem decide se e mesmo e `fatorDoSalto`, com
  * a mesma regra do motor em Python. So alcanca a janela de barras do banco.
  */
-export const SALTOS_DE_ABERTURA = `
+const SALTOS_DE_ABERTURA = `
   SELECT ticker, trade_date, salto FROM (
     SELECT ticker, trade_date,
            open / NULLIF(lag(close) OVER (PARTITION BY ticker ORDER BY trade_date), 0) AS salto
@@ -666,7 +666,7 @@ export const SALTOS_DE_ABERTURA = `
    WHERE salto < 0.62 OR salto > 1.6
    ORDER BY ticker, trade_date`;
 
-export function desdobramentosDosSaltos(
+function desdobramentosDosSaltos(
   linhas: { ticker: unknown; trade_date: unknown; salto: unknown }[],
 ): Record<string, Desdobramento[]> {
   const porPapel: Record<string, Desdobramento[]> = {};

@@ -56,16 +56,6 @@ A lista acima vale para o alerta de 6σ. Os setups e a suíte de backtest são e
 - No site, página de cripto lê o banco dentro de `noMercado("cripto", ...)` (`web/src/lib/mercado-servidor.ts`), que troca o schema no SQL. Componente filho que busca dado sozinho não herda isso: leia tudo na página e desça por prop.
 - Os setups de cripto são as regras da B3 sem mudar corte. A nota vem do backtest próprio (`scripts/cripto_historico.py` + `scripts/backtest_setups.py`), escolhendo em 2017–2021 e conferindo em 2022–2026.
 
-## A exceção escrita: valuation
-
-Pedido do usuário em 16/11/2026: três contas simples de "preço justo" para todas as empresas (Graham, Bazin e um fluxo de caixa descontado sobre o lucro), com semáforo por método. Seção 16 do plano.
-
-- É aritmética sobre o último balanço publicado, com a fórmula à vista (`web/src/lib/valuation.ts`). O semáforo diz onde o preço está em relação ao resultado da conta (mais de 10% abaixo, perto, mais de 10% acima). O texto nunca diz "compre", "barata" ou "recomendado".
-- Os três métodos não viram uma nota só nem uma média: aparecem lado a lado, e o resumo conta quantos concordam.
-- Só para quem está logado, na ficha e em `/valuation`, pelo mesmo motivo dos setups.
-- Método que não se aplica (prejuízo, sem proventos, contagem de ações reprovada) aparece como "não se aplica", com o motivo. Não some e não vira zero.
-- Não alimenta alerta, setup nem ranking de nada fora da própria página.
-
 ## A exceção escrita: tendência
 
 Pedido do usuário em 17/11/2026: filtrar os ativos em alta, lateral ou baixa pela inclinação das médias móveis que ele escolher — na tabela do Histórico (ações) e na aba Cripto. Seção 17 do plano.

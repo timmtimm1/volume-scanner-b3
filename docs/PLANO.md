@@ -737,6 +737,8 @@ Pedido do usuário: a régua e o alerta no gráfico de cripto, como na ficha das
 
 ## 16. Valuation simples (16/11/2026)
 
+> **Removido do app em 18/11/2026**, a pedido do usuário, para enxugar o site. O código está na tag `v0.10-antes-do-espaco-da-vercel`. A seção fica como história.
+
 Pedido do usuário: "métodos básicos de valuation no app, nada muito complexo e que dê para automatizar para todas as empresas listadas". Decisões dele, por perguntas:
 
 | Pergunta | Escolha |

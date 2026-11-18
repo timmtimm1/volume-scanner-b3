@@ -1098,7 +1098,7 @@ pareceriam complexas demais para o problema.
   camadas, e só vale se sobreviver a todas. Não passando, o número continua
   recusado; corrigir às cegas seria trocar um erro conhecido por um chute.
 
-  Isso resgata **127 dos 143 papéis** que a recusa pura deixaria sem valuation,
+  Isso resgata **127 dos 143 papéis** que a recusa pura deixaria sem múltiplos,
   incluindo VALE3, ITUB4, ABEV3, ITSA4, LREN3, ASAI3, ELET3 e EMBR3 — as
   gigantes são justamente as que mais declaram em milhares. Das 30 blue chips
   testadas, 30 mostram P/L e P/VP e 28 mostram valor de mercado. A ficha avisa
@@ -1605,23 +1605,11 @@ Depois do merge, rode o workflow `cripto` uma vez (ou espere o das 21:10): ele a
 
 Alerta de preço durante o dia, ajustes por setup e a página de backtest completa (curva e ano a ano). Estão na lista da seção 15.
 
-## Valuation
+## Valuation (removido)
 
-Três contas simples de "preço justo", para todas as empresas com balanço na CVM (seção 16 do [plano](docs/PLANO.md)):
+A página `/valuation` e o bloco "Preço justo" da ficha (Graham, Bazin e fluxo de caixa descontado) saíram do app em 18/11/2026, a pedido do usuário, para enxugar o site. O código está na tag `v0.10-antes-do-espaco-da-vercel` e a história, na seção 16 do [plano](docs/PLANO.md).
 
-| Método | Conta | Não se aplica quando |
-|---|---|---|
-| Graham | √(22,5 × lucro por ação × valor patrimonial por ação) | prejuízo ou patrimônio negativo |
-| Bazin | provento médio de 3 anos ÷ 6% | sem proventos, ou proventos fora de escala |
-| Fluxo de caixa | lucro por ação crescendo 5 anos + perpetuidade, a valor de hoje | prejuízo |
-
-Cada uma é comparada com o preço do pregão e ganha um ponto colorido: verde com o preço mais de 10% abaixo do resultado, vermelho mais de 10% acima, amarelo no meio. Aparecem na aba Fundamentos da ficha (bloco **Preço justo**, com a conta aberta e controles para o crescimento e a taxa de desconto do fluxo de caixa) e em **`/valuation`**, a lista de todas as empresas. Só para quem está logado.
-
-O padrão do fluxo de caixa: crescimento do lucro da própria empresa nos últimos 2 anos (entre 0% e 15%) e desconto igual ao juro do Tesouro prefixado de 10 anos mais 5 pontos, lido da série semanal de juros.
-
-São contas, não análise: não olham setor, dívida nem ciclo, e é comum as três discordarem. O código está em [`web/src/lib/valuation.ts`](web/src/lib/valuation.ts) (as contas, com teste) e [`valuation-dados.ts`](web/src/lib/valuation-dados.ts) (a leitura de todas as empresas em cinco consultas).
-
-**Proventos e desdobramento.** O provento fica no banco pelo valor por ação da época. Para somar com o preço de hoje, cada um é levado para a escala atual pelos desdobramentos reconhecidos nas barras (`fatorDoSalto`, a mesma regra do motor de suportes). Isso também corrigiu o dividend yield de 12 meses da ficha, que inflava depois de um desdobramento.
+**Proventos e desdobramento.** O provento fica no banco pelo valor por ação da época. Para somar com o preço de hoje, cada um é levado para a escala atual pelos desdobramentos reconhecidos nas barras (`fatorDoSalto`, a mesma regra do motor de suportes). Isso corrigiu o dividend yield de 12 meses da ficha, que inflava depois de um desdobramento, e continua valendo.
 
 ## Desempenho
 

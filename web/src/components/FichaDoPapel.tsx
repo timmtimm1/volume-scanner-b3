@@ -43,8 +43,6 @@ type Props = {
   fundamentos: Fundamentos | null;
   /** Suportes e resistencias do trecho do grafico (aba Setups). */
   niveis?: NivelDoGrafico[];
-  /** Juro anual longo (fracao) para a taxa de desconto do bloco "Preço justo". */
-  juro?: number | null;
 };
 
 /**
@@ -135,7 +133,6 @@ export function FichaDoPapel({
   eventos,
   fundamentos,
   niveis = [],
-  juro = null,
 }: Props) {
   const params = useSearchParams();
   const pedido = params.get("data");
@@ -272,16 +269,12 @@ export function FichaDoPapel({
   // Montado aqui, e nao no JSX, para a checagem de nulo valer para o TypeScript
   // nos tres lugares que perguntam se ha fundamentos. Criar o elemento nao
   // executa o componente: ele so roda se entrar na arvore.
-  // O bloco "Preço justo" so existe para quem esta logado (como os setups).
-  const logado = estadoDosAlertas.autenticado === true;
-  const valuation = useMemo(() => (logado ? { juro } : null), [logado, juro]);
   const painelDeFundamentos =
     fundamentos !== null && dataDosFundamentos !== null ? (
       <PainelDeFundamentos
         dados={fundamentos}
         barras={barras}
         data={dataDosFundamentos}
-        valuation={valuation}
       />
     ) : null;
 

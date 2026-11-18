@@ -43,6 +43,7 @@ import {
   marcarAMercado,
   validarCampos,
   type EntradaDeOperacao,
+  type LadoDoTrade,
   type OperacaoOrdenavel,
   type TipoDeOperacao,
 } from "./posicao";
@@ -82,6 +83,11 @@ export type TradeResumo = {
   ticker: string;
   abertoEm: string;
   encerradoEm: string | null;
+  /**
+   * "venda" = venda a descoberto (so cripto): o tipo da primeira operacao.
+   * Nesse lado a `quantidade` e negativa (as moedas devidas).
+   */
+  lado: LadoDoTrade;
   /** Estado da ULTIMA operacao -- a posicao agora, sem marcar a mercado. */
   quantidade: number;
   precoMedio: number;
@@ -241,6 +247,8 @@ function montarResumo(
     ticker: r.ticker,
     abertoEm: dia(r.aberto_em),
     encerradoEm: r.encerrado_em === null ? null : dia(r.encerrado_em),
+    // As operacoes chegam em ordem de (data, id): a primeira abriu o trade.
+    lado: operacoes[0]?.tipo ?? "compra",
     quantidade: ultimaOp?.quantidadeApos ?? 0,
     precoMedio: ultimaOp?.precoMedioApos ?? 0,
     custoComprado: ultimaOp?.custoCompradoApos ?? 0,
@@ -589,8 +597,9 @@ function sinalDoPedido(v: unknown): number | null {
 }
 
 /**
- * Registra uma compra ou venda. Compra sem trade aberto do papel abre um;
- * venda sem trade aberto e erro -- nao ha posicao para vender.
+ * Registra uma compra ou venda. Compra sem trade aberto do papel abre um. Venda
+ * sem trade aberto abre um trade VENDIDO onde o mercado deixa (cripto,
+ * `regras.vendido`); na B3 e erro -- nao ha posicao para vender.
  *
  * `setupId`, `categoriaSetup` e `stop` (opcionais) sao do TRADE, nao da
  * operacao: so sao gravados quando esta compra abre o trade. Numa compra que
@@ -634,7 +643,7 @@ export async function registrarOperacao(entrada: unknown): Promise<TradeDetalhe>
     if (abertoRows.length > 0) {
       id = Number(abertoRows[0].id);
     } else {
-      if (tipo === "venda") {
+      if (tipo === "venda" && regras().vendido === null) {
         throw new OperacaoInvalida(`nao ha trade aberto de ${ticker} para vender`);
       }
       const temDiario =

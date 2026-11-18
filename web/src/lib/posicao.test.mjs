@@ -495,7 +495,8 @@ describe("venda a descoberto (cripto): taxa dos futuros em dolar", () => {
   });
 
   it("regras sem o campo `vendido` tambem nao deixam", () => {
-    const { vendido: _, ...semCampo } = CRIPTO;
+    const semCampo = { ...CRIPTO };
+    delete semCampo.vendido;
     assert.throws(() => aplicarOperacoes([VENDA], semCampo), /tem de ser uma compra/);
   });
 

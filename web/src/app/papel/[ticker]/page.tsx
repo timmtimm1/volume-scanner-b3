@@ -1,13 +1,17 @@
 import { notFound } from "next/navigation";
 import { Suspense } from "react";
 import { FichaDoPapel } from "@/components/FichaDoPapel";
-import { fundamentos, niveisDoPapel, papeisComEvento, papel } from "@/lib/db";
+import { fundamentos, niveisDoPapel, papeisComEventoRecente, papel } from "@/lib/db";
 import { TICKER } from "@/lib/ticker";
 import { juroLongo } from "@/lib/valuation-dados";
 
-/** Uma pagina estatica por papel que teve ao menos um evento. */
+/**
+ * Uma pagina estatica por papel com evento nos ultimos pregoes (o scanner do
+ * dia e os links do Telegram da semana). As outras fichas sao geradas no
+ * primeiro acesso -- ver `papeisComEventoRecente` para o porque.
+ */
 export async function generateStaticParams() {
-  const tickers = await papeisComEvento();
+  const tickers = await papeisComEventoRecente();
   return tickers.map((ticker) => ({ ticker }));
 }
 

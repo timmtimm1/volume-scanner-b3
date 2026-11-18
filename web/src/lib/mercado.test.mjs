@@ -166,6 +166,7 @@ describe("regras do diario de trades", () => {
       casasDoPrecoMedio: 6,
       todoDia: false,
       categoriasDoEstudo: [],
+      vendido: null, // so comprado: decisao do usuario de 18/11/2026
     });
   });
 
@@ -175,6 +176,10 @@ describe("regras do diario de trades", () => {
     assert.equal(r.casasDaQuantidade, 8);
     assert.equal(r.casasDoPreco, 10); // o numeric(28, 10) da migration 0027
     assert.equal(r.todoDia, true);
+  });
+
+  it("cripto deixa vender a descoberto, com a taxa dos futuros (0,05% por lado)", () => {
+    assert.deepEqual(regrasDoDiario("cripto").vendido, { taxa: 0.0005 });
   });
 
   it("o setup do estudo no diario e um que o config conhece", () => {

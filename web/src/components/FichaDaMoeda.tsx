@@ -10,7 +10,7 @@ import { fmtR } from "@/lib/backtest-tela";
 import type { CandleDeHoje } from "@/lib/candle-de-hoje";
 import { data, diaCurto, percentual } from "@/lib/formato";
 import { horaEmBrasilia } from "@/lib/cripto-hoje";
-import { casasDoPreco, gatilhoNoMercado, preco, stopNoMercado } from "@/lib/mercado";
+import { casasDoPreco, diaDoMercado, gatilhoNoMercado, preco, stopNoMercado } from "@/lib/mercado";
 import { NOME_DO_SETUP, resultadoEmR, rotuloDoEstado, type Setup } from "@/lib/setups-tela";
 import type { Barra, NivelDoGrafico } from "@/lib/types";
 import { marcarAgora } from "@/lib/posicao";
@@ -124,6 +124,18 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           },
         }
       : undefined;
+  // O botao "Trade" do grafico (pedido de 18/11/2026): compra, venda e venda a
+  // descoberto clicando no candle e na altura. So com login.
+  const registroDeTrade =
+    estadoDosAlertas.autenticado === true
+      ? {
+          aberto: aberto ? { lado: aberto.lado, quantidade: aberto.quantidade } : null,
+          registrar: estadoDosTrades.registrar,
+          salvando: estadoDosTrades.salvando,
+          erro: estadoDosTrades.erro,
+          hoje: diaDoMercado(MERCADO, new Date()),
+        }
+      : undefined;
   // A linha tracejada do preco medio do trade aberto, marcada ao preco de agora.
   const posicaoDoGrafico = useMemo(() => {
     if (!aberto || agora === null) return null;
@@ -196,6 +208,7 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           // marcas juntas poluiam o grafico da moeda). A escolha vale para
           // todas as moedas e fica guardada no navegador.
           chaveDasMarcas="vs:marcas:cripto"
+          registroDeTrade={registroDeTrade}
           classeDeAltura="h-[320px] md:h-[440px] lg:h-[560px]"
         />
         <p className="px-2 pt-2 text-[12px] font-semibold text-tinta-3">

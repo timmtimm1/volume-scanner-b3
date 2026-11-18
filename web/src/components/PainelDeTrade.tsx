@@ -72,7 +72,26 @@ export function PainelDeTrade({ estado, hoje, mercado = "b3" }: Props) {
   const marca = tradeAberto ? marcarAgora(tradeAberto, precoInfo?.preco ?? null) : null;
   const emAberto = marca && tradeAberto ? marca.resultado - tradeAberto.realizado : null;
   const emR = tradeAberto ? resultadoEmRDoTrade(tradeAberto, precoInfo?.preco ?? null) : null;
-  const abreTrade = formAberto === "compra" && !tradeAberto;
+  // Sem trade aberto, a operacao abre um: compra, ou venda a descoberto onde o
+  // mercado deixa (cripto). Com trade aberto, o lado que fecha e o oposto.
+  const abreTrade = formAberto !== null && !tradeAberto;
+  const vendido = tradeAberto?.lado === "venda";
+  const ladoQueFecha = tradeAberto ? (vendido ? "compra" : "venda") : null;
+  const taxaDoFuturo = regras.vendido?.taxa ?? null;
+  // A operacao do formulario e de um trade vendido (aberto, ou a venda que abre um).
+  const operacaoVendida = vendido || (abreTrade && formAberto === "venda");
+  const nomeDaOperacao = (tipo: "compra" | "venda"): string =>
+    !tradeAberto
+      ? tipo === "compra"
+        ? "Comprar"
+        : "Vender a descoberto"
+      : tipo === ladoQueFecha
+        ? vendido
+          ? "Recomprar"
+          : "Vender"
+        : vendido
+          ? "Vender mais"
+          : "Comprar mais";
 
   function abrirForm(tipo: "compra" | "venda") {
     setFormAberto(tipo);
@@ -124,13 +143,18 @@ export function PainelDeTrade({ estado, hoje, mercado = "b3" }: Props) {
         <>
           <div className="grid grid-cols-2 gap-2.5">
             <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
-              <span className="text-[12px] font-bold text-tinta-3">Quantidade</span>
+              <span className="text-[12px] font-bold text-tinta-3">
+                {vendido ? "Vendido" : "Quantidade"}
+              </span>
               <span className="num text-[18px] font-extrabold">
-                {quantidadeExata(mercado, tradeAberto.quantidade)}
+                {/* A posicao vendida e guardada negativa; aqui, o tamanho. */}
+                {quantidadeExata(mercado, Math.abs(tradeAberto.quantidade))}
               </span>
             </div>
             <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
-              <span className="text-[12px] font-bold text-tinta-3">Preço médio</span>
+              <span className="text-[12px] font-bold text-tinta-3">
+                {vendido ? "Preço médio de venda" : "Preço médio"}
+              </span>
               <span className="num text-[18px] font-extrabold">
                 {preco(mercado, tradeAberto.precoMedio)}
               </span>
@@ -179,20 +203,21 @@ export function PainelDeTrade({ estado, hoje, mercado = "b3" }: Props) {
             </div>
           )}
 
+          {/* O mesmo lado primeiro (aumentar), o que fecha depois. */}
           <div className="grid grid-cols-2 gap-2">
             <button
               type="button"
-              onClick={() => abrirForm("compra")}
+              onClick={() => abrirForm(vendido ? "venda" : "compra")}
               className="toque h-11 rounded-full bg-primario text-[13px] font-bold text-primario-tinta"
             >
-              Comprar mais
+              {vendido ? "Vender mais" : "Comprar mais"}
             </button>
             <button
               type="button"
-              onClick={() => abrirForm("venda")}
+              onClick={() => abrirForm(vendido ? "compra" : "venda")}
               className="toque h-11 rounded-full border border-linha-2 text-[13px] font-bold text-tinta-2 transition-colors hover:text-tinta"
             >
-              Vender
+              {vendido ? "Recomprar" : "Vender"}
             </button>
           </div>
         </>
@@ -201,21 +226,30 @@ export function PainelDeTrade({ estado, hoje, mercado = "b3" }: Props) {
           <p className="text-[13px] leading-relaxed text-tinta-2">
             Nenhuma posição aberta {t.ativo === "moeda" ? "nesta moeda" : "neste papel"}.
           </p>
-          <button
-            type="button"
-            onClick={() => abrirForm("compra")}
-            className="toque h-11 rounded-full bg-primario text-[13px] font-bold text-primario-tinta"
-          >
-            Registrar compra
-          </button>
+          <div className={`grid gap-2 ${regras.vendido ? "grid-cols-2" : "grid-cols-1"}`}>
+            <button
+              type="button"
+              onClick={() => abrirForm("compra")}
+              className="toque h-11 rounded-full bg-primario text-[13px] font-bold text-primario-tinta"
+            >
+              Registrar compra
+            </button>
+            {regras.vendido && (
+              <button
+                type="button"
+                onClick={() => abrirForm("venda")}
+                className="toque h-11 rounded-full border border-linha-2 text-[13px] font-bold text-tinta-2 transition-colors hover:text-tinta"
+              >
+                Registrar venda
+              </button>
+            )}
+          </div>
         </>
       )}
 
       {formAberto && (
         <div className="flex flex-col gap-2.5 rounded-2xl bg-painel-2 p-3.5">
-          <span className="text-[13px] font-extrabold">
-            {formAberto === "compra" ? "Comprar" : "Vender"}
-          </span>
+          <span className="text-[13px] font-extrabold">{nomeDaOperacao(formAberto)}</span>
           {/* `items-end`: o "tudo" da venda deixa o rotulo da quantidade mais alto,
               e os campos da mesma linha ficam alinhados pela base. */}
           <div className="grid grid-cols-2 items-end gap-2.5">
@@ -234,10 +268,12 @@ export function PainelDeTrade({ estado, hoje, mercado = "b3" }: Props) {
               <span className="flex items-center justify-between gap-2">
                 <span className="rotulo">Quantidade</span>
                 {/* A posicao inteira: em cripto a taxa deixa um resto com 8 casas. */}
-                {formAberto === "venda" && tradeAberto && (
+                {formAberto === ladoQueFecha && tradeAberto && (
                   <button
                     type="button"
-                    onClick={() => setQuantidadeForm(quantidadeParaCampo(mercado, tradeAberto.quantidade))}
+                    onClick={() =>
+                      setQuantidadeForm(quantidadeParaCampo(mercado, Math.abs(tradeAberto.quantidade)))
+                    }
                     className="toque text-[11px] font-bold text-acento hover:underline"
                   >
                     tudo
@@ -299,7 +335,13 @@ export function PainelDeTrade({ estado, hoje, mercado = "b3" }: Props) {
               </>
             )}
           </div>
-          {regras.taxa > 0 && (
+          {operacaoVendida && taxaDoFuturo !== null ? (
+            <p className="text-[11px] font-semibold leading-relaxed text-tinta-3">
+              Venda a descoberto, como nos futuros: {(taxaDoFuturo * 100).toLocaleString("pt-BR")}% de
+              taxa sai em dólar a cada venda e recompra.
+              {abreTrade && " O stop, se houver, fica acima do preço da venda."}
+            </p>
+          ) : regras.taxa > 0 && (
             <p className="text-[11px] font-semibold leading-relaxed text-tinta-3">
               {formAberto === "compra"
                 ? `Na compra, ${(regras.taxa * 100).toLocaleString("pt-BR")}% sai das moedas recebidas: digite a quantidade comprada, e o diário desconta a taxa.`

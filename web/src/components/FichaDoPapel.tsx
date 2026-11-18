@@ -33,6 +33,7 @@ import { useComputador } from "@/lib/useComputador";
 import { useNoticias } from "@/lib/useNoticias";
 import { focoDoGrafico } from "@/lib/foco";
 import { useSetupsDoPapel } from "@/lib/useSetupsDoPapel";
+import { diaDoMercado } from "@/lib/mercado";
 import { useTradesDoPapel } from "@/lib/useTradesDoPapel";
 
 type Props = {
@@ -209,6 +210,23 @@ export function FichaDoPapel({
   // e ele e quem vale.
   const agoraDaRegua =
     hoje && hoje.dia === diaNaB3(new Date()) ? hoje.close : (barras.at(-1)?.close ?? null);
+  // O botao "Trade" do grafico (pedido de 18/11/2026): registrar compra ou
+  // venda clicando no candle e na altura. So com login; na B3, so comprado.
+  const registroDeTrade =
+    estadoDosAlertas.autenticado === true
+      ? {
+          aberto: estadoDosTrades.tradeAberto
+            ? {
+                lado: estadoDosTrades.tradeAberto.lado,
+                quantidade: estadoDosTrades.tradeAberto.quantidade,
+              }
+            : null,
+          registrar: estadoDosTrades.registrar,
+          salvando: estadoDosTrades.salvando,
+          erro: estadoDosTrades.erro,
+          hoje: diaDoMercado("b3", new Date()),
+        }
+      : undefined;
   const tradeParaRegua = estadoDosTrades.tradeAberto
     ? {
         quantidade: estadoDosTrades.tradeAberto.quantidade,
@@ -429,6 +447,7 @@ export function FichaDoPapel({
         linhasDeSetup={linhasDeSetup}
         regua={regua}
         edicaoDeAlertas={edicaoDeAlertas}
+        registroDeTrade={registroDeTrade}
         classeDeAltura="h-[320px] md:h-[440px] lg:h-[580px]"
       />
 

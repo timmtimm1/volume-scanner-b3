@@ -150,3 +150,10 @@ def test_quantidade_curta_de_cripto_cabe_em_sete_caracteres(
 ) -> None:
     assert mercado.quantidade_curta(quantidade) == texto
     assert len(texto) <= 7
+
+
+def test_quantidade_curta_da_posicao_vendida_leva_o_sinal(cripto: None) -> None:
+    """Venda a descoberto (0029): a posicao e negativa, e o Telegram mostra o sinal."""
+    assert mercado.quantidade_curta(-0.5) == "-0,5"
+    assert mercado.quantidade_curta(-0.0152847) == "-0,0153"
+    assert len(mercado.quantidade_curta(-0.0152847)) <= 7

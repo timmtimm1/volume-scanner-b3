@@ -66,6 +66,16 @@ function EtiquetaDoMercado({ mercado, mostrar }: { mercado: Mercado; mostrar: bo
   );
 }
 
+/** "vendido" ao lado do ticker num trade de venda a descoberto; nada nos demais. */
+function EtiquetaDoLado({ trade }: { trade: TradeResumo }) {
+  if (trade.lado !== "venda") return null;
+  return (
+    <span className="rounded-md bg-painel px-1.5 py-0.5 text-[10px] font-extrabold uppercase text-tinta-2">
+      vendido
+    </span>
+  );
+}
+
 const chave = (t: { mercado: Mercado; ticker: string }) => `${t.mercado}:${t.ticker}`;
 
 export function ListaDeTrades({
@@ -167,9 +177,10 @@ export function ListaDeTrades({
               {trade.ticker}
             </Link>
             <EtiquetaDoMercado mercado={trade.mercado} mostrar={misturado} />
+            <EtiquetaDoLado trade={trade} />
             <EtiquetaDoSetup trade={trade} />
             <span className="num text-[12px] font-semibold text-tinta-3">
-              {quantidade(trade.mercado, trade.quantidade, trade.ticker)}
+              {quantidade(trade.mercado, Math.abs(trade.quantidade), trade.ticker)}
             </span>
             <span
               className={`num ml-auto text-right text-[14px] font-extrabold ${
@@ -214,6 +225,7 @@ export function ListaDeTrades({
               {t.ticker}
             </Link>
             <EtiquetaDoMercado mercado={t.mercado} mostrar={misturado} />
+            <EtiquetaDoLado trade={t} />
             <EtiquetaDoSetup trade={t} />
             <span className="num text-[11px] font-semibold text-tinta-3">
               {fmtData(t.abertoEm)} – {t.encerradoEm && fmtData(t.encerradoEm)}

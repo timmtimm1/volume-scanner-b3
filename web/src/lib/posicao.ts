@@ -25,6 +25,12 @@ export class OperacaoInvalida extends Error {}
 
 export type TipoDeOperacao = "compra" | "venda";
 
+/**
+ * O lado do trade, dado pela operacao que o abre: "compra" e o trade comprado
+ * de sempre; "venda" e a venda a descoberto (so onde `regras.vendido` existe).
+ */
+export type LadoDoTrade = TipoDeOperacao;
+
 export type EntradaDeOperacao = {
   tipo: unknown;
   data: unknown;
@@ -134,6 +140,15 @@ export type OperacaoOrdenavel = {
   preco: number;
 };
 
+/**
+ * A posicao depois de uma operacao. Na venda a descoberto a `quantidade` e
+ * NEGATIVA (as moedas devidas), e e isso que deixa a mesma formula do
+ * resultado -- `realizado + quantidade x (preco - precoMedio)` -- certa nos dois
+ * lados: vendido, o resultado cresce quando o preco cai. `precoMedio` e sempre
+ * positivo (na venda a descoberto, o preco medio de venda). `custoComprado` e o
+ * valor negociado na abertura (compras no comprado, vendas no vendido): a base
+ * do percentual.
+ */
 export type EstadoDaPosicao = {
   quantidade: number;
   precoMedio: number;
@@ -148,6 +163,8 @@ export type ResultadoDaAplicacao<T extends OperacaoOrdenavel> = {
   estados: EstadoDaPosicao[];
   abertoEm: string;
   encerradoEm: string | null;
+  /** O lado do trade: o tipo da primeira operacao. */
+  lado: LadoDoTrade;
 };
 
 /**
@@ -162,6 +179,13 @@ export type ResultadoDaAplicacao<T extends OperacaoOrdenavel> = {
  * preco medio e o custo da posicao dividido pelas moedas que ficaram. A venda
  * de q a p realiza q x (p x (1 - taxa) - PM): a taxa sai dos dolares. Sem taxa
  * (B3), as duas contas sao as de sempre.
+ *
+ * Venda a descoberto (primeira operacao uma venda, so com `regras.vendido`):
+ * a venda abre ou aumenta a posicao vendida, a compra recompra. A taxa e a dos
+ * futuros, em dolar sobre o valor negociado: a venda de q a p entra no preco
+ * medio como p x (1 - taxa), e a recompra de q a p realiza
+ * q x (PM - p x (1 + taxa)). As moedas nao mudam com a taxa (nao ha moeda
+ * recebida, so a devida).
  */
 export function aplicarOperacoes<T extends OperacaoOrdenavel>(
   operacoes: T[],
@@ -175,8 +199,14 @@ export function aplicarOperacoes<T extends OperacaoOrdenavel>(
     (a, b) => a.data.localeCompare(b.data) || a.id - b.id,
   );
 
-  if (ordenadas[0].tipo !== "compra") {
-    throw new OperacaoInvalida("a primeira operacao de um trade tem de ser uma compra");
+  const lado: LadoDoTrade = ordenadas[0].tipo;
+  if (lado === "venda") {
+    // `?? null`: regras sem o campo (de antes da venda a descoberto) nao deixam.
+    const vendido = regras.vendido ?? null;
+    if (vendido === null) {
+      throw new OperacaoInvalida("a primeira operacao de um trade tem de ser uma compra");
+    }
+    return aplicarVendido(ordenadas, regras, vendido.taxa);
   }
 
   const estados: EstadoDaPosicao[] = [];
@@ -228,6 +258,68 @@ export function aplicarOperacoes<T extends OperacaoOrdenavel>(
     estados,
     abertoEm: ordenadas[0].data,
     encerradoEm: quantidade === 0 ? ordenadas[ordenadas.length - 1].data : null,
+    lado,
+  };
+}
+
+/**
+ * A venda a descoberto: o espelho de `aplicarOperacoes`. A posicao guardada e
+ * negativa; aqui a conta anda com o tamanho dela (`devidas`, positivo) e grava
+ * o sinal so no estado.
+ */
+function aplicarVendido<T extends OperacaoOrdenavel>(
+  ordenadas: T[],
+  regras: RegrasDoDiario,
+  taxa: number,
+): ResultadoDaAplicacao<T> {
+  const estados: EstadoDaPosicao[] = [];
+  let devidas = 0;
+  let precoMedio = 0;
+  let custoComprado = 0;
+  let realizado = 0;
+  let encerradoNaOperacao = -1;
+  const folga = 0.5 * 10 ** -regras.casasDaPosicao;
+
+  for (let i = 0; i < ordenadas.length; i++) {
+    const op = ordenadas[i];
+
+    if (encerradoNaOperacao >= 0) {
+      throw new OperacaoInvalida(
+        "trade ja encerrado em " +
+          ordenadas[encerradoNaOperacao].data +
+          ": uma venda depois disso abre outro trade",
+      );
+    }
+
+    if (op.tipo === "venda") {
+      custoComprado = r2(custoComprado + op.quantidade * op.preco);
+      precoMedio = arredondar(
+        (devidas * precoMedio + op.quantidade * op.preco * (1 - taxa)) / (devidas + op.quantidade),
+        regras.casasDoPrecoMedio,
+      );
+      devidas = arredondar(devidas + op.quantidade, regras.casasDaPosicao);
+    } else {
+      if (op.quantidade > devidas + folga) {
+        throw new OperacaoInvalida(
+          `recompra de ${op.quantidade} maior que a posicao vendida de ${devidas} em ${op.data}`,
+        );
+      }
+      const recomprada = Math.min(op.quantidade, devidas);
+      realizado = r2(realizado + recomprada * (precoMedio - op.preco * (1 + taxa)));
+      devidas = arredondar(devidas - recomprada, regras.casasDaPosicao);
+    }
+
+    // `0 - 0` daria -0: o trade zerado tem de comparar igual a 0 em todo lugar.
+    estados.push({ quantidade: devidas === 0 ? 0 : -devidas, precoMedio, custoComprado, realizado });
+    if (devidas === 0) encerradoNaOperacao = i;
+  }
+
+  return {
+    ordenadas,
+    estados,
+    abertoEm: ordenadas[0].data,
+    encerradoEm: devidas === 0 ? ordenadas[ordenadas.length - 1].data : null,
+    lado: "venda",
   };
 }
 
@@ -314,7 +406,10 @@ export type MarcacaoDeAgora = {
   resultado: number;
   /** `resultado / custoComprado`. Null so quando nao ha custo (nunca deveria acontecer). */
   resultadoPct: number | null;
-  /** `quantidade * preco`. Null sem preco ou com a posicao zerada (trade encerrado). */
+  /**
+   * `quantidade * preco` (negativo na venda a descoberto: e o que se deve). Null
+   * sem preco ou com a posicao zerada (trade encerrado).
+   */
   valor: number | null;
 };
 
@@ -335,6 +430,6 @@ export function marcarAgora(estado: EstadoDaPosicao, preco: number | null): Marc
   return {
     resultado,
     resultadoPct: custoComprado > 0 ? resultado / custoComprado : null,
-    valor: preco !== null && quantidade > 0 ? r2(quantidade * preco) : null,
+    valor: preco !== null && quantidade !== 0 ? r2(quantidade * preco) : null,
   };
 }

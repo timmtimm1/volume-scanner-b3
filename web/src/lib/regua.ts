@@ -15,6 +15,7 @@
 import type { Direcao } from "./alertas";
 
 export type TradeDaRegua = {
+  /** Negativa num trade vendido (venda a descoberto). */
   quantidade: number;
   precoMedio: number;
   custoComprado: number;
@@ -46,9 +47,10 @@ export type ResultadoDoNivel = {
 /**
  * Mede a distancia de "agora" ate um nivel -- o preco do ponto final de uma
  * medicao fixada, no painel da regua. `trade`, quando presente e com
- * quantidade positiva, tambem mede o efeito no trade aberto do papel -- mesma
+ * quantidade diferente de zero, tambem mede o efeito no trade aberto do papel -- mesma
  * formula de `marcarAgora` em `posicao.ts`, aplicada ao preco do nivel em vez
- * do preco de agora.
+ * do preco de agora. Num trade vendido a quantidade e negativa, entao
+ * `quantidade * porAcao` ja sai com o sinal certo (queda de preco = ganho).
  */
 export function medirNivel(entrada: {
   agora: number;
@@ -61,7 +63,7 @@ export function medirNivel(entrada: {
   const direcao: Direcao = nivel > agora ? "acima" : "abaixo";
 
   let resultadoDoTrade: ResultadoDoNivel["trade"] = null;
-  if (trade && trade.quantidade > 0) {
+  if (trade && trade.quantidade !== 0) {
     const ateLa = trade.quantidade * porAcao;
     const resultado = trade.realizado + trade.quantidade * (nivel - trade.precoMedio);
     resultadoDoTrade = {

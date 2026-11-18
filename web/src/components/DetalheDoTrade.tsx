@@ -171,6 +171,15 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
   const emAberto = marca.resultado - trade.realizado;
   const emR = resultadoEmRDoTrade(trade, aberto ? (precoInfo?.preco ?? null) : null);
   const risco = riscoEmReais(trade);
+  // Venda a descoberto: a posicao fica negativa; na tela mostramos sempre o tamanho (absoluto).
+  const vendido = trade.lado === "venda";
+  const taxaDoFuturo = vendido && regras.vendido ? regras.vendido.taxa : null;
+  const textoDaTaxaDoFuturo =
+    taxaDoFuturo === null
+      ? null
+      : `Nos futuros, ${(taxaDoFuturo * 100).toLocaleString("pt-BR")}% de taxa sai em dólar a cada venda e recompra.`;
+  const rotuloDaOperacao = (tipo: TipoDeOperacao) =>
+    tipo === "venda" ? "Venda" : vendido ? "Recompra" : "Compra";
 
   const [editandoDiario, setEditandoDiario] = useState(false);
   const [setupForm, setSetupForm] = useState("");
@@ -334,7 +343,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
               <tr key={s.data} className="border-t border-linha">
                 <td className="num py-2 pr-3 font-semibold">{fmtData(s.data)}</td>
                 <td className="num hidden py-2 pr-3 text-right sm:table-cell">
-                  {numeroDaQuantidade(mercado, s.quantidade)}
+                  {numeroDaQuantidade(mercado, Math.abs(s.quantidade))}
                 </td>
                 <td className="num py-2 pr-3 text-right">
                   {preco(mercado, s.fechamento)}
@@ -343,7 +352,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                   )}
                 </td>
                 <td className="num hidden py-2 pr-3 text-right sm:table-cell">
-                  {valor(mercado, s.valorPosicao)}
+                  {valor(mercado, Math.abs(s.valorPosicao))}
                 </td>
                 <td
                   className={`num py-2 text-right font-bold ${
@@ -377,7 +386,9 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
 
       {!aberto && (
         <p className="text-[12px] font-semibold text-tinta-3">
-          Trade encerrado: uma nova compra abre outro trade.
+          {regras.vendido
+            ? "Trade encerrado: uma nova compra ou venda abre outro trade."
+            : "Trade encerrado: uma nova compra abre outro trade."}
         </p>
       )}
 
@@ -394,7 +405,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                   novosCampos.tipo === tipo ? "bg-painel text-acento shadow-sm" : "text-tinta-3"
                 }`}
               >
-                {tipo === "compra" ? "Compra" : "Venda"}
+                {rotuloDaOperacao(tipo)}
               </button>
             ))}
           </div>
@@ -412,13 +423,13 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
             <label className="flex flex-col gap-1">
               <span className="flex items-center justify-between gap-2">
                 <span className="rotulo">Quantidade</span>
-                {novosCampos.tipo === "venda" && (
+                {novosCampos.tipo === (vendido ? "compra" : "venda") && (
                   <button
                     type="button"
                     onClick={() =>
                       setNovosCampos((c) => ({
                         ...c,
-                        quantidade: quantidadeParaCampo(mercado, trade.quantidade),
+                        quantidade: quantidadeParaCampo(mercado, Math.abs(trade.quantidade)),
                       }))
                     }
                     className="toque text-[11px] font-bold text-acento hover:underline"
@@ -448,11 +459,15 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
               />
             </label>
           </div>
-          {novosCampos.tipo === "venda" && regras.taxa > 0 && (
+          {textoDaTaxaDoFuturo ? (
+            <p className="text-[11px] font-semibold text-tinta-3">{textoDaTaxaDoFuturo}</p>
+          ) : (
+            !vendido && novosCampos.tipo === "venda" && regras.taxa > 0 && (
             <p className="text-[11px] font-semibold text-tinta-3">
               Na venda, {(regras.taxa * 100).toLocaleString("pt-BR")}% sai dos dólares recebidos. Se a
               corretora deixar um resto pequeno demais para vender, use “tudo” para fechar o trade.
             </p>
+            )
           )}
           <div className="flex gap-2">
             <button
@@ -496,7 +511,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                         campos.tipo === tipo ? "bg-painel text-acento shadow-sm" : "text-tinta-3"
                       }`}
                     >
-                      {tipo === "compra" ? "Compra" : "Venda"}
+                      {rotuloDaOperacao(tipo)}
                     </button>
                   ))}
                 </div>
@@ -563,7 +578,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                     op.tipo === "compra" ? "text-acento" : "text-tinta-2"
                   }`}
                 >
-                  {op.tipo === "compra" ? "Compra" : "Venda"}
+                  {rotuloDaOperacao(op.tipo)}
                 </span>
                 <span className="num text-[13px] font-semibold text-tinta-2">
                   {quantidadeExata(mercado, op.quantidade)} × {preco(mercado, op.preco)}
@@ -586,7 +601,7 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                   </button>
                 </div>
                 <span className="num w-full text-[11px] font-semibold text-tinta-3">
-                  depois: {quantidadeExata(mercado, op.quantidadeApos)} · PM{" "}
+                  depois: {quantidadeExata(mercado, Math.abs(op.quantidadeApos))} · PM{" "}
                   {preco(mercado, op.precoMedioApos)} · realizado {valor(mercado, op.realizadoApos)}
                 </span>
               </div>
@@ -602,12 +617,19 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
       <section className="cartao flex flex-col gap-4 p-5">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="flex flex-col gap-0.5">
-            <Link
-              href={linkDaFichaNoMercado(mercado, trade.ticker)}
-              className="text-[24px] font-extrabold leading-none tracking-tight transition-colors hover:text-acento"
-            >
-              {trade.ticker}
-            </Link>
+            <div className="flex items-center gap-2">
+              <Link
+                href={linkDaFichaNoMercado(mercado, trade.ticker)}
+                className="text-[24px] font-extrabold leading-none tracking-tight transition-colors hover:text-acento"
+              >
+                {trade.ticker}
+              </Link>
+              {vendido && (
+                <span className="rounded-md bg-painel-2 px-2 py-0.5 text-[11px] font-extrabold uppercase text-tinta-2">
+                  Vendido
+                </span>
+              )}
+            </div>
             <p className="num text-[13px] font-semibold text-tinta-3">
               {aberto
                 ? `aberto desde ${fmtData(trade.abertoEm)}`
@@ -641,15 +663,19 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
           <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
             <span className="text-[11px] font-bold text-tinta-3">Quantidade</span>
             <span className="num text-[16px] font-extrabold">
-              {quantidadeExata(mercado, trade.quantidade)}
+              {quantidadeExata(mercado, Math.abs(trade.quantidade))}
             </span>
           </div>
           <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
-            <span className="text-[11px] font-bold text-tinta-3">Preço médio</span>
+            <span className="text-[11px] font-bold text-tinta-3">
+              {vendido ? "Preço médio de venda" : "Preço médio"}
+            </span>
             <span className="num text-[16px] font-extrabold">{preco(mercado, trade.precoMedio)}</span>
           </div>
           <div className="flex flex-col gap-1 rounded-2xl bg-painel-2 p-3">
-            <span className="text-[11px] font-bold text-tinta-3">Custo</span>
+            <span className="text-[11px] font-bold text-tinta-3">
+              {vendido ? "Valor vendido" : "Custo"}
+            </span>
             <span className="num text-[16px] font-extrabold">{valor(mercado, trade.custoComprado)}</span>
           </div>
           {precoInfo && (
@@ -669,7 +695,10 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
           </span>
         </div>
 
-        {regras.taxa > 0 && (
+        {textoDaTaxaDoFuturo && (
+          <p className="text-[12px] font-semibold text-tinta-3">{textoDaTaxaDoFuturo}</p>
+        )}
+        {!vendido && regras.taxa > 0 && (
           <p className="text-[12px] font-semibold text-tinta-3">
             Com a taxa de {(regras.taxa * 100).toLocaleString("pt-BR")}% da Binance: na compra ela sai da
             moeda (a quantidade é a que fica na conta) e o preço médio já a inclui; na venda, sai dos
@@ -759,7 +788,9 @@ export function DetalheDoTrade({ inicial }: { inicial: TradeDetalhe }) {
                 <p className="text-[12px] font-semibold text-tinta-3">
                   {trade.stop === null
                     ? "Defina o stop para ver o resultado em R."
-                    : "Com esse stop o R não fecha: ele precisa ficar abaixo do preço de todas as compras."}
+                    : vendido
+                      ? "Com esse stop o R não fecha: o stop precisa estar acima do preço da venda."
+                      : "Com esse stop o R não fecha: ele precisa ficar abaixo do preço de todas as compras."}
                 </p>
               )}
               {emR !== null && (

@@ -47,6 +47,21 @@ describe("medirNivel", () => {
     assert.equal(r.trade, null);
   });
 
+  it("trade vendido (quantidade negativa): queda de preco e ganho", () => {
+    // Vendeu 0,5 a 599,70 (valor vendido 299,85); a regua marca 580 com o preco agora em 590.
+    const vendido = { quantidade: -0.5, precoMedio: 599.7, custoComprado: 299.85, realizado: 0 };
+    const r = medirNivel({ agora: 590, nivel: 580, trade: vendido });
+    assert.ok(r.trade);
+    perto(r.trade.ateLa, 5); // -0,5 * (580 - 590)
+    perto(r.trade.inteiro.resultado, 9.85); // -0,5 * (580 - 599,70)
+    perto(r.trade.inteiro.resultadoPct, 9.85 / 299.85);
+
+    // Nivel acima do preco medio de venda: perda.
+    const acima = medirNivel({ agora: 590, nivel: 620, trade: vendido });
+    assert.ok(acima.trade);
+    perto(acima.trade.inteiro.resultado, -10.15);
+  });
+
   it("nivel igual a agora: direcao abaixo (empate nao e alta)", () => {
     const r = medirNivel({ agora: 50.43, nivel: 50.43 });
     assert.equal(r.direcao, "abaixo");

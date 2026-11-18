@@ -262,6 +262,39 @@ def test_posicao_fracionada_de_cripto_marca_sem_arredondar_a_quantidade() -> Non
     assert float(linha["resultado"]) == pytest.approx(14.29)
 
 
+def test_posicao_vendida_marca_com_a_mesma_formula() -> None:
+    """Venda a descoberto (migration 0029): o site grava a posicao NEGATIVA.
+
+    Vendeu 0,5 BNB a 600 com a taxa dos futuros (PM 599,70). A mesma conta de
+    sempre, `realizado + quantidade x (fechamento - PM)`, da o resultado do
+    vendido: o preco caiu para 580 e o resultado sobe. Mesmo exemplo do teste de
+    `posicao.ts` no site.
+    """
+    operacoes = pd.DataFrame(
+        [
+            {
+                "id": 1,
+                "trade_id": 1,
+                "data": date(2026, 11, 17),
+                "quantidade_apos": Decimal("-0.5000000000"),
+                "preco_medio_apos": Decimal("599.7000000000"),
+                "custo_comprado_apos": Decimal("300.00"),
+                "realizado_apos": Decimal("0.00"),
+            }
+        ]
+    )
+    bars = _bars_df({date(2026, 11, 17): 600.0, date(2026, 11, 18): 580.0}, ticker="BNB")
+    trades = _trades_df(ticker="BNB", aberto_em=date(2026, 11, 17))
+
+    saida = marcar_a_mercado(trades, operacoes, bars, date(2026, 11, 18))
+
+    linha = saida.iloc[-1]
+    assert float(linha["quantidade"]) == pytest.approx(-0.5)
+    assert float(linha["valor_posicao"]) == pytest.approx(-290.0)  # o que se deve
+    # -0,5 x (580 - 599,70) = 9,85
+    assert float(linha["resultado"]) == pytest.approx(9.85)
+
+
 TRADES_COLS = ["id", "ticker", "aberto_em", "encerrado_em", "ultimo_snapshot"]
 OPERACOES_COLS = [
     "id",
@@ -344,6 +377,48 @@ def test_segundo_trade_aberto_no_mesmo_ticker_viola_indice_unico(engine: Engine)
     _criar_trade(engine, ticker)
     with pytest.raises(IntegrityError), session_scope(engine) as s:
         s.add(Trade(ticker=ticker, aberto_em=date(2024, 2, 1)))
+
+
+@pytest.mark.db
+def test_trade_vendido_grava_posicao_negativa(engine: Engine) -> None:
+    """Desde a 0029 a posicao pode ser negativa (venda a descoberto, so cripto)."""
+    trade_id = _criar_trade(engine, "ZVND3")
+    with session_scope(engine) as s:
+        s.add(
+            TradeOperacao(
+                trade_id=trade_id,
+                tipo="venda",
+                data=date(2024, 1, 2),
+                quantidade=Decimal("0.5"),
+                preco=Decimal("600"),
+                quantidade_apos=Decimal("-0.5"),
+                preco_medio_apos=Decimal("599.7"),
+                custo_comprado_apos=Decimal("300.00"),
+                realizado_apos=Decimal("0.00"),
+            )
+        )
+        s.add(
+            TradeSnapshot(
+                trade_id=trade_id,
+                trade_date=date(2024, 1, 2),
+                quantidade=Decimal("-0.5"),
+                preco_medio=Decimal("599.7"),
+                custo_comprado=Decimal("300.00"),
+                realizado=Decimal("0.00"),
+                fechamento=Decimal("580"),
+                valor_posicao=Decimal("-290.00"),
+                resultado=Decimal("9.85"),
+            )
+        )
+    with session_scope(engine) as s:
+        posicao = s.execute(
+            select(TradeOperacao.quantidade_apos).where(TradeOperacao.trade_id == trade_id)
+        ).scalar_one()
+        marcada = s.execute(
+            select(TradeSnapshot.quantidade).where(TradeSnapshot.trade_id == trade_id)
+        ).scalar_one()
+    assert posicao == Decimal("-0.5")
+    assert marcada == Decimal("-0.5")
 
 
 @pytest.mark.db

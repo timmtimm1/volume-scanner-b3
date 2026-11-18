@@ -267,9 +267,8 @@ class TradeOperacao(Base):
         CheckConstraint("tipo IN ('compra', 'venda')", name="ck_trade_operacoes_tipo"),
         CheckConstraint("quantidade > 0", name="ck_trade_operacoes_quantidade_positiva"),
         CheckConstraint("preco > 0", name="ck_trade_operacoes_preco_positivo"),
-        CheckConstraint(
-            "quantidade_apos >= 0", name="ck_trade_operacoes_quantidade_apos_nao_negativa"
-        ),
+        # Sem trava de `quantidade_apos >= 0` desde a 0029: na venda a descoberto
+        # (so cripto) a posicao e negativa. O lado do trade e o tipo da 1a operacao.
         Index("ix_trade_operacoes_trade_data", "trade_id", "data"),
     )
 
@@ -301,9 +300,7 @@ class TradeSnapshot(Base):
     """
 
     __tablename__ = "trade_snapshots"
-    __table_args__ = (
-        CheckConstraint("quantidade >= 0", name="ck_trade_snapshots_quantidade_nao_negativa"),
-    )
+    # Sem trava de `quantidade >= 0` desde a 0029: o vendido marca negativo.
 
     trade_id: Mapped[int] = mapped_column(
         BigInteger, ForeignKey(f"{SCHEMA}.trades.id", ondelete="CASCADE"), primary_key=True

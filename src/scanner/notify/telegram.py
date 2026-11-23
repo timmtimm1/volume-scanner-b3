@@ -11,7 +11,8 @@ from __future__ import annotations
 import math
 import sys
 import time
-from collections.abc import Callable, Mapping
+from collections import Counter
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass, field
 from datetime import date
 from typing import Any
@@ -609,6 +610,8 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
     confirmados = list(setups.get("confirmados") or [])
     if not (armados or outros or confirmados):
         return []
+    if mercado.e_cripto():
+        return _bloco_de_setups_cripto(armados, outros, confirmados, base_url)
 
     def papel(linha: Mapping[str, Any]) -> str:
         ticker = str(linha["ticker"])
@@ -634,22 +637,11 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
 
     partes = [""]
     if armados:
-        regra = (
-            "confirmam se o preço passar da máxima nas próximas 24 horas"
-            if mercado.e_cripto()
-            else "confirmam se o próximo pregão passar da máxima"
-        )
-        partes.append(f"<b>Setups armados</b> · {regra}")
+        partes.append("<b>Setups armados</b> · confirmam se o próximo pregão passar da máxima")
         partes += [item(s) for s in armados]
     if outros:
         contagem = " · ".join(f"{NOME_DO_SETUP.get(c, c)} {n}" for c, n in outros.items())
-        if mercado.e_cripto():
-            # Em cripto nenhum setup tem alerta de preco: a lista com a nota de
-            # cada entrada mora na aba, e aqui vai quantas armaram de cada.
-            total = sum(int(n) for n in outros.values())
-            partes.append(f"<b>Entradas armadas hoje: {total}</b>\n{contagem}")
-        else:
-            partes.append(f"<i>Outros armados hoje, sem alerta:</i> {contagem}")
+        partes.append(f"<i>Outros armados hoje, sem alerta:</i> {contagem}")
     if confirmados:
         nomes = ", ".join(
             f"{papel(s)} {_o_que(s)} ({money_simples(_numero(s.get('entrada')))})"
@@ -657,10 +649,45 @@ def _bloco_de_setups(setups: Mapping[str, Any], base_url: str | None) -> list[st
         )
         partes.append(f"<b>Confirmados hoje:</b> {nomes}")
     if base_url:
-        if mercado.e_cripto():
-            partes.append(f'<a href="{base_url.rstrip("/")}/cripto/">abrir a aba Cripto</a>')
-        else:
-            partes.append(f'<a href="{base_url.rstrip("/")}/setups/">abrir setups</a>')
+        partes.append(f'<a href="{base_url.rstrip("/")}/setups/">abrir setups</a>')
+    return partes
+
+
+def _contagem_por_setup(contagem: Counter[str]) -> str:
+    """'123 47 · PFR 1', na ordem dos setups."""
+    ordem = {categoria: i for i, categoria in enumerate(NOME_DO_SETUP)}
+    categorias = sorted(contagem, key=lambda c: ordem.get(c, len(ordem)))
+    return " · ".join(f"{NOME_DO_SETUP.get(c, c)} {contagem[c]}" for c in categorias)
+
+
+def _bloco_de_setups_cripto(
+    armados: Sequence[Mapping[str, Any]],
+    outros: Mapping[str, Any],
+    confirmados: Sequence[Mapping[str, Any]],
+    base_url: str | None,
+) -> list[str]:
+    """Em cripto o resumo so conta as entradas; a lista com a nota mora na aba.
+
+    O alerta esta ligado em todos os setups de cripto, e uma linha por entrada
+    passou do limite de 4096 caracteres do Telegram com 42 armados: o resumo
+    foi recusado (HTTP 400) e a rodada caiu antes da poda (21 e 22/11/2026). A
+    contagem cresce com os tipos de setup, nao com as moedas.
+    """
+    armadas = Counter(str(s["categoria"]) for s in armados)
+    armadas.update({str(categoria): int(n) for categoria, n in outros.items()})
+    confirmadas = Counter(str(s["categoria"]) for s in confirmados)
+
+    partes = [""]
+    if armadas:
+        partes.append(
+            f"<b>Entradas armadas hoje: {armadas.total()}</b>\n{_contagem_por_setup(armadas)}"
+        )
+    if confirmadas:
+        partes.append(
+            f"<b>Confirmadas hoje: {confirmadas.total()}</b>\n{_contagem_por_setup(confirmadas)}"
+        )
+    if base_url:
+        partes.append(f'<a href="{base_url.rstrip("/")}/cripto/">abrir a aba Cripto</a>')
     return partes
 
 

@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useRef, useState } from "react";
 import { LUGAR_DO_ORGANIZAR } from "@/lib/arranjo";
 import { useTema } from "@/lib/tema";
 
@@ -13,6 +14,8 @@ import { useTema } from "@/lib/tema";
  * botao do tema, o ativo com nome comprimia os outros para 38px a 390px e 32px a
  * 360px, abaixo dos 44px de alvo de toque. So icones: 48px cada (44px no minimo
  * quando a tela aperta), e o nome fica no `aria-label` e no `title`.
+ *
+ * Cripto e o foco desde 23/11/2026: as secoes das acoes ficam no menu "Acoes".
  */
 
 type Item = { href: string; nome: string; icone: React.ReactNode };
@@ -27,6 +30,50 @@ const traco = {
 
 const ITENS: Item[] = [
   {
+    href: "/cripto",
+    nome: "Cripto",
+    icone: (
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+        <circle cx="10" cy="10" r="7" />
+        <path d="M8 6.5v7M8 6.5h2.6a1.7 1.7 0 0 1 0 3.5H8M8 10h3a1.75 1.75 0 0 1 0 3.5H8M9.5 5v1.5M9.5 13.5V15" />
+      </svg>
+    ),
+  },
+  {
+    href: "/patrimonio",
+    nome: "Patrimônio",
+    icone: (
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+        <path d="M3 3v14h14" />
+        <path d="M6 13l3-3 2.5 2L16 7" />
+      </svg>
+    ),
+  },
+  {
+    href: "/trades",
+    nome: "Trades",
+    icone: (
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+        <path d="M3 15l4.5-6 3.5 4 6-8" />
+        <path d="M13.5 5H17v3.5" />
+      </svg>
+    ),
+  },
+  {
+    href: "/alertas",
+    nome: "Alertas",
+    icone: (
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+        <path d="M10 3a4.5 4.5 0 0 0-4.5 4.5c0 3.5-1.5 4.5-1.5 4.5h12s-1.5-1-1.5-4.5A4.5 4.5 0 0 0 10 3z" />
+        <path d="M8.5 15a1.6 1.6 0 0 0 3 0" />
+      </svg>
+    ),
+  },
+];
+
+/** As secoes da B3, em segundo plano desde 23/11/2026. */
+const ACOES: Item[] = [
+  {
     href: "/setups",
     nome: "Setups",
     icone: (
@@ -34,16 +81,6 @@ const ITENS: Item[] = [
         <path d="M7 2.5v3M7 13.5v4" />
         <rect x="5" y="5.5" width="4" height="8" rx="1" />
         <path d="M12 11.5l2.5-3 2.5 3M14.5 8.5v8" />
-      </svg>
-    ),
-  },
-  {
-    href: "/cripto",
-    nome: "Cripto",
-    icone: (
-      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
-        <circle cx="10" cy="10" r="7" />
-        <path d="M8 6.5v7M8 6.5h2.6a1.7 1.7 0 0 1 0 3.5H8M8 10h3a1.75 1.75 0 0 1 0 3.5H8M9.5 5v1.5M9.5 13.5V15" />
       </svg>
     ),
   },
@@ -74,26 +111,6 @@ const ITENS: Item[] = [
         <rect x="3" y="4" width="14" height="13" rx="2" />
         <path d="M3 8h14M7 2.5v3M13 2.5v3" />
         <path d="M6 14.5l2.5-2.5 2 1.5 3.5-3.5" />
-      </svg>
-    ),
-  },
-  {
-    href: "/alertas",
-    nome: "Alertas",
-    icone: (
-      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
-        <path d="M10 3a4.5 4.5 0 0 0-4.5 4.5c0 3.5-1.5 4.5-1.5 4.5h12s-1.5-1-1.5-4.5A4.5 4.5 0 0 0 10 3z" />
-        <path d="M8.5 15a1.6 1.6 0 0 0 3 0" />
-      </svg>
-    ),
-  },
-  {
-    href: "/trades",
-    nome: "Trades",
-    icone: (
-      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
-        <path d="M3 15l4.5-6 3.5 4 6-8" />
-        <path d="M13.5 5H17v3.5" />
       </svg>
     ),
   },
@@ -150,6 +167,87 @@ function BotaoDoTema({ className = "" }: { className?: string }) {
   );
 }
 
+/** O menu das acoes: abre para baixo no computador e para cima na barra do celular. */
+function MenuDeAcoes({ pathname, celular = false }: { pathname: string; celular?: boolean }) {
+  const [aberto, setAberto] = useState(false);
+  const caixa = useRef<HTMLDivElement>(null);
+  const on = ACOES.some((item) => ativo(pathname, item.href));
+
+  useEffect(() => {
+    if (!aberto) return;
+    const aoClicar = (e: PointerEvent) => {
+      if (!caixa.current?.contains(e.target as Node)) setAberto(false);
+    };
+    const aoTeclar = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setAberto(false);
+    };
+    document.addEventListener("pointerdown", aoClicar);
+    document.addEventListener("keydown", aoTeclar);
+    return () => {
+      document.removeEventListener("pointerdown", aoClicar);
+      document.removeEventListener("keydown", aoTeclar);
+    };
+  }, [aberto]);
+
+  const icone = (
+    <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+      <path d="M4 17V9M10 17V3M16 17v-5" />
+    </svg>
+  );
+  return (
+    <div ref={caixa} className={`relative ${celular ? "flex min-w-10 max-w-12 flex-1" : ""}`}>
+      <button
+        type="button"
+        onClick={() => setAberto((v) => !v)}
+        aria-expanded={aberto}
+        aria-haspopup="menu"
+        aria-label="Ações"
+        title="Ações"
+        className={
+          celular
+            ? `flex h-12 w-full items-center justify-center rounded-full transition-colors ${
+                on ? "bg-primario text-primario-tinta" : "text-tinta-3"
+              }`
+            : `flex h-10 items-center gap-2 rounded-full px-5 text-[14px] transition-colors ${
+                on ? "bg-primario font-bold text-primario-tinta" : "font-semibold text-tinta-2 hover:text-tinta"
+              }`
+        }
+      >
+        {icone}
+        {!celular && "Ações"}
+        {!celular && <span aria-hidden className="text-[11px]">▾</span>}
+      </button>
+      {aberto && (
+        <div
+          role="menu"
+          className={`absolute right-0 z-40 flex w-48 flex-col gap-0.5 rounded-2xl border border-linha bg-painel p-1.5 shadow-[var(--sombra)] ${
+            celular ? "bottom-full mb-3" : "top-full mt-2"
+          }`}
+        >
+          {ACOES.map((item) => {
+            const atual = ativo(pathname, item.href);
+            return (
+              <Link
+                key={item.href}
+                href={item.href}
+                role="menuitem"
+                aria-current={atual ? "page" : undefined}
+                onClick={() => setAberto(false)}
+                className={`flex h-11 items-center gap-2.5 rounded-xl px-3 text-[14px] font-semibold transition-colors ${
+                  atual ? "bg-painel-2 font-bold text-acento" : "text-tinta-2 hover:bg-painel-2 hover:text-tinta"
+                }`}
+              >
+                {item.icone}
+                {item.nome}
+              </Link>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export function Navegacao() {
   const pathname = usePathname();
 
@@ -184,6 +282,7 @@ export function Navegacao() {
                 </Link>
               );
             })}
+            <MenuDeAcoes pathname={pathname} />
           </div>
         </nav>
 
@@ -214,6 +313,7 @@ export function Navegacao() {
             </Link>
           );
         })}
+        <MenuDeAcoes pathname={pathname} celular />
         <BotaoDoTema />
       </nav>
     </>

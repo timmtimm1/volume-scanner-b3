@@ -111,7 +111,7 @@ export default async function Cripto() {
         <form
           action={async () => {
             "use server";
-            await signIn("github", { redirectTo: "/cripto" });
+            await signIn("github", { redirectTo: "/cripto/setups" });
           }}
         >
           <button
@@ -193,7 +193,10 @@ export default async function Cripto() {
     <div className="flex flex-col gap-4">
       <section className="cartao flex flex-wrap items-center gap-4 p-5">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <h1 className="text-[22px] font-extrabold tracking-tight">Cripto</h1>
+          <Link href="/cripto" className="text-[12px] font-bold text-tinta-3 hover:text-acento">
+            ‹ Moedas
+          </Link>
+          <h1 className="text-[22px] font-extrabold tracking-tight">Setups de cripto</h1>
           <p className="text-[13px] font-semibold text-tinta-3">
             As possíveis entradas do dia nas 50 maiores moedas, da melhor nota para a pior.
           </p>
@@ -214,7 +217,7 @@ export default async function Cripto() {
         <form
           action={async () => {
             "use server";
-            await signOut({ redirectTo: "/cripto" });
+            await signOut({ redirectTo: "/cripto/setups" });
           }}
         >
           <button

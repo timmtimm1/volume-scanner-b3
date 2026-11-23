@@ -17,11 +17,11 @@ function lerDoNavegador(chave: string): string | null {
 // guardado nao muda.
 const cache = new Map<string, { texto: string | null; marcas: MarcasDoGrafico }>();
 
-function instantaneo(chave: string): MarcasDoGrafico {
+function instantaneo(chave: string, padrao: MarcasDoGrafico): MarcasDoGrafico {
   const texto = lerDoNavegador(chave);
   const guardado = cache.get(chave);
   if (guardado && guardado.texto === texto) return guardado.marcas;
-  const marcas = lerMarcas(texto);
+  const marcas = lerMarcas(texto, padrao);
   cache.set(chave, { texto, marcas });
   return marcas;
 }
@@ -38,15 +38,17 @@ function assinar(aoMudar: () => void): () => void {
 /**
  * O que o grafico mostra e a forma de ligar ou desligar uma das marcas,
  * guardado no navegador em `chave`. Sem chave (o grafico das acoes), tudo fica
- * ligado e nada e guardado.
+ * ligado e nada e guardado. `padrao` vale enquanto a pessoa nao escolheu; precisa
+ * ser uma constante, porque a mesma chave sempre parte do mesmo padrao.
  */
 export function useMarcasDoGrafico(
   chave: string | undefined,
+  padrao: MarcasDoGrafico = TUDO_LIGADO,
 ): [MarcasDoGrafico, (marca: keyof MarcasDoGrafico) => void] {
   const marcas = useSyncExternalStore(
     assinar,
-    () => (chave ? instantaneo(chave) : TUDO_LIGADO),
-    () => TUDO_LIGADO,
+    () => (chave ? instantaneo(chave, padrao) : TUDO_LIGADO),
+    () => (chave ? padrao : TUDO_LIGADO),
   );
 
   const alternar = useCallback(
@@ -54,7 +56,7 @@ export function useMarcasDoGrafico(
       if (!chave) return;
       // Le o guardado agora, e nao o da ultima renderizacao: dois cliques
       // antes de a tela redesenhar nao podem desfazer um ao outro.
-      const atual = instantaneo(chave);
+      const atual = instantaneo(chave, padrao);
       try {
         localStorage.setItem(chave, JSON.stringify({ ...atual, [marca]: !atual[marca] }));
       } catch {
@@ -63,7 +65,7 @@ export function useMarcasDoGrafico(
       }
       window.dispatchEvent(new Event(EVENTO));
     },
-    [chave],
+    [chave, padrao],
   );
 
   return [marcas, alternar];

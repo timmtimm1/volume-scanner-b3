@@ -12,19 +12,25 @@ export type MarcasDoGrafico = { eventos: boolean; setups: boolean };
 
 export const TUDO_LIGADO: MarcasDoGrafico = { eventos: true, setups: true };
 
-/** O valor guardado, conferido campo a campo; o que nao for booleano fica ligado. */
-export function lerMarcas(texto: string | null): MarcasDoGrafico {
-  if (!texto) return TUDO_LIGADO;
+/** O ponto de partida da aba Cripto (23/11/2026): as setas so aparecem se a pessoa ligar. */
+export const SEM_SETAS: MarcasDoGrafico = { eventos: true, setups: false };
+
+/** O valor guardado, conferido campo a campo; o que nao for booleano fica no `padrao`. */
+export function lerMarcas(
+  texto: string | null,
+  padrao: MarcasDoGrafico = TUDO_LIGADO,
+): MarcasDoGrafico {
+  if (!texto) return padrao;
   let o: unknown;
   try {
     o = JSON.parse(texto);
   } catch {
-    return TUDO_LIGADO;
+    return padrao;
   }
-  if (typeof o !== "object" || o === null || Array.isArray(o)) return TUDO_LIGADO;
+  if (typeof o !== "object" || o === null || Array.isArray(o)) return padrao;
   const r = o as Record<string, unknown>;
   return {
-    eventos: typeof r.eventos === "boolean" ? r.eventos : true,
-    setups: typeof r.setups === "boolean" ? r.setups : true,
+    eventos: typeof r.eventos === "boolean" ? r.eventos : padrao.eventos,
+    setups: typeof r.setups === "boolean" ? r.setups : padrao.setups,
   };
 }

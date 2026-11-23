@@ -55,6 +55,7 @@ import { medirMovimento, type PontoDaRegua, type TradeDaRegua } from "@/lib/regu
 import { useTema } from "@/lib/tema";
 import { trechosDosNiveis } from "@/lib/niveis-grafico";
 import type { Barra, Evento, LinhaDeSetup, MarcaDeSetup, NivelDoGrafico } from "@/lib/types";
+import type { MarcasDoGrafico } from "@/lib/marcas-do-grafico";
 import { useMarcasDoGrafico } from "@/lib/useMarcasDoGrafico";
 import { useMedias } from "@/lib/useMedias";
 import { CamadaDeAlertas } from "./CamadaDeAlertas";
@@ -225,6 +226,8 @@ type Props = {
    * ela (o grafico das acoes), as marcas aparecem sempre, sem botao.
    */
   chaveDasMarcas?: string;
+  /** O que nasce ligado enquanto a pessoa nao escolheu; sem isso, tudo. Tem de ser constante. */
+  marcasPadrao?: MarcasDoGrafico;
 };
 
 /**
@@ -289,6 +292,7 @@ export function Grafico({
   casasDoPreco = 2,
   mercado = "b3",
   chaveDasMarcas,
+  marcasPadrao,
   registroDeTrade,
 }: Props) {
   const idBase = useId();
@@ -296,7 +300,7 @@ export function Grafico({
   const [medias, salvarMedias] = useMedias();
   const [mostrarBandas, setMostrarBandas] = useState(true);
   const [mostrarNiveis, setMostrarNiveis] = useState(true);
-  const [marcasVisiveis, alternarMarca] = useMarcasDoGrafico(chaveDasMarcas);
+  const [marcasVisiveis, alternarMarca] = useMarcasDoGrafico(chaveDasMarcas, marcasPadrao);
   const [adicionando, setAdicionando] = useState(false);
   const [tipoNovo, setTipoNovo] = useState<TipoDeMedia>("MMA");
   const [periodoNovo, setPeriodoNovo] = useState("50");

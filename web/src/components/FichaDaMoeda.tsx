@@ -8,7 +8,9 @@ import { PainelDeTrade } from "@/components/PainelDeTrade";
 import type { Direcao } from "@/lib/alertas";
 import { fmtR } from "@/lib/backtest-tela";
 import type { CandleDeHoje } from "@/lib/candle-de-hoje";
+import { type Cor, TEXTO_DA_COR } from "@/lib/entradas";
 import { data, diaCurto, percentual } from "@/lib/formato";
+import { SEM_SETAS } from "@/lib/marcas-do-grafico";
 import { horaEmBrasilia } from "@/lib/cripto-hoje";
 import { casasDoPreco, diaDoMercado, gatilhoNoMercado, preco, stopNoMercado } from "@/lib/mercado";
 import { NOME_DO_SETUP, resultadoEmR, rotuloDoEstado, type Setup } from "@/lib/setups-tela";
@@ -34,6 +36,15 @@ type Props = {
   foco: string | null;
   /** Hora (ISO) do candle de hoje, quando ele veio da Binance ao abrir; null sem ele. */
   aoVivo?: string | null;
+  /** A nota do backtest de cada setup armado, por id do setup. */
+  notas?: Record<number, Cor>;
+};
+
+const LUZ: Record<Cor, string> = {
+  verde: "bg-alta",
+  amarelo: "bg-evento",
+  vermelho: "bg-baixa",
+  cinza: "bg-tinta-3",
 };
 
 function volumeCurto(v: number): string {
@@ -54,7 +65,7 @@ function volumeCurto(v: number): string {
  * acoes com `?mercado=cripto`; os alertas sao conferidos pelo `cripto-rompimentos`
  * de 15 em 15 minutos, contra o dia de hoje da Binance.
  */
-export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, setups, foco, aoVivo = null }: Props) {
+export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, setups, foco, aoVivo = null, notas = {} }: Props) {
   const ultima = barras[barras.length - 1];
   const anterior = barras[barras.length - 2];
   const variacao = anterior && anterior.close > 0 ? ultima.close / anterior.close - 1 : null;
@@ -159,8 +170,9 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
     <div className="flex flex-col gap-4">
       <section className="cartao flex flex-wrap items-end gap-x-6 gap-y-3 p-5">
         <div className="flex min-w-0 flex-col gap-0.5">
-          <Link href="/cripto" className="text-[12px] font-bold text-tinta-3 hover:text-acento">
-            ‹ Cripto
+          {/* No computador a lista esta ao lado; no celular este e o caminho de volta. */}
+          <Link href="/cripto" className="toque text-[12px] font-bold text-tinta-3 hover:text-acento lg:hidden">
+            ‹ Moedas
           </Link>
           <h1 className="text-[26px] font-extrabold tracking-tight">
             {ticker}
@@ -208,6 +220,8 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           // marcas juntas poluiam o grafico da moeda). A escolha vale para
           // todas as moedas e fica guardada no navegador.
           chaveDasMarcas="vs:marcas:cripto"
+          // As setas de todos os setups antigos escondiam o preco: nascem desligadas.
+          marcasPadrao={SEM_SETAS}
           registroDeTrade={registroDeTrade}
           classeDeAltura="h-[320px] md:h-[440px] lg:h-[560px]"
         />
@@ -220,6 +234,44 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
         </p>
       </section>
 
+      {/* Aqui a nota aparece por inteiro: na lista a moeda leva so a contagem. */}
+      {armados.length > 0 && (
+        <section className="cartao flex flex-col gap-2 p-4 md:p-5">
+          <h2 className="text-[16px] font-extrabold">
+            Armado agora
+            <span className="num ml-2 text-[13px] font-bold text-tinta-3">{armados.length}</span>
+          </h2>
+          <ul className="flex flex-col divide-y divide-linha">
+            {armados.map((s) => {
+              const cor = notas[s.id] ?? "cinza";
+              return (
+                <li key={s.id} className="num flex flex-wrap items-center gap-x-4 gap-y-1 py-2 text-[13px] font-semibold">
+                  <span className="font-extrabold">{NOME_DO_SETUP[s.categoria]}</span>
+                  <span className="text-tinta-2">
+                    compra acima de{" "}
+                    <span className="font-extrabold text-acento">
+                      {preco(MERCADO, gatilhoNoMercado(MERCADO, s.maxima))}
+                    </span>
+                  </span>
+                  <span className="text-tinta-2">
+                    stop {preco(MERCADO, stopNoMercado(MERCADO, s.minima))}
+                  </span>
+                  <span className="text-tinta-3">candle de {diaCurto(s.tradeDate)}</span>
+                  <span className="ml-auto inline-flex items-center gap-1.5 text-[12px] font-bold text-tinta-2">
+                    <span aria-hidden className={`h-2.5 w-2.5 rounded-full ${LUZ[cor]}`} />
+                    {TEXTO_DA_COR[cor].nome}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+          <p className="text-[12px] font-semibold text-tinta-3">
+            A cor é o que o setup fez no backtest de cripto de 2022 a 2026. Mostra o passado, não o
+            que vai acontecer.
+          </p>
+        </section>
+      )}
+
       {/* Compra e venda da moeda (pedido de 18/11/2026): as marcas e a linha do
           preco medio aparecem no grafico assim que o trade volta do servidor. */}
       <PainelDeTrade estado={estadoDosTrades} hoje={candleDeHoje} mercado={MERCADO} />
@@ -227,29 +279,6 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
       {/* Alertas de preco da moeda: criar (no celular, tocando no grafico), mudar
           o nivel e apagar. Avisam no Telegram pela passada de 15 em 15 minutos. */}
       <PainelDeAlerta estado={estadoDosAlertas} computador={computador} />
-
-      {armados.length > 0 && (
-        <section className="cartao flex flex-col gap-2 p-4 md:p-5">
-          <h2 className="text-[16px] font-extrabold">Armado agora</h2>
-          <ul className="flex flex-col divide-y divide-linha">
-            {armados.map((s) => (
-              <li key={s.id} className="num flex flex-wrap items-baseline gap-x-4 gap-y-1 py-2 text-[13px] font-semibold">
-                <span className="font-extrabold">{NOME_DO_SETUP[s.categoria]}</span>
-                <span className="text-tinta-2">
-                  compra acima de{" "}
-                  <span className="font-extrabold text-acento">
-                    {preco(MERCADO, gatilhoNoMercado(MERCADO, s.maxima))}
-                  </span>
-                </span>
-                <span className="text-tinta-2">
-                  stop {preco(MERCADO, stopNoMercado(MERCADO, s.minima))}
-                </span>
-                <span className="text-tinta-3">candle de {diaCurto(s.tradeDate)}</span>
-              </li>
-            ))}
-          </ul>
-        </section>
-      )}
 
       <section className="cartao flex flex-col gap-2 p-4 md:p-5">
         <h2 className="text-[16px] font-extrabold">

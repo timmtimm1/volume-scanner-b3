@@ -809,3 +809,14 @@ Sobre os trades da saída escolhida de cada setup (176 mil sinais da B3 de 1995 
 | Preço acima da MMA 200, subindo (a etiqueta "em alta" dos setups) | 0,00 → +0,02 R | +0,44 → −0,13 R |
 
 Leitura: a direção curta (MME 9) é a que separa o resultado médio dos setups, nos dois mercados e nos dois períodos; as médias longas sozinhas não ajudam, e em cripto só pareciam ajudar no ciclo de alta de 2017–2021. Com 62 combinações testadas, a chance de uma "melhor" ser sorte é alta. O ponto de partida do painel não segue o topo da tabela: a lista é para achar papéis em tendência e procurar o setup no gráfico, e a 9 subindo esconderia os 9.x de correção (decisão do usuário, acima). A escolha final é dele, na tela. A etiqueta de tendência dos setups e o semáforo continuam na definição antiga (MMA 200); trocá-los pede refazer a suíte.
+
+
+## 18. Cripto em primeiro plano e Patrimônio (23/11/2026)
+
+Pedido do usuário: focar em cripto, deixar as ações em segundo plano e tornar a aba mais simples. Ela tinha 71 cartões em 47 moedas (a NIGHT aparecia 5 vezes), cerca de 17 telas de rolagem no computador e nenhuma busca. Decisões dele: lista + gráfico, um selo por moeda, patrimônio só de cripto em dólar, zerar só os trades de cripto e com backup.
+
+- **Aba Cripto** (`app/cripto/(painel)`): busca, filtros Todas / Com sinal / Em alta / Meus trades e uma linha por moeda; o gráfico abre ao lado (`/cripto/?moeda=ETH`). No celular, a lista e o gráfico ocupam a tela um de cada vez. A lista mora no layout, que não recarrega quando só a moeda muda. `/cripto/BTC` redireciona para o novo endereço, porque está nos cartões e nas mensagens do Telegram.
+- **Setups**: as entradas, a tendência, o volume, os em andamento e os encerrados continuam em `/cripto/setups`, sem nada escondido por causa da nota. A lista mostra só a contagem; a nota de cada setup armado fica na ficha da moeda. O vermelho continua: 12 dos 13 setups falharam na conferência de 2022–2026. As setas dos setups nascem desligadas no gráfico, com o botão para ligar.
+- **Patrimônio** (`/patrimonio`, contas em `lib/patrimonio.ts`): capital do perfil + resultado de todos os trades, dia a dia. Trade encerrado continua contando com o resultado final; o último ponto marca os abertos no preço de agora. Depósitos e saques não são registrados: mudar o capital no perfil desloca a curva inteira.
+- **Zerar** (`lib/zerar-trades.ts`, `/api/patrimonio/zerar`): baixa o backup em JSON, pede a palavra ZERAR e apaga numa transação, só se a quantidade de trades ainda for a mostrada na tela. O mercado é fixo na rota e a função recusa rodar fora de cripto: ações, alertas e capital não são tocados.
+- **Navegação**: Cripto, Patrimônio, Trades e Alertas na barra; Setups, Scanner, Histórico, Semana e Papéis no menu Ações.

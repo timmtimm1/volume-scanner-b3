@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { lerMarcas, TUDO_LIGADO } from "./marcas-do-grafico.ts";
+import { lerMarcas, SEM_SETAS, TUDO_LIGADO } from "./marcas-do-grafico.ts";
 
 describe("lerMarcas", () => {
   it("sem nada guardado, mostra tudo", () => {
@@ -25,5 +25,20 @@ describe("lerMarcas", () => {
     assert.deepEqual(lerMarcas("{quebrado"), TUDO_LIGADO);
     assert.deepEqual(lerMarcas("[false,false]"), TUDO_LIGADO);
     assert.deepEqual(lerMarcas("false"), TUDO_LIGADO);
+  });
+});
+
+describe("lerMarcas com padrao", () => {
+  it("sem escolha guardada vale o padrao", () => {
+    assert.deepEqual(lerMarcas(null, SEM_SETAS), SEM_SETAS);
+    assert.deepEqual(lerMarcas("nao e json", SEM_SETAS), SEM_SETAS);
+  });
+
+  it("a escolha guardada vence o padrao", () => {
+    assert.deepEqual(lerMarcas('{"eventos":true,"setups":true}', SEM_SETAS), TUDO_LIGADO);
+  });
+
+  it("campo ausente fica no padrao", () => {
+    assert.deepEqual(lerMarcas('{"eventos":false}', SEM_SETAS), { eventos: false, setups: false });
   });
 });

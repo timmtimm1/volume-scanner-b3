@@ -1,0 +1,14 @@
+{
+  "entries": {
+    "cmd-1795446061803": {
+      "key": "cmd-1795446061803",
+      "value": "{\"command\":\"cd /home/timm/Projects/volume-scanner-b3-plataforma/web/src/app/cripto && mkdir -p setups '(painel)' && git mv page.tsx setups/page.tsx && git status --short . | grep -v '^??'; grep -n 'id:' ../../lib/setups-tela.ts | head -3; grep -n 'export function numero\\\\|export function percentual\\\\|export function data\\\\b\\\\|export function data(' -A3 ../../lib/formato.ts | head -16; grep -n 'export function PerfilDeRisco' -A8 ../../components/PerfilDeRisco.tsx | head -14\",\"exitCode\":0,\"success\":true}",
+      "namespace": "commands",
+      "storedAt": "2026-11-23T15:01:01.803Z",
+      "lastAccessed": "2026-11-23T15:01:01.803Z",
+      "accessCount": 0,
+      "expiresAt": "2026-12-23T15:01:01.803Z"
+    }
+  },
+  "version": "3.0.0"
+}

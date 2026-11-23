@@ -25,6 +25,32 @@ export type DiaDeHoje = {
   hora: string;
 };
 
+/**
+ * O dia UTC em andamento na resposta do `Ticker` da Kraken. Nos campos em lista,
+ * a posicao 0 e "hoje", desde a meia-noite UTC: o mesmo dia do candle diario.
+ */
+export function lerTickerDaKraken(dados: unknown, moeda: string, agora: string): DiaDeHoje | null {
+  const corpo = dados as { error?: unknown[]; result?: Record<string, unknown> } | null;
+  if (!corpo || (corpo.error?.length ?? 0) > 0 || !corpo.result) return null;
+  const linhas = Object.values(corpo.result);
+  if (linhas.length !== 1) return null;
+  const r = linhas[0] as Record<string, unknown>;
+  const zero = (campo: string) => Number((r[campo] as unknown[] | undefined)?.[0]);
+  const dia = {
+    moeda,
+    dia: agora.slice(0, 10),
+    abertura: Number(r.o),
+    maxima: zero("h"),
+    minima: zero("l"),
+    ultimo: zero("c"),
+    volume: zero("v") * zero("p"),
+    hora: agora,
+  };
+  return [dia.abertura, dia.maxima, dia.minima, dia.ultimo].every((v) => Number.isFinite(v) && v > 0)
+    ? dia
+    : null;
+}
+
 /** O dia seguinte a `dia` (AAAA-MM-DD), em UTC. */
 export function diaSeguinte(dia: string): string {
   const d = new Date(`${dia}T00:00:00Z`);

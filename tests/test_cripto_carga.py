@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from datetime import UTC, date, datetime
 from typing import Any
 
@@ -70,10 +71,16 @@ def rodar(engine: Engine, fontes: Fontes) -> str:
 
 
 @pytest.fixture
-def limpo(engine: Engine) -> Engine:
-    with engine.begin() as conn:
-        conn.execute(text(f"TRUNCATE {SCHEMA}.moedas, {SCHEMA}.daily_bars CASCADE"))
-    return engine
+def limpo(engine: Engine) -> Iterator[Engine]:
+    """Tabelas vazias antes e depois: as barras daqui nao podem vazar para outro teste."""
+
+    def esvaziar() -> None:
+        with engine.begin() as conn:
+            conn.execute(text(f"TRUNCATE {SCHEMA}.moedas, {SCHEMA}.daily_bars CASCADE"))
+
+    esvaziar()
+    yield engine
+    esvaziar()
 
 
 def _moeda(id_: str, simbolo: str, valor: float) -> dict[str, Any]:
@@ -176,3 +183,50 @@ def test_sem_ranking_e_sem_moeda_nenhuma_e_falha(limpo: Engine) -> None:
 
     with pytest.raises(FonteIndisponivelError):
         rodar(limpo, Fontes(None, ["BTC"]))
+
+
+class FontesComKraken(Fontes):
+    """As mesmas fontes, mais a Kraken, com a XMR no ranking e fora da Binance."""
+
+    def __init__(self, *, kraken_no_ar: bool = True) -> None:
+        super().__init__([*RANKING, _moeda("monero", "xmr", 1.0)], ["BTC", "ETH"])
+        self.kraken_no_ar = kraken_no_ar
+        self.pedidos_xmr_na_binance = 0
+
+    def __call__(self, request: httpx.Request) -> httpx.Response:
+        if request.url.params.get("symbol", "").startswith("XMR"):
+            self.pedidos_xmr_na_binance += 1
+        if request.url.host != "api.kraken.com":
+            return super().__call__(request)
+        if not self.kraken_no_ar:
+            return httpx.Response(200, json={"error": ["EService:Unavailable"], "result": {}})
+        ontem = ONTEM_MS // 1000
+        corpo = [
+            [t, "500", "520", "490", "510", "505", "100", 42]
+            # inclui o dia em andamento, que nao pode ser gravado
+            for t in range(ontem - 4 * 86_400, ontem + 2 * 86_400, 86_400)
+        ]
+        return httpx.Response(200, json={"error": [], "result": {"XXMRZUSD": corpo, "last": 1}})
+
+
+def test_xmr_vem_da_kraken_e_nao_tira_ninguem_das_maiores(limpo: Engine) -> None:
+    fontes = FontesComKraken()
+    rodar(limpo, fontes)
+    barras = _barras(limpo)
+    assert barras["XMR"][-1] == date(2026, 11, 15)
+    assert len(barras["XMR"]) == 5
+    assert {"BTC", "ETH"} <= set(barras)
+    assert fontes.pedidos_xmr_na_binance == 0
+    with limpo.connect() as conn:
+        linha = conn.execute(
+            text(f"SELECT par, no_top FROM {SCHEMA}.moedas WHERE ticker = 'XMR'")
+        ).one()
+    assert tuple(linha) == ("XMRUSD", True)
+
+
+def test_kraken_fora_do_ar_nao_derruba_as_outras_moedas(limpo: Engine) -> None:
+    relatorio = rodar(limpo, FontesComKraken(kraken_no_ar=False))
+    barras = _barras(limpo)
+    assert "XMR" not in barras
+    assert {"BTC", "ETH"} <= set(barras)
+    assert "sem negociacao: XMR" in relatorio

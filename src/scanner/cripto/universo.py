@@ -13,7 +13,7 @@ lista da aba (`no_top` falso) e some sozinha quando a retencao podar as barras.
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Mapping
 from typing import Any
 
 import httpx
@@ -32,34 +32,47 @@ CONSULTADAS = 250
 
 
 def escolher(
-    ranking: Any, excluidos: set[str], pares: dict[str, str], top: int
+    ranking: Any,
+    excluidos: set[str],
+    pares: dict[str, str],
+    top: int,
+    extras: Mapping[str, str] | None = None,
 ) -> list[dict[str, Any]]:
     """As `top` maiores do `ranking` que tem par em `pares` e nao estao excluidas.
 
     Duas moedas diferentes podem ter o mesmo simbolo na CoinGecko; vale a de
     maior valor de mercado (a primeira do ranking), que e a que a Binance lista.
+
+    `extras` (moeda -> par em outra corretora) entram no seu lugar do ranking, mas
+    nao contam para o `top`: nenhuma das maiores da Binance sai por causa delas.
     """
+    fora = extras or {}
     if not isinstance(ranking, list):
         raise FonteIndisponivelError(FONTE, "formato inesperado (ranking nao e lista)")
     escolhidas: list[dict[str, Any]] = []
     vistos: set[str] = set()
+    normais = 0
     for item in ranking:
         if not isinstance(item, dict) or item.get("id") in excluidos:
             continue
         simbolo = str(item.get("symbol", "")).upper()
-        if not simbolo or simbolo in vistos or simbolo not in pares:
+        extra = simbolo in fora
+        if not simbolo or simbolo in vistos or not (extra or simbolo in pares):
+            continue
+        if not extra and normais == top:
             continue
         vistos.add(simbolo)
+        normais += 0 if extra else 1
         escolhidas.append(
             {
                 "ticker": simbolo,
-                "par": pares[simbolo],
+                "par": fora[simbolo] if extra else pares[simbolo],
                 "nome": str(item.get("name") or simbolo),
                 "posicao": len(escolhidas) + 1,
                 "valor_de_mercado": item.get("market_cap"),
             }
         )
-        if len(escolhidas) == top:
+        if normais == top and vistos.issuperset(fora):
             break
     return escolhidas
 
@@ -69,6 +82,7 @@ def buscar_maiores(
     *,
     top: int,
     categorias_excluidas: list[str],
+    extras: Mapping[str, str] | None = None,
     cliente: httpx.Client | None = None,
     dormir: Callable[[float], None] = time.sleep,
 ) -> list[dict[str, Any]]:
@@ -85,4 +99,4 @@ def buscar_maiores(
             {"vs_currency": "usd", "category": categoria, "per_page": 250}, cliente, dormir
         )
         excluidos |= ids_da_categoria(dados)
-    return escolher(ranking, excluidos, pares, top)
+    return escolher(ranking, excluidos, pares, top, extras)

@@ -19,6 +19,19 @@ export function mercadoDe(valor: string | null | undefined): Mercado {
 
 const VAZIO = "—";
 
+/**
+ * Moedas que a Binance nao negocia e que vem da Kraken: moeda -> par. Copia de
+ * `MOEDAS_FORA_DA_BINANCE` em `scanner/mercado.py`; um teste trava as duas.
+ */
+export const MOEDAS_FORA_DA_BINANCE: Readonly<Record<string, string>> = { XMR: "XMRUSD" };
+
+/** De onde vem o candle da moeda, para o texto da ficha. */
+export function fonteDaMoeda(ticker: string): { corretora: string; par: string } {
+  return ticker in MOEDAS_FORA_DA_BINANCE
+    ? { corretora: "Kraken", par: `${ticker}/USD` }
+    : { corretora: "Binance", par: `${ticker}/USDT` };
+}
+
 /** Casas decimais para um preco de cripto: pelo menos 5 algarismos significativos. */
 export function casasDoPreco(v: number): number {
   const modulo = Math.abs(v);

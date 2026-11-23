@@ -11,6 +11,7 @@ import pytest
 
 from scanner.cotacoes import binance
 from scanner.cotacoes.binance import BinanceDiaClient, extrair
+from scanner.cotacoes.kraken import CriptoDiaClient
 
 ABRE = 1794873600000  # 17/11/2026 00:00 UTC
 FECHA = ABRE + 86_400_000 - 1
@@ -96,4 +97,4 @@ def test_em_cripto_a_checagem_usa_a_binance(monkeypatch: pytest.MonkeyPatch) -> 
     from scanner import cli, mercado
 
     monkeypatch.setenv(mercado.VARIAVEL, "cripto")
-    assert isinstance(cli._provedor_de_cotacoes(), BinanceDiaClient)
+    assert isinstance(cli._provedor_de_cotacoes(), CriptoDiaClient)

@@ -8,7 +8,8 @@
  * conseguiu, possivelmente nada, e a aba mostra so o dado do banco.
  */
 
-import type { DiaDeHoje } from "./cripto-hoje";
+import { type DiaDeHoje, lerTickerDaKraken } from "./cripto-hoje";
+import { MOEDAS_FORA_DA_BINANCE } from "./mercado";
 
 // Dois enderecos da mesma Binance, perguntados juntos; vale a primeira resposta
 // valida. O espelho publico (`data-api.binance.vision`) atende os Estados
@@ -78,9 +79,28 @@ async function buscar(moedas: string[]): Promise<unknown | null> {
   }
 }
 
+/** O dia de hoje de uma moeda que a Binance nao negocia. Falha vira null, como na Binance. */
+async function naKraken(moeda: string, agora: string): Promise<DiaDeHoje | null> {
+  try {
+    const r = await fetch(
+      `https://api.kraken.com/0/public/Ticker?pair=${encodeURIComponent(MOEDAS_FORA_DA_BINANCE[moeda])}`,
+      { cache: "no-store", signal: AbortSignal.timeout(ESPERA_MS) },
+    );
+    return r.ok ? lerTickerDaKraken(await r.json(), moeda, agora) : null;
+  } catch {
+    return null;
+  }
+}
+
 export async function diaDeHoje(pedidas: readonly string[]): Promise<Record<string, DiaDeHoje>> {
-  const moedas = [...new Set(pedidas.map((m) => m.toUpperCase()))].filter((m) => MOEDA.test(m));
+  const unicas = [...new Set(pedidas.map((m) => m.toUpperCase()))].filter((m) => MOEDA.test(m));
+  // Par suspenso na Binance ainda responde, com o preco de quando parou: a moeda
+  // de outra corretora nao pode nem ser perguntada a ela.
+  const moedas = unicas.filter((m) => !(m in MOEDAS_FORA_DA_BINANCE));
   const agora = new Date().toISOString();
+  const daKraken = Promise.all(
+    unicas.filter((m) => m in MOEDAS_FORA_DA_BINANCE).map((m) => naKraken(m, agora)),
+  );
   const achadas: DiaDeHoje[] = [];
   for (let i = 0; i < moedas.length; i += POR_CHAMADA) {
     const lote = moedas.slice(i, i + POR_CHAMADA);
@@ -92,5 +112,6 @@ export async function diaDeHoje(pedidas: readonly string[]): Promise<Record<stri
       for (const d of uma) if (d !== null) achadas.push(...ler(d, agora));
     }
   }
+  for (const d of await daKraken) if (d !== null) achadas.push(d);
   return Object.fromEntries(achadas.map((d) => [d.moeda, d]));
 }

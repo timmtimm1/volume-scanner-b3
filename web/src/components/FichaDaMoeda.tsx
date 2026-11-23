@@ -12,7 +12,7 @@ import { type Cor, TEXTO_DA_COR } from "@/lib/entradas";
 import { data, diaCurto, percentual } from "@/lib/formato";
 import { SEM_SETAS } from "@/lib/marcas-do-grafico";
 import { horaEmBrasilia } from "@/lib/cripto-hoje";
-import { casasDoPreco, diaDoMercado, gatilhoNoMercado, preco, stopNoMercado } from "@/lib/mercado";
+import { casasDoPreco, diaDoMercado, fonteDaMoeda, gatilhoNoMercado, preco, stopNoMercado } from "@/lib/mercado";
 import { NOME_DO_SETUP, resultadoEmR, rotuloDoEstado, type Setup } from "@/lib/setups-tela";
 import type { Barra, NivelDoGrafico } from "@/lib/types";
 import { marcarAgora } from "@/lib/posicao";
@@ -66,6 +66,7 @@ function volumeCurto(v: number): string {
  * de 15 em 15 minutos, contra o dia de hoje da Binance.
  */
 export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, setups, foco, aoVivo = null, notas = {} }: Props) {
+  const fonte = fonteDaMoeda(ticker);
   const ultima = barras[barras.length - 1];
   const anterior = barras[barras.length - 2];
   const variacao = anterior && anterior.close > 0 ? ultima.close / anterior.close - 1 : null;
@@ -226,8 +227,8 @@ export function FichaDaMoeda({ ticker, nome, posicao, barras, eventos, niveis, s
           classeDeAltura="h-[320px] md:h-[440px] lg:h-[560px]"
         />
         <p className="px-2 pt-2 text-[12px] font-semibold text-tinta-3">
-          Candle diário da Binance, par {ticker}/USDT. Cada candle vai das 21h às 21h de Brasília
-          {aoVivo ? "; o último é o de hoje, em andamento, lido da Binance ao abrir a página." : "."}{" "}
+          Candle diário da {fonte.corretora}, par {fonte.par}. Cada candle vai das 21h às 21h de Brasília
+          {aoVivo ? "; o último é o de hoje, em andamento, lido da corretora ao abrir a página." : "."}{" "}
           As linhas são suportes e resistências de 2 ou mais toques; candle dourado é dia de
           volume muito acima do normal, e a seta embaixo do candle é um setup que armou. Os
           botões Eventos e Setups, acima do gráfico, escondem essas marcas.

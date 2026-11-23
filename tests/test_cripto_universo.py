@@ -48,3 +48,29 @@ def test_simbolo_repetido_vale_a_de_maior_valor() -> None:
 def test_ranking_fora_do_formato_e_fonte_indisponivel() -> None:
     with pytest.raises(FonteIndisponivelError):
         escolher({"status": {"error_code": 429}}, set(), PARES, top=3)
+
+
+def test_moeda_de_outra_corretora_entra_no_seu_lugar_sem_tirar_ninguem() -> None:
+    ranking = [
+        {"id": "bitcoin", "symbol": "btc", "name": "Bitcoin", "market_cap": 3},
+        {"id": "monero", "symbol": "xmr", "name": "Monero", "market_cap": 2},
+        {"id": "ethereum", "symbol": "eth", "name": "Ethereum", "market_cap": 1},
+    ]
+    pares = {"BTC": "BTCUSDT", "ETH": "ETHUSDT"}
+    escolhidas = escolher(ranking, set(), pares, top=2, extras={"XMR": "XMRUSD"})
+    assert [(m["ticker"], m["par"], m["posicao"]) for m in escolhidas] == [
+        ("BTC", "BTCUSDT", 1),
+        ("XMR", "XMRUSD", 2),
+        ("ETH", "ETHUSDT", 3),
+    ]
+
+
+def test_moeda_de_outra_corretora_abaixo_do_corte_ainda_entra() -> None:
+    ranking = [
+        {"id": "bitcoin", "symbol": "btc", "name": "Bitcoin", "market_cap": 3},
+        {"id": "ethereum", "symbol": "eth", "name": "Ethereum", "market_cap": 2},
+        {"id": "monero", "symbol": "xmr", "name": "Monero", "market_cap": 1},
+    ]
+    pares = {"BTC": "BTCUSDT", "ETH": "ETHUSDT"}
+    escolhidas = escolher(ranking, set(), pares, top=1, extras={"XMR": "XMRUSD"})
+    assert [m["ticker"] for m in escolhidas] == ["BTC", "XMR"]

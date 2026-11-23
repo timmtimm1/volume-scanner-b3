@@ -20,8 +20,9 @@ import httpx
 import pandas as pd
 from sqlalchemy import Engine
 
+from scanner import mercado
 from scanner.config import CriptoConfig
-from scanner.cripto import binance, universo
+from scanner.cripto import binance, kraken, universo
 from scanner.semana.fontes import TIMEOUT_SEGUNDOS, FonteIndisponivelError
 from scanner.storage.repository import gravar_moedas, moedas_para_carregar, upsert_bars
 
@@ -45,12 +46,14 @@ def carregar(
             return carregar(engine, cfg, agora=agora, cliente=proprio, dormir=dormir)
     ontem = binance.ultimo_dia_fechado(agora)
     pares = binance.buscar_pares(cliente=cliente)
+    fora = mercado.MOEDAS_FORA_DA_BINANCE
 
     try:
         maiores = universo.buscar_maiores(
             pares,
             top=cfg.top,
             categorias_excluidas=cfg.categorias_excluidas,
+            extras=fora,
             cliente=cliente,
             dormir=dormir,
         )
@@ -69,7 +72,7 @@ def carregar(
     paradas: list[str] = []
     for linha in moedas.to_dict("records"):
         ticker, par, ultima = str(linha["ticker"]), str(linha["par"]), linha["ultima"]
-        if ticker not in pares:
+        if ticker not in pares and ticker not in fora:
             # Par suspenso ou deslistado: as barras antigas ficam, as novas nao vem.
             paradas.append(ticker)
             continue
@@ -78,6 +81,15 @@ def carregar(
         else:
             desde = pd.Timestamp(ultima).date() + timedelta(days=1)
         if desde > ontem:
+            continue
+        if ticker in fora:
+            # A Kraken fora do ar nao pode derrubar a carga das outras 50.
+            try:
+                partes.append(
+                    kraken.buscar_barras(ticker, fora[ticker], desde, agora=agora, cliente=cliente)
+                )
+            except FonteIndisponivelError:
+                paradas.append(ticker)
             continue
         partes.append(
             binance.buscar_barras(ticker, par, desde, agora=agora, cliente=cliente, dormir=dormir)

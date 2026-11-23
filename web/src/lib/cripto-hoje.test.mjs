@@ -3,7 +3,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
-import { comCandleDeHoje, diaSeguinte, horaEmBrasilia, situacaoDaEntrada } from "./cripto-hoje.ts";
+import { comCandleDeHoje, diaSeguinte, horaEmBrasilia, lerTickerDaKraken, situacaoDaEntrada } from "./cripto-hoje.ts";
 
 const hoje = {
   moeda: "AAVE", dia: "2026-11-17", abertura: 108.2, maxima: 114.29, minima: 105.1,
@@ -54,5 +54,31 @@ describe("dia de hoje das criptos", () => {
 
   it("a hora sai no horario de Brasilia", () => {
     assert.equal(horaEmBrasilia("2026-11-17T12:47:00.000Z"), "09:47");
+  });
+});
+
+describe("lerTickerDaKraken", () => {
+  const agora = "2026-11-23T15:00:00.000Z";
+  const resposta = {
+    error: [],
+    result: {
+      XXMRZUSD: {
+        c: ["510.04", "0.5"], v: ["100", "900"], p: ["505", "500"],
+        l: ["490.5", "480"], h: ["520.1", "530"], o: "495.2",
+      },
+    },
+  };
+
+  it("usa os valores de hoje, a posicao 0 de cada lista", () => {
+    assert.deepEqual(lerTickerDaKraken(resposta, "XMR", agora), {
+      moeda: "XMR", dia: "2026-11-23", abertura: 495.2, maxima: 520.1, minima: 490.5,
+      ultimo: 510.04, volume: 50500, hora: agora,
+    });
+  });
+
+  it("erro ou resposta incompleta nao vira preco", () => {
+    assert.equal(lerTickerDaKraken({ error: ["EQuery:Unknown asset pair"], result: {} }, "XMR", agora), null);
+    assert.equal(lerTickerDaKraken(null, "XMR", agora), null);
+    assert.equal(lerTickerDaKraken({ error: [], result: { X: { o: "1" } } }, "XMR", agora), null);
   });
 });

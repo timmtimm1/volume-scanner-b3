@@ -602,9 +602,12 @@ def cripto_sinais(
         raise typer.BadParameter("rode com SCANNER_MERCADO=cripto")
     engine = build_engine()
     tabela = moedas_para_carregar(engine)
+    # O estudo foi medido em candles da Binance e pede 4h a ela: moeda de outra
+    # corretora fica de fora.
     moedas = {
         str(m): str(p)
         for m, p in tabela[tabela["no_top"]][["ticker", "par"]].itertuples(index=False)
+        if str(m) not in mercado.MOEDAS_FORA_DA_BINANCE
     }
     notifier = _notificador(get_settings(), dry_run=dry_run)
     base = get_settings().web_base_url
@@ -644,11 +647,12 @@ def _provedor_de_cotacoes() -> Any:
     dos quatro de teste, e cada passada gastaria uma requisicao por papel so
     para encher o log de recusa.
     """
-    from scanner.cotacoes import BinanceDiaClient, BrapiClient, ProvedorMaisRecente, YahooClient
+    from scanner.cotacoes import BrapiClient, CriptoDiaClient, ProvedorMaisRecente, YahooClient
 
-    # Cripto (SCANNER_MERCADO=cripto): so a Binance, com a maxima do dia UTC.
+    # Cripto (SCANNER_MERCADO=cripto): a maxima do dia UTC, na Binance e, para
+    # as moedas que ela nao negocia, na Kraken.
     if mercado.e_cripto():
-        return BinanceDiaClient()
+        return CriptoDiaClient()
 
     settings = _settings()
     provedores: list[Any] = []

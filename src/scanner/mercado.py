@@ -56,6 +56,12 @@ _MOEDAS = {B3: "R$", CRIPTO: "US$"}
 # nos dois lados um ciclo inteiro de alta e de queda (2017-2021 e 2022-2026).
 _PERIODOS = {B3: ((1995, 2015), (2016, 2026)), CRIPTO: ((2017, 2021), (2022, 2026))}
 
+# Moedas grandes que a Binance deixou de negociar e que o usuario acompanha:
+# moeda -> par na Kraken. A XMR (12a maior em 23/11/2026) esta suspensa na Binance
+# desde 2024. Elas entram na lista ALEM das 50 maiores e nao tomam o lugar de
+# nenhuma. A copia do site esta em `web/src/lib/mercado.ts`; um teste trava as duas.
+MOEDAS_FORA_DA_BINANCE: dict[str, str] = {"XMR": "XMRUSD"}
+
 CENTAVO = 0.01
 # Em cripto nao existe centavo: uma moeda vale 65 mil dolares e outra 0,00001.
 # O passo e relativo -- a quinta casa significativa do preco (1 para o BTC a

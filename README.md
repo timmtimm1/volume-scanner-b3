@@ -1543,7 +1543,7 @@ uns +0,05 R por trade só por estar comprado num mercado que subiu.
 
 A aba **Cripto** aplica os mesmos setups às 50 maiores criptomoedas (seção 15 do [plano](docs/PLANO.md)). Não é um segundo sistema: é o mesmo `scanner daily`, com a variável `SCANNER_MERCADO=cripto`, gravando num schema separado do mesmo banco (`cripto_scanner`). Ações e criptos nunca dividem tabela, universo nem alerta.
 
-Desde 23/11/2026 a aba abre numa **lista de moedas com busca** e o gráfico ao lado (seção 18 do plano). Cada moeda aparece uma vez, com um selo de quantos setups armou; a nota de cada setup fica na ficha, e as entradas do dia, o volume e os encerrados ficam em `/cripto/setups`. A aba **Patrimônio** mostra a evolução do capital em dólar com os trades de cripto.
+Desde 23/11/2026 a aba abre numa **lista de moedas com busca** e o gráfico ao lado (seção 18 do plano). Cada moeda aparece uma vez, com um selo de quantos setups armou; a nota de cada setup fica na ficha, e as entradas do dia, o volume e os encerrados ficam em `/cripto/setups`. A aba **Patrimônio** mostra a evolução do capital em dólar com os trades de cripto. A Monero (XMR), suspensa na Binance, vem da Kraken e entra além das 50 maiores.
 
 | | B3 | Cripto |
 |---|---|---|

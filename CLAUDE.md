@@ -83,6 +83,7 @@ Fora disso, duas fontes entram só para o que o COTAHIST não tem, e nenhuma del
 - **Balanços e cadastro de empresas** (dados abertos da CVM), para a aba Fundamentos da ficha. A CVM publica uma vez por semana. O código de negociação de cada empresa vem do FCA da CVM; o que faltar é procurado no site da B3 e só é aceito quando a própria B3 lista aquele papel para aquela empresa. **Nunca ligue ticker a empresa pelo prefixo de 4 letras** — o emissor "EMBR" na B3 é a EMBRAST, não a Embraer.
 
 - **Criptomoedas** (pedido do usuário em 16/11/2026): candles diários da Binance (par com USDT) para a aba Cripto, e o ranking de valor de mercado da CoinGecko para escolher as 50 maiores. É outro mercado, não outra fonte para as ações: roda o mesmo pipeline com `SCANNER_MERCADO=cripto`, num schema separado (`cripto_scanner`). Nada de cripto entra nas tabelas, no universo ou no alerta da B3. Seção 15 do plano.
+- **Moedas fora da Binance** (pedido do usuário em 23/11/2026): a Monero (XMR) está suspensa na Binance e vem da Kraken (XMR/USD). A lista fica em `MOEDAS_FORA_DA_BINANCE` (`scanner/mercado.py`, com cópia em `web/src/lib/mercado.ts`). Ela entra além das 50 maiores e fica fora dos setups do estudo, que foram medidos em candles da Binance.
 
 Validação obrigatória do parser: `VOLTOT ≈ PREMED × QUATOT`, tolerância 1%. Falhando em mais de 0,5% das linhas, abortar a carga.
 

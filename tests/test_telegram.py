@@ -325,6 +325,62 @@ def test_resumo_de_cripto_troca_as_palavras_e_o_link(monkeypatch: pytest.MonkeyP
     assert "/setups/" not in texto and "abrir o scanner" not in texto
 
 
+def test_resumo_de_cripto_cabe_no_telegram_num_dia_cheio(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """Regressao de 21 e 22/11/2026: a lista de entradas passou de 4096 caracteres."""
+    from datetime import date as _date
+
+    from scanner import mercado
+    from scanner.notify.telegram import format_resumo
+
+    dia = _date(2026, 11, 22)
+
+    def entradas(contagem: dict[str, int]) -> list[dict[str, object]]:
+        return [
+            {
+                "ticker": f"M{i:02d}",
+                "trade_date": dia,
+                "categoria": categoria,
+                "rvol": 1.2,
+                "maxima": 1234.56,
+                "minima": 1198.4,
+                "risco_pct": 2.9,
+                "entrada": 1234.57,
+                "alta": False,
+            }
+            for categoria, n in contagem.items()
+            for i in range(n)
+        ]
+
+    resumo = {
+        "trade_date": dia,
+        "linhas": [
+            {"ticker": f"M{i:02d}", "desvios": 1.5, "variacao": 0.01, "volume": 5.0e7}
+            for i in range(10)
+        ],
+        "setups": {
+            "armados": entradas({"123": 47, "123_suporte": 20, "9.1": 1, "mma20": 2, "pfr": 2}),
+            "outros": {"pullback": 1},
+            "confirmados": entradas({"pfr": 24, "pfr_suporte": 9}),
+        },
+    }
+
+    monkeypatch.setenv(mercado.VARIAVEL, "cripto")
+    texto = format_resumo(resumo, "https://exemplo.app")
+
+    assert len(texto) <= 4096
+    assert "<b>Entradas armadas hoje: 73</b>" in texto
+    assert "9.1 1 · 123 47 · PFR 2 · 123 no suporte 20 · MMA 20 2 · Pullback 1" in texto
+    assert "<b>Confirmadas hoje: 33</b>\nPFR 24 · PFR no suporte 9" in texto
+    assert "acima de" not in texto
+    assert 'href="https://exemplo.app/cripto/"' in texto
+
+    # O resumo das acoes nao muda: continua com uma linha por setup.
+    monkeypatch.delenv(mercado.VARIAVEL)
+    assert "acima de" in format_resumo(resumo, "https://exemplo.app")
+
+
 def test_em_cripto_o_preco_e_em_dolar_e_o_link_vai_para_a_aba_cripto(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:

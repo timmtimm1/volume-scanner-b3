@@ -884,3 +884,19 @@ As duas viram abas da página Análise (`/analise?aba=sazonalidade` e `?aba=rank
 - **Rankings**: o beta do período escolhido, do maior para o menor, e a correlação do menor para o maior (pode ser negativa).
 
 O que a primeira olhada mostrou (histórico até 23/11/2026): **a moeda típica perde em quase todos os meses** (mediana negativa em 11 de 12; junho −26%, dezembro −17%; só abril positivo, +2%): a maioria das moedas cai com o tempo, e é o que a lista com as deslistadas mostra. O BTC tem abril (+11,8%, subiu em 6 de 9 anos), outubro (+10,6%, 7 de 10) e julho (+8,0%, 7 de 9) como melhores meses, e junho e agosto como piores. Maior beta nos últimos 90 dias: CHIP, STRK, AR; no período todo, memecoins e moedas de IA (VIRTUAL, PEPE, WIF, BONK). Menor correlação em 90 dias: SOPH, DODO, FF, e moedas do ecossistema Tron (TRX, JST).
+
+### Quando comprar e quando vender a cesta (24/11/2026, mesmo dia)
+
+Pedido do usuário, depois de ver o mapa: "não apenas deixa lá" -- quer a resposta, qual o melhor período do ano para operar comprado e vendido na média das principais criptos. Decisões dele:
+
+| Pergunta | Escolha |
+|---|---|
+| A cesta | As 50 mais negociadas: em cada mês, as de maior volume em dólar nos 90 dias antes do mês (só o que se sabia na época), com peso igual |
+| Venda | A descoberto, com a taxa de futuros do diário (0,05% por lado), sem funding |
+| Janelas | De 1 a 6 meses, começando em cada mês do ano (72 por lado) |
+| Validação | O protocolo da casa: escolhe com 2017–2021, confere em 2022–2026 |
+
+**As contas** (`scanner/cripto/sazonal.py`, na rodada da noite da análise): compra = produto de (1 + mês) menos 0,1% na entrada e na saída; venda = produto de (1 − mês) menos 0,05% (o vendido refeito todo mês: ganha quando a cesta cai, e um mês de +100% zera a posição). Cada janela é julgada contra uma janela qualquer do mesmo tamanho e lado no mesmo período (o controle: ganhar numa alta geral não é mérito do mês). A ordem usa só janelas que terminam até 12/2021; a conferência, as que começam em 2022 ou depois. Veredito: **repetiu** (na conferência deu lucro e ganhou da janela qualquer), **em parte** (um dos dois) ou **não repetiu**. Com 4 ou 5 anos de cada lado nada tem significância estatística; o veredito é sobre repetir o sinal. Migration 0031: `analise_cesta`, `analise_janelas`, `analise_janela_anos`.
+
+**O que a primeira rodada mostrou** (histórico até 23/11/2026): a compra escolhida em 2017–2021 é **novembro a abril** (+273% em média, mas só 2 de 4 anos com lucro: as altas de 2017 e 2020–21) e ficou **em parte** -- em 2022–2026 perdeu 0,5% em média, contra −9,4% de uma janela qualquer de 6 meses. A venda escolhida é **junho a novembro** e **não repetiu**. No mês a mês, o mês típico (mediana dos anos) da cesta foi negativo em junho nos 9 anos e positivo em abril em 6 de 9. A média do mês e a mediana divergem muito (janeiro: média +15%, mediana −8%): poucas moedas explodindo puxam a média, e a tela mostra as duas. Na exploração, sem os recomeços de série, a COCOS (×1.295 numa troca de token) inflava janeiro: o estudo usa os retornos da análise, já com os recomeços.
+

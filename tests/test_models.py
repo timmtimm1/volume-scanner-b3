@@ -69,6 +69,9 @@ def test_nomes_das_tabelas() -> None:
     # e ano, com beta e correlacao. A primeira guarda o historico diario de cada
     # moeda (o estado da carga noturna); as outras sao derivadas, trocadas a cada
     # noite. So tem linha no schema de cripto.
+    # `analise_cesta`, `analise_janelas` e `analise_janela_anos` (migration 0031)
+    # sao o estudo sazonal da cesta das 50 criptos mais negociadas: quando
+    # comprar e quando vender, escolhido em 2017-2021 e conferido em 2022-2026.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -107,6 +110,9 @@ def test_nomes_das_tabelas() -> None:
         "analise_anual",
         "analise_mensal",
         "analise_movel",
+        "analise_cesta",
+        "analise_janelas",
+        "analise_janela_anos",
     }
 
 
@@ -141,6 +147,9 @@ def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
         ("analise_anual", ["moeda", "ano"]),
         ("analise_mensal", ["moeda", "mes"]),
         ("analise_movel", ["moeda", "dia"]),
+        ("analise_cesta", ["mes"]),
+        ("analise_janelas", ["lado", "inicio_mes", "meses"]),
+        ("analise_janela_anos", ["lado", "inicio_mes", "meses", "ano"]),
     ],
 )
 def test_chaves_primarias(name: str, expected: list[str]) -> None:

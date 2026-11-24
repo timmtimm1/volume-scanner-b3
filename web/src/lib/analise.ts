@@ -473,3 +473,201 @@ export function rankear(
   itens.sort((a, b) => (a.valor - b.valor) * f || a.moeda.localeCompare(b.moeda));
   return itens.slice(0, n);
 }
+
+// ---------------------------------------------------------------------------
+// Estudo sazonal: quando comprar e quando vender a cesta das 50 maiores.
+// ---------------------------------------------------------------------------
+
+/** Os anos com que a janela e escolhida, e os anos em que ela e conferida. */
+export const ANOS_DA_ESCOLHA = "2017–2021";
+export const ANOS_DA_CONFERENCIA = "2022–2026";
+
+export const MESES_CURTOS = [
+  "jan",
+  "fev",
+  "mar",
+  "abr",
+  "mai",
+  "jun",
+  "jul",
+  "ago",
+  "set",
+  "out",
+  "nov",
+  "dez",
+] as const;
+
+export type LadoDoEstudo = "compra" | "venda";
+export type VereditoDoEstudo = "repetiu" | "em parte" | "nao repetiu" | "sem conferencia";
+export type PeriodoDoAno = "escolha" | "conferencia" | "fora";
+
+/** Uma linha de `analise_janelas`: uma janela (mes de inicio + tamanho) de um lado. */
+export type JanelaDoEstudo = {
+  lado: LadoDoEstudo;
+  inicioMes: number;
+  meses: number;
+  /** Lugar na escolha (1 = a melhor); `null` se faltam anos. */
+  posicao: number | null;
+  veredito: VereditoDoEstudo;
+  escolhaMedia: number | null;
+  escolhaMediana: number | null;
+  escolhaPositivos: number;
+  escolhaAnos: number;
+  /** A media de "uma janela qualquer" do mesmo tamanho e lado, no mesmo periodo. */
+  escolhaControle: number | null;
+  conferenciaMedia: number | null;
+  conferenciaMediana: number | null;
+  conferenciaPositivos: number;
+  conferenciaAnos: number;
+  conferenciaControle: number | null;
+  todosMedia: number | null;
+  todosMediana: number | null;
+  todosPositivos: number;
+  todosAnos: number;
+};
+
+/** O resultado de uma janela num ano (o ano em que ela comeca). */
+export type AnoDaJanela = {
+  lado: LadoDoEstudo;
+  inicioMes: number;
+  meses: number;
+  ano: number;
+  periodo: PeriodoDoAno;
+  resultado: number;
+};
+
+/** Um mes da cesta: retorno de comprar as 50 maiores no 1o dia e vender no ultimo. */
+export type MesDaCesta = {
+  /** Primeiro dia do mes, AAAA-MM-DD. */
+  mes: string;
+  retorno: number;
+  retornoBtc: number | null;
+  moedas: number;
+};
+
+/** "abr" (1 mes), "mai a out", "nov a abr" (passa pela virada do ano). */
+export function rotuloDaJanela(inicioMes: number, meses: number): string {
+  const primeiro = MESES_CURTOS[(inicioMes - 1) % 12];
+  if (meses <= 1) return primeiro;
+  const ultimo = MESES_CURTOS[(inicioMes - 1 + meses - 1) % 12];
+  return `${primeiro} a ${ultimo}`;
+}
+
+/** A melhor janela do lado (posicao 1), ou `null` se nenhuma tem anos suficientes. */
+export function escolhidaDoLado(janelas: JanelaDoEstudo[], lado: LadoDoEstudo): JanelaDoEstudo | null {
+  return janelas.find((j) => j.lado === lado && j.posicao === 1) ?? null;
+}
+
+/** As `n` primeiras do lado, da 1a para a n-esima. */
+export function primeirasDoLado(
+  janelas: JanelaDoEstudo[],
+  lado: LadoDoEstudo,
+  n = 5,
+): JanelaDoEstudo[] {
+  return janelas
+    .filter((j) => j.lado === lado && j.posicao !== null && j.posicao >= 1 && j.posicao <= n)
+    .sort((a, b) => (a.posicao as number) - (b.posicao as number));
+}
+
+/** Os anos de uma janela, do mais antigo para o mais novo. */
+export function anosDaJanela(
+  anos: AnoDaJanela[],
+  lado: LadoDoEstudo,
+  inicioMes: number,
+  meses: number,
+): AnoDaJanela[] {
+  return anos
+    .filter((a) => a.lado === lado && a.inicioMes === inicioMes && a.meses === meses)
+    .sort((a, b) => a.ano - b.ano);
+}
+
+export type MesDoPerfil = {
+  mes: number;
+  media: number | null;
+  mediana: number | null;
+  /** Em quantos anos a cesta fechou o mes em alta. */
+  subiu: number;
+  /** Quantos anos entraram na conta. */
+  anos: number;
+  mediaBtc: number | null;
+};
+
+const mediaDe = (vs: number[]): number | null =>
+  vs.length === 0 ? null : vs.reduce((s, v) => s + v, 0) / vs.length;
+
+/** Como a cesta se saiu em cada mes do calendario, ao longo dos anos. Sempre 12 itens. */
+export function perfilDaCesta(cesta: MesDaCesta[]): MesDoPerfil[] {
+  const porMes: number[][] = Array.from({ length: 12 }, () => []);
+  const porMesBtc: number[][] = Array.from({ length: 12 }, () => []);
+  for (const m of cesta) {
+    const n = numeroDoMes(m.mes);
+    if (n < 1 || n > 12 || !finito(m.retorno)) continue;
+    porMes[n - 1].push(m.retorno);
+    if (finito(m.retornoBtc)) porMesBtc[n - 1].push(m.retornoBtc);
+  }
+  return porMes.map((vs, i) => ({
+    mes: i + 1,
+    media: mediaDe(vs),
+    mediana: mediana(vs),
+    subiu: vs.filter((v) => v > 0).length,
+    anos: vs.length,
+    mediaBtc: mediaDe(porMesBtc[i]),
+  }));
+}
+
+/** O melhor e o pior mes pela MEDIANA (empate: o mais cedo no ano). `null` sem dado. */
+export function melhorEPiorMes(
+  perfil: MesDoPerfil[],
+): { melhor: MesDoPerfil; pior: MesDoPerfil } | null {
+  let melhor: MesDoPerfil | null = null;
+  let pior: MesDoPerfil | null = null;
+  for (const p of [...perfil].sort((a, b) => a.mes - b.mes)) {
+    if (!finito(p.mediana)) continue;
+    if (melhor === null || p.mediana > (melhor.mediana as number)) melhor = p;
+    if (pior === null || p.mediana < (pior.mediana as number)) pior = p;
+  }
+  return melhor && pior ? { melhor, pior } : null;
+}
+
+/** Uma frase simples sobre o que a conferencia disse. */
+export function explicacaoDoVeredito(j: JanelaDoEstudo): string {
+  const escolhida = `Escolhida só com ${ANOS_DA_ESCOLHA}`;
+  switch (j.veredito) {
+    case "repetiu":
+      return `${escolhida}, ela voltou a dar lucro e a ganhar de uma janela qualquer em ${ANOS_DA_CONFERENCIA}.`;
+    case "em parte": {
+      const media = j.conferenciaMedia;
+      const controle = j.conferenciaControle;
+      const lucro = finito(media) && media > 0;
+      const ganhou = finito(media) && finito(controle) && media > controle;
+      if (lucro && !ganhou) {
+        return `${escolhida}, em ${ANOS_DA_CONFERENCIA} ela deu lucro, mas não ganhou de uma janela qualquer.`;
+      }
+      if (ganhou && !lucro) {
+        return `${escolhida}, em ${ANOS_DA_CONFERENCIA} ela ganhou de uma janela qualquer, mas não deu lucro.`;
+      }
+      return `${escolhida}, em ${ANOS_DA_CONFERENCIA} ela passou em só uma das duas provas: dar lucro e ganhar de uma janela qualquer.`;
+    }
+    case "nao repetiu":
+      return `Em ${ANOS_DA_CONFERENCIA} ela não deu lucro nem ganhou de uma janela qualquer: o que parecia padrão em ${ANOS_DA_ESCOLHA} não se repetiu.`;
+    default:
+      return "Ainda não há anos de conferência.";
+  }
+}
+
+/**
+ * O teto da escala das barras: um ano gigante nao pode achatar os outros.
+ * Vale 1,2 vez o 2o maior valor absoluto (ou o maior, se ele for menor que isso).
+ */
+export function tetoDasBarras(valores: number[]): number {
+  const abs = valores.filter(finito).map((v) => Math.abs(v)).sort((a, b) => b - a);
+  if (abs.length === 0) return 1;
+  const teto = abs.length >= 2 && abs[1] > 0 ? Math.min(abs[0], abs[1] * 1.2) : abs[0];
+  return teto > 0 ? teto : 1;
+}
+
+/** Altura de 0 a 1 de uma barra e se ela foi cortada no teto. */
+export function alturaDaBarra(v: number, teto: number): { fracao: number; cortada: boolean } {
+  const m = Math.abs(v);
+  return { fracao: Math.min(m / teto, 1), cortada: m > teto };
+}

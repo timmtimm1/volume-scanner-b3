@@ -10,6 +10,7 @@ import pytest
 from sqlalchemy import Engine, func, select, text
 
 from scanner.cripto import analise_diaria
+from scanner.cripto.commodities import Contrato
 from scanner.storage.models import (
     SCHEMA,
     AnaliseAnual,
@@ -151,7 +152,7 @@ def test_dry_run_calcula_sem_gravar(limpo: Engine) -> None:
 
 def test_resumo_diz_quem_ficou_de_fora_e_por_que(limpo: Engine) -> None:
     texto = _rodar(limpo, Busca()).summary()
-    assert "2 criptos na conta (2 fora: 1 acao tokenizada, 1 estavel)" in texto
+    assert "2 criptos e 0 commodities na conta (2 fora: 1 acao tokenizada, 1 estavel)" in texto
     assert "[analise] fora (estavel): USDC" in texto
     assert "[analise] fora (acao tokenizada): NVDAB" in texto
 
@@ -173,3 +174,46 @@ def test_o_estudo_sazonal_vai_junto_na_mesma_rodada(limpo: Engine) -> None:
     texto = rel.summary()
     assert "[estudo] compra: " in texto
     assert "[estudo] venda: " in texto
+
+
+def test_commodities_entram_contra_o_btc_mas_fora_da_cesta(limpo: Engine) -> None:
+    pares = {**PARES, "PAXG": "PAXGUSDT"}
+    futuros = Busca(ate=date(2026, 11, 22))  # o arquivo de futuros atrasa um dia
+    rel = analise_diaria.rodar(
+        limpo,
+        ontem=ONTEM,
+        pares=pares,
+        negociando=set(pares),
+        binance=Busca(),
+        kraken=Busca(),
+        fora_da_binance={},
+        futuros=futuros,
+        contratos={"XAU": Contrato("XAUUSDT", date(2025, 3, 1))},
+        periodos=((2025, 2025), (2026, 2026)),
+    )
+    assert futuros.pedidos == [("XAU", date(2025, 3, 1))]
+    assert (rel.na_conta, rel.commodities) == (4, 2)
+    assert "2 criptos e 2 commodities na conta" in rel.summary()
+    with limpo.connect() as conn:
+        grupos = dict(conn.execute(select(AnaliseMoeda.moeda, AnaliseMoeda.grupo)).all())
+        fora_por = dict(conn.execute(select(AnaliseMoeda.moeda, AnaliseMoeda.fora_por)).all())
+        na_anual = set(conn.execute(select(AnaliseAnual.moeda).distinct()).scalars())
+        cesta = conn.execute(select(func.max(AnaliseCesta.moedas))).scalar_one()
+        xau = conn.execute(
+            select(AnaliseMoeda.fonte, AnaliseMoeda.ultimo_dia).where(AnaliseMoeda.moeda == "XAU")
+        ).one()
+    assert grupos == {
+        "BTC": "cripto",
+        "ETH": "cripto",
+        "USDC": "cripto",
+        "NVDAB": "cripto",
+        "PAXG": "commodity",
+        "XAU": "commodity",
+    }
+    # O PAXG e "embrulhado" no backtest; na analise ele entra, como commodity.
+    assert fora_por["PAXG"] is None
+    assert na_anual == {"BTC", "ETH", "PAXG", "XAU"}
+    # A cesta do estudo continua so cripto: BTC e ETH.
+    assert cesta == 2
+    assert xau.fonte == "binance-futuros"
+    assert xau.ultimo_dia == date(2026, 11, 22)

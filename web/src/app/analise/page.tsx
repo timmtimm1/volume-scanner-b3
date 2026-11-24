@@ -4,9 +4,11 @@ import Link from "next/link";
 import { EstudoSazonal } from "@/components/EstudoSazonal";
 import { RankingsDaAnalise } from "@/components/RankingsDaAnalise";
 import { SazonalidadeDaAnalise } from "@/components/SazonalidadeDaAnalise";
+import { SobreAsCommodities } from "@/components/SobreAsCommodities";
 import { TabelaDaAnalise } from "@/components/TabelaDaAnalise";
 import { lerEstudoSazonal, lerRanking, lerSazonalidade, lerVisaoGeral } from "@/lib/analise-dados";
 import { celulaSazonal, montarSazonalidade, montarTabela, type CelulaSazonal } from "@/lib/analise";
+import { grupoDaUrl, hrefDaAnalise, type Grupo } from "@/lib/commodities";
 import { semCripto } from "@/lib/cripto";
 import { data } from "@/lib/formato";
 
@@ -36,20 +38,36 @@ function listaDoQueFicouFora(fora: { motivo: string; n: number }[]): string {
 
 type Aba = "ano" | "sazonalidade" | "rankings";
 
-const ABAS: { valor: Aba; nome: string; href: string; resumo: string }[] = [
-  { valor: "ano", nome: "Por ano", href: "/analise", resumo: "Cada cripto contra o Bitcoin, ano a ano" },
+const ABAS: { valor: Aba; nome: string; resumo: Record<Grupo, string> }[] = [
+  {
+    valor: "ano",
+    nome: "Por ano",
+    resumo: {
+      cripto: "Cada cripto contra o Bitcoin, ano a ano",
+      commodity: "Ouro tokenizado e contratos de commodity contra o Bitcoin, ano a ano",
+    },
+  },
   {
     valor: "sazonalidade",
     nome: "Sazonalidade",
-    href: "/analise?aba=sazonalidade",
-    resumo: "Como cada moeda costuma se sair em cada mês do ano",
+    resumo: {
+      cripto: "Como cada moeda costuma se sair em cada mês do ano",
+      commodity: "Como cada commodity costuma se sair em cada mês do ano",
+    },
   },
   {
     valor: "rankings",
     nome: "Rankings",
-    href: "/analise?aba=rankings",
-    resumo: "Quem mais acompanha, e quem menos acompanha, o Bitcoin",
+    resumo: {
+      cripto: "Quem mais acompanha, e quem menos acompanha, o Bitcoin",
+      commodity: "Quais commodities mais e menos acompanham o Bitcoin",
+    },
   },
+];
+
+const GRUPOS: { valor: Grupo; nome: string }[] = [
+  { valor: "cripto", nome: "Criptos" },
+  { valor: "commodity", nome: "Commodities" },
 ];
 
 const abaDe = (v: string | string[] | undefined): Aba =>
@@ -84,7 +102,10 @@ export default async function Analise({
     );
   }
 
-  const aba = abaDe((await searchParams).aba);
+  const parametros = await searchParams;
+  const aba = abaDe(parametros.aba);
+  const grupo = grupoDaUrl(parametros.grupo);
+  const commodities = grupo === "commodity";
   const info = ABAS.find((x) => x.valor === aba) ?? ABAS[0];
 
   // O JSX so e montado depois do try: erro de renderizacao nao passa por ele.
@@ -102,18 +123,21 @@ export default async function Analise({
     if (aba === "sazonalidade") {
       // Sem as tabelas do estudo (42P01) a aba abre mesmo assim, com o aviso.
       const [v, estudo] = await Promise.all([
-        lerSazonalidade(),
-        lerEstudoSazonal().catch((erro: unknown) => {
-          if ((erro as { code?: string }).code === "42P01") return null;
-          throw erro;
-        }),
+        lerSazonalidade(grupo),
+        // O estudo é da cesta de cripto: as commodities não entram nele.
+        commodities
+          ? Promise.resolve(null)
+          : lerEstudoSazonal().catch((erro: unknown) => {
+            if ((erro as { code?: string }).code === "42P01") return null;
+            throw erro;
+          }),
       ]);
       dados = { aba, ate: v.ate, v, estudo };
     } else if (aba === "rankings") {
-      const v = await lerRanking();
+      const v = await lerRanking(grupo);
       dados = { aba, ate: v.ate, v };
     } else {
-      const v = await lerVisaoGeral();
+      const v = await lerVisaoGeral(grupo);
       dados = { aba: "ano", ate: v.ate, v };
     }
   } catch (erro) {
@@ -136,7 +160,7 @@ export default async function Analise({
   }
 
   const mercadoPorMes: Record<number, CelulaSazonal> = {};
-  if (dados.aba === "sazonalidade") {
+  if (dados.aba === "sazonalidade" && !commodities) {
     for (const m of dados.v.mercado) mercadoPorMes[m.mes] = celulaSazonal(m);
   }
   const tabela = dados.aba === "ano" ? montarTabela(dados.v.moedas, dados.v.anuais) : null;
@@ -147,7 +171,7 @@ export default async function Analise({
       <section className="cartao flex flex-col gap-0.5 px-5 py-3">
         <h1 className="text-[22px] font-extrabold tracking-tight">Análise</h1>
         <p className="text-[13px] font-semibold text-tinta-3">
-          {info.resumo} · dados até {data(ate)}
+          {info.resumo[grupo]} · dados até {data(ate)}
         </p>
       </section>
 
@@ -155,7 +179,7 @@ export default async function Analise({
         {ABAS.map((x) => (
           <Link
             key={x.valor}
-            href={x.href}
+            href={hrefDaAnalise(x.valor, grupo)}
             aria-current={x.valor === aba ? "page" : undefined}
             className={`toque flex h-9 items-center rounded-full border px-3.5 text-[13px] font-bold transition-colors ${
               x.valor === aba
@@ -168,12 +192,41 @@ export default async function Analise({
         ))}
       </nav>
 
+      <nav aria-label="Grupo da análise" className="flex flex-wrap gap-1.5">
+        {GRUPOS.map((g) => (
+          <Link
+            key={g.valor}
+            href={hrefDaAnalise(aba, g.valor)}
+            aria-current={g.valor === grupo ? "page" : undefined}
+            className={`toque flex h-8 items-center rounded-full border px-3 text-[12px] font-bold transition-colors ${
+              g.valor === grupo
+                ? "border-acento bg-selecao text-acento"
+                : "border-linha-2 text-tinta-3 hover:text-tinta"
+            }`}
+          >
+            {g.nome}
+          </Link>
+        ))}
+      </nav>
+
       {dados.aba === "sazonalidade" && (
         <>
-          <EstudoSazonal estudo={dados.estudo} />
+          {commodities ? (
+            <section className="cartao p-4 text-[13px] leading-relaxed text-tinta-2 md:p-5">
+              O estudo de quando comprar e quando vender é da cesta das 50 criptos mais negociadas; as
+              commodities não entram nele. Para ver, volte para{" "}
+              <Link href={hrefDaAnalise("sazonalidade", "cripto")} className="font-bold text-acento">
+                Criptos
+              </Link>
+              .
+            </section>
+          ) : (
+            <EstudoSazonal estudo={dados.estudo} />
+          )}
           <SazonalidadeDaAnalise
             linhas={montarSazonalidade(dados.v.moedas, dados.v.meses)}
             mercado={mercadoPorMes}
+            commodities={commodities}
           />
         </>
       )}
@@ -183,10 +236,12 @@ export default async function Analise({
           ano={dados.v.ano}
           dia90={dados.v.dia90}
           total={dados.v.candidatos.length}
+          commodities={commodities}
         />
       )}
       {dados.aba === "ano" && (
         <>
+          {commodities && <SobreAsCommodities />}
           <SecaoRecolhida titulo="Como ler">
             <div className="flex flex-col gap-2.5 text-[13px] leading-relaxed text-tinta-2">
               <p>
@@ -215,18 +270,25 @@ export default async function Analise({
                 entrou na Binance no meio do ano, saiu dela, ou o ano ainda não acabou. Passe o mouse (ou
                 toque) na célula para ver as datas.
               </p>
-              <p>
-                <b className="text-tinta">O que ficou de fora.</b>{" "}
-                {totalFora > 0
-                  ? `${totalFora} moedas que não são cripto "de verdade" para esta conta: ${listaDoQueFicouFora(dados.v.fora)}. `
-                  : "Nada ficou de fora. "}
-                As moedas que saíram da Binance continuam na lista, marcadas como &quot;parada&quot;:
-                tirar as que deram errado faria o passado parecer melhor do que foi.
-              </p>
+              {commodities ? (
+                <p>
+                  As commodities ficam fora da cesta das 50 criptos do estudo de compra e venda e da
+                  moeda típica da Sazonalidade. Os contratos têm menos de um ano de histórico.
+                </p>
+              ) : (
+                <p>
+                  <b className="text-tinta">O que ficou de fora.</b>{" "}
+                  {totalFora > 0
+                    ? `${totalFora} moedas que não são cripto "de verdade" para esta conta: ${listaDoQueFicouFora(dados.v.fora)}. `
+                    : "Nada ficou de fora. "}
+                  As moedas que saíram da Binance continuam na lista, marcadas como &quot;parada&quot;:
+                  tirar as que deram errado faria o passado parecer melhor do que foi.
+                </p>
+              )}
             </div>
           </SecaoRecolhida>
 
-          {tabela && <TabelaDaAnalise anos={tabela.anos} linhas={tabela.linhas} />}
+          {tabela && <TabelaDaAnalise anos={tabela.anos} linhas={tabela.linhas} commodities={commodities} />}
         </>
       )}
     </div>

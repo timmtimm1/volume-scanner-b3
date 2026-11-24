@@ -8,9 +8,11 @@ import numpy as np
 import pandas as pd
 import pytest
 
+from scanner.cripto.commodities import Contrato
 from scanner.cripto.historico import (
     INICIO,
     Historico,
+    RelatorioDaCarga,
     atualizar,
     de_barras,
     juntar,
@@ -209,3 +211,85 @@ def test_moeda_que_sumiu_da_lista_fica_com_o_historico_e_parada() -> None:
     novo, _ = _rodar(estado, {"BTC": "BTCUSDT"}, {"BTC"}, Busca())
     assert "SUMIU" in novo
     assert not novo["SUMIU"].negociando
+
+
+def _com_contratos(
+    estado: dict[str, Historico], contratos: dict[str, Contrato], busca: Busca
+) -> tuple[dict[str, Historico], RelatorioDaCarga]:
+    return atualizar(
+        estado,
+        {"BTC": "BTCUSDT"},
+        {"BTC"},
+        ONTEM,
+        binance=Busca(),
+        kraken=Busca(),
+        fora_da_binance={},
+        futuros=busca,
+        contratos=contratos,
+    )
+
+
+OURO = {"XAU": Contrato("XAUUSDT", date(2025, 12, 11))}
+
+
+def test_contrato_novo_vem_desde_a_estreia_pelo_arquivo_de_futuros() -> None:
+    futuros = Busca(ate=ONTEM - timedelta(days=1))  # o arquivo atrasa um dia
+    estado, rel = _com_contratos({}, OURO, futuros)
+    assert futuros.pedidos == [("XAU", date(2025, 12, 11))]
+    assert estado["XAU"].fonte == "binance-futuros"
+    assert estado["XAU"].par == "XAUUSDT"
+    assert estado["XAU"].ultimo_dia == ONTEM - timedelta(days=1)
+    assert estado["XAU"].negociando
+    assert rel.novas == 2
+
+
+def test_contrato_guardado_pede_so_os_dias_novos_e_nao_vira_parado() -> None:
+    estado = {
+        "BTC": _hist("BTC", "2020-01-01", ONTEM.isoformat()),
+        "XAU": _hist("XAU", "2025-12-11", "2026-11-20"),
+    }
+    futuros = Busca()
+    novo, _ = _com_contratos(estado, OURO, futuros)
+    assert futuros.pedidos == [("XAU", date(2026, 11, 21))]
+    assert novo["XAU"].ultimo_dia == ONTEM
+    assert novo["XAU"].negociando
+
+
+def test_falha_no_contrato_fica_como_estava_e_nao_para_a_carga() -> None:
+    velho = _hist("XAU", "2025-12-11", "2026-11-20")
+    estado = {"BTC": _hist("BTC", "2020-01-01", ONTEM.isoformat()), "XAU": velho}
+    novo, rel = _com_contratos(estado, OURO, Busca(falha={"XAU"}))
+    assert novo["XAU"] is velho
+    assert rel.falhas == ["XAU"]
+
+
+def test_ticker_do_contrato_que_aparece_a_vista_nao_mistura_as_series() -> None:
+    futuros = Busca()
+    novo, rel = atualizar(
+        {},
+        {"BTC": "BTCUSDT", "XAU": "XAUUSDT"},
+        {"BTC", "XAU"},
+        ONTEM,
+        binance=Busca(),
+        kraken=Busca(),
+        fora_da_binance={},
+        futuros=futuros,
+        contratos=OURO,
+    )
+    assert futuros.pedidos == []
+    assert novo["XAU"].fonte == "binance"
+    assert rel.falhas == ["XAU (ticker repetido no mercado a vista)"]
+
+
+def test_contratos_sem_a_busca_de_futuros_e_erro_de_quem_chama() -> None:
+    with pytest.raises(ValueError, match="futuros"):
+        atualizar(
+            {},
+            {"BTC": "BTCUSDT"},
+            {"BTC"},
+            ONTEM,
+            binance=Busca(),
+            kraken=Busca(),
+            fora_da_binance={},
+            contratos=OURO,
+        )

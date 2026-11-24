@@ -2071,10 +2071,13 @@ def gravar_analise(
     """Troca as tabelas da analise (e do estudo sazonal) numa transacao so.
 
     Quem le no meio da troca ve a analise velha inteira ou a nova inteira.
+    `grupo` separa as criptos das commodities (`scanner.cripto.commodities`).
     `fora` diz por que cada moeda excluida nao entra nas contas; ela fica em
     `analise_moedas` mesmo assim, para a carga nao baixa-la de novo. Devolve as
     linhas gravadas por tabela.
     """
+    from scanner.cripto import commodities
+
     volume = dict(zip(analise.resumo["moeda"], analise.resumo["volume_12m"], strict=True))
     moedas = [
         {
@@ -2083,6 +2086,7 @@ def gravar_analise(
             "fonte": h.fonte,
             "negociando": h.negociando,
             "fora_por": fora.get(h.moeda),
+            "grupo": commodities.grupo(h.moeda),
             "primeiro_dia": h.primeiro_dia,
             "ultimo_dia": h.ultimo_dia,
             "volume_12m": None if h.moeda in fora else float(volume.get(h.moeda, 0.0)),

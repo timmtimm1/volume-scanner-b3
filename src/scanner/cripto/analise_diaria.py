@@ -7,8 +7,10 @@ Roda pelo workflow `cripto-analise`, depois do `cripto`, com
    deslistados;
 2. pede so os candles que faltam (`historico.atualizar`);
 3. separa o que nao e cripto (`filtros.motivo_de_fora`) e calcula as tabelas
-   (`analise.calcular`);
-4. troca as quatro tabelas numa transacao.
+   (`analise.calcular`). As commodities (`commodities.grupo`) entram nas contas
+   contra o BTC, mas nao na cesta do estudo sazonal (`sazonal.calcular`), que
+   continua so cripto;
+4. troca as tabelas numa transacao.
 
 E uma lente de leitura: nao alimenta alerta, setup, semaforo nem backtest.
 """
@@ -23,7 +25,8 @@ from datetime import date
 from sqlalchemy import Engine
 
 from scanner import mercado
-from scanner.cripto import analise, filtros, historico, sazonal
+from scanner.cripto import analise, commodities, filtros, historico, sazonal
+from scanner.cripto.commodities import Contrato
 from scanner.cripto.historico import BuscarBarras, Historico, RelatorioDaCarga
 
 
@@ -33,6 +36,8 @@ class RelatorioDaAnalise:
     pronto: bool = False
     carga: RelatorioDaCarga | None = None
     na_conta: int = 0
+    # Das que estao na conta, quantas sao commodity (ouro tokenizado, contratos).
+    commodities: int = 0
     fora: dict[str, list[str]] = field(default_factory=dict)
     linhas: dict[str, int] = field(default_factory=dict)
     # O que o estudo sazonal escolheu, uma linha por lado (para o log).
@@ -44,8 +49,10 @@ class RelatorioDaAnalise:
             return f"[pronto] a analise ate {self.dia} ja foi gravada; nada a fazer."
         fora = sum(len(v) for v in self.fora.values())
         motivos = ", ".join(f"{len(v)} {k}" for k, v in sorted(self.fora.items()))
+        criptos = self.na_conta - self.commodities
         partes = [
-            f"[analise] ate {self.dia}: {self.na_conta} criptos na conta ({fora} fora: {motivos})"
+            f"[analise] ate {self.dia}: {criptos} criptos e {self.commodities} commodities "
+            f"na conta ({fora} fora: {motivos})"
         ]
         if self.carga is not None:
             partes.append(f"carga: {self.carga.summary()}")
@@ -67,10 +74,18 @@ class RelatorioDaAnalise:
 
 
 def separar(estado: Mapping[str, Historico]) -> tuple[list[Historico], dict[str, str]]:
-    """As moedas que entram na conta e o motivo de cada uma que fica de fora."""
+    """As moedas que entram na conta e o motivo de cada uma que fica de fora.
+
+    As commodities entram sempre: o ouro tokenizado seria "embrulhado" pela
+    regra do backtest, e um contrato de ouro parado num ano calmo pareceria
+    stablecoin.
+    """
     entram: list[Historico] = []
     fora: dict[str, str] = {}
     for moeda, h in estado.items():
+        if commodities.grupo(moeda) == commodities.GRUPO_COMMODITY:
+            entram.append(h)
+            continue
         motivo = filtros.motivo_de_fora(moeda, h.serie())
         if motivo is None:
             entram.append(h)
@@ -88,6 +103,8 @@ def rodar(
     binance: BuscarBarras,
     kraken: BuscarBarras,
     fora_da_binance: Mapping[str, str],
+    futuros: BuscarBarras | None = None,
+    contratos: Mapping[str, Contrato] | None = None,
     so_se_faltar: bool = False,
     dry_run: bool = False,
     periodos: tuple[tuple[int, int], tuple[int, int]] | None = None,
@@ -109,11 +126,14 @@ def rodar(
         binance=binance,
         kraken=kraken,
         fora_da_binance=fora_da_binance,
+        futuros=futuros,
+        contratos=contratos,
     )
     entram, fora = separar(estado)
     fech, vol = historico.matrizes(entram)
     resultado = analise.calcular(fech, vol)
-    estudo = sazonal.calcular(fech, vol, periodos or mercado.periodos())
+    criptos = [m for m in fech.columns if commodities.grupo(m) == commodities.GRUPO_CRIPTO]
+    estudo = sazonal.calcular(fech[criptos], vol[criptos], periodos or mercado.periodos())
     por_motivo: dict[str, list[str]] = defaultdict(list)
     for moeda, motivo in fora.items():
         por_motivo[motivo].append(moeda)
@@ -132,6 +152,7 @@ def rodar(
         dia=ontem,
         carga=carga,
         na_conta=len(entram),
+        commodities=len(entram) - len(criptos),
         fora=dict(por_motivo),
         linhas=linhas,
         estudo=sazonal.escolhidas(estudo.janelas),

@@ -1165,7 +1165,8 @@ class AnaliseMoeda(Base):
     tem um valor por dia do calendario, de `primeiro_dia` a `ultimo_dia`, NaN no
     dia sem candle. A noite seguinte so pede os dias novos. `fora_por` diz por
     que a moeda nao entra nas contas (stablecoin, embrulhada, alavancada, acao
-    tokenizada), ou None. So o schema de cripto tem linha.
+    tokenizada), ou None. `grupo` e "cripto" ou "commodity" (ouro tokenizado e
+    contratos de commodity, migration 0032). So o schema de cripto tem linha.
     """
 
     __tablename__ = "analise_moedas"
@@ -1175,6 +1176,7 @@ class AnaliseMoeda(Base):
     fonte: Mapped[str] = mapped_column(Text, nullable=False)
     negociando: Mapped[bool] = mapped_column(Boolean, nullable=False)
     fora_por: Mapped[str | None] = mapped_column(Text)
+    grupo: Mapped[str] = mapped_column(Text, nullable=False, server_default="cripto")
     primeiro_dia: Mapped[date] = mapped_column(Date, nullable=False)
     ultimo_dia: Mapped[date] = mapped_column(Date, nullable=False)
     volume_12m: Mapped[float | None] = mapped_column(Float)

@@ -72,6 +72,8 @@ def test_nomes_das_tabelas() -> None:
     # `analise_cesta`, `analise_janelas` e `analise_janela_anos` (migration 0031)
     # sao o estudo sazonal da cesta das 50 criptos mais negociadas: quando
     # comprar e quando vender, escolhido em 2017-2021 e conferido em 2022-2026.
+    # A coluna `analise_moedas.grupo` (migration 0032) separa as criptos das
+    # commodities (ouro tokenizado e contratos), que nao entram na cesta.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",

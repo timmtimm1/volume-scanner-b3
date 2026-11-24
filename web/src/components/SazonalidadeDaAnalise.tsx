@@ -23,6 +23,7 @@ import {
   type ModoSazonal,
   type Sentido,
 } from "@/lib/analise";
+import { commodityDe } from "@/lib/commodities";
 
 const PASSO = 100;
 
@@ -71,9 +72,12 @@ function Celula({ c, modo }: { c: CelulaSazonal | null | undefined; modo: ModoSa
 export function SazonalidadeDaAnalise({
   linhas,
   mercado,
+  commodities = false,
 }: {
   linhas: LinhaSazonal[];
   mercado: Record<number, CelulaSazonal>;
+  /** Na visão de commodities não há moeda típica, e o nome vem ao lado do ticker. */
+  commodities?: boolean;
 }) {
   const [modo, setModo] = useState<ModoSazonal>("retorno");
   const [busca, setBusca] = useState("");
@@ -104,6 +108,7 @@ export function SazonalidadeDaAnalise({
       ? `${linhas.length} moedas`
       : `${filtradas.length} de ${linhas.length} moedas`;
 
+  const temMercado = Object.keys(mercado).length > 0;
   const qualEmCima = modo === "retorno" ? "subiu" : "ganhou do BTC";
 
   return (
@@ -128,12 +133,19 @@ export function SazonalidadeDaAnalise({
               não puxa a conta. Com menos de {MINIMO_DE_ANOS} anos, a célula fica cinza e a moeda vai
               para o fim da ordem: é pouco para falar em estação.
             </p>
-            <p>
-              A linha <b className="text-tinta">Mercado</b> é a moeda típica de cada mês (a mediana
-              entre todas as moedas naquele mês), com cada ano pesando igual. A moeda típica perde em
-              quase todos os meses: a maioria das moedas cai com o tempo. Compare cada moeda com a
-              linha do Mercado e com a do BTC. É o que aconteceu no passado, não uma previsão.
-            </p>
+            {temMercado ? (
+              <p>
+                A linha <b className="text-tinta">Mercado</b> é a moeda típica de cada mês (a mediana
+                entre todas as moedas naquele mês), com cada ano pesando igual. A moeda típica perde em
+                quase todos os meses: a maioria das moedas cai com o tempo. Compare cada moeda com a
+                linha do Mercado e com a do BTC. É o que aconteceu no passado, não uma previsão.
+              </p>
+            ) : (
+              <p>
+                Compare cada commodity com a linha do BTC. É o que aconteceu no passado, não uma
+                previsão.
+              </p>
+            )}
           </div>
         </details>
       </div>
@@ -168,7 +180,7 @@ export function SazonalidadeDaAnalise({
           className="toque h-10 min-w-0 rounded-full border border-linha-2 bg-painel px-4 text-[14px] font-semibold text-tinta placeholder:text-tinta-3 md:w-56"
         />
         <div role="group" aria-label="Grupo de moedas" className="flex flex-wrap gap-1.5">
-          {GRUPOS.map((g) => (
+          {GRUPOS.filter((g) => !commodities || g.valor !== "top50").map((g) => (
             <button
               key={g.valor}
               type="button"
@@ -262,18 +274,20 @@ export function SazonalidadeDaAnalise({
             </tr>
           </thead>
           <tbody className="divide-y divide-linha">
-            <tr className="bg-painel-2">
-              <th
-                scope="row"
-                title="A moeda típica de cada mês: a mediana entre todas as moedas, sem o BTC"
-                className="sticky left-0 z-10 whitespace-nowrap bg-painel-2 px-3 py-1.5 text-left font-extrabold md:px-4"
-              >
-                Mercado (moeda típica)
-              </th>
-              {MESES.map((nome, i) => (
-                <Celula key={nome} c={mercado[i + 1]} modo={modo} />
-              ))}
-            </tr>
+            {temMercado && (
+              <tr className="bg-painel-2">
+                <th
+                  scope="row"
+                  title="A moeda típica de cada mês: a mediana entre todas as moedas, sem o BTC"
+                  className="sticky left-0 z-10 whitespace-nowrap bg-painel-2 px-3 py-1.5 text-left font-extrabold md:px-4"
+                >
+                  Mercado (moeda típica)
+                </th>
+                {MESES.map((nome, i) => (
+                  <Celula key={nome} c={mercado[i + 1]} modo={modo} />
+                ))}
+              </tr>
+            )}
             {btc && (
               <tr className="bg-painel-2">
                 <th
@@ -307,6 +321,11 @@ export function SazonalidadeDaAnalise({
                   >
                     {l.moeda}
                   </Link>
+                  {commodities && (
+                    <span className="ml-1.5 text-[11px] font-semibold text-tinta-3">
+                      {commodityDe(l.moeda)?.nome}
+                    </span>
+                  )}
                   {!l.negociando && (
                     <span
                       title="Esta moeda não é mais negociada na Binance"

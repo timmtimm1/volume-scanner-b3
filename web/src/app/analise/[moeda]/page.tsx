@@ -5,6 +5,7 @@ import { GraficoDoBetaMovel } from "@/components/GraficoDoBetaMovel";
 import { MapaMensalDaAnalise } from "@/components/MapaMensalDaAnalise";
 import { pctCurto } from "@/lib/analise";
 import { lerMoeda } from "@/lib/analise-dados";
+import { commodityDe, hrefDaAnalise, SOBRE_OS_CONTRATOS, SOBRE_OS_TOKENS } from "@/lib/commodities";
 import { semCripto } from "@/lib/cripto";
 import { data, numero } from "@/lib/formato";
 
@@ -78,15 +79,22 @@ export default async function AnaliseDaMoeda({ params }: Props) {
   const temKraken = m.fonte.includes("kraken");
   const soKraken = m.fonte === "kraken";
   const parciais = porAno.filter((a) => a.parcial);
+  const commodity = dados.grupo === "commodity" ? commodityDe(m.moeda) : null;
 
   return (
     <div className="flex flex-col gap-4">
       <section className="cartao flex flex-col gap-2 px-5 py-4">
-        <Link href="/analise" className="toque inline-flex w-fit items-center text-[13px] font-bold text-acento">
+        <Link
+          href={commodity ? hrefDaAnalise("ano", "commodity") : "/analise"}
+          className="toque inline-flex w-fit items-center text-[13px] font-bold text-acento"
+        >
           ← Análise
         </Link>
         <div className="flex flex-wrap items-center gap-x-3 gap-y-2">
-          <h1 className="text-[22px] font-extrabold tracking-tight">{m.moeda}</h1>
+          <h1 className="text-[22px] font-extrabold tracking-tight">
+            {m.moeda}
+            {commodity && <span className="font-bold text-tinta-2"> · {commodity.nome}</span>}
+          </h1>
           {m.negociando ? (
             <span className="rounded-full bg-alta-fundo px-2.5 py-0.5 text-[12px] font-extrabold text-alta">
               negociando
@@ -114,6 +122,34 @@ export default async function AnaliseDaMoeda({ params }: Props) {
           {eBtc && " · o Bitcoin é a régua: contra ele mesmo, o resultado é sempre zero"}
         </p>
       </section>
+
+      {commodity && (
+        <section className="cartao flex flex-col gap-3 p-4 md:p-5">
+          <h2 className="text-[18px] font-extrabold">O que é</h2>
+          <div className="flex flex-col gap-1 text-[13px] leading-relaxed text-tinta-2">
+            <p className="font-extrabold text-tinta">
+              {commodity.tipo === "token"
+                ? "Token à vista com lastro em ouro"
+                : "Contrato perpétuo da Binance Futures"}
+            </p>
+            <p>Par na Binance: {commodity.par}</p>
+            <p>Preço em: {commodity.unidade}</p>
+            <p>
+              Dados desde {data(m.primeiroDia)} até {data(m.ultimoDia)}
+            </p>
+          </div>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed text-tinta-2">
+            {commodity.detalhes.map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+          <ul className="flex list-disc flex-col gap-1 pl-5 text-[13px] leading-relaxed text-tinta-2">
+            {(commodity.tipo === "token" ? SOBRE_OS_TOKENS : SOBRE_OS_CONTRATOS).map((t) => (
+              <li key={t}>{t}</li>
+            ))}
+          </ul>
+        </section>
+      )}
 
       <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
         <Numero

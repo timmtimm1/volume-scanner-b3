@@ -648,10 +648,10 @@ def cripto_analise(
         bool, typer.Option("--dry-run", help="Baixa e calcula, sem gravar no banco.")
     ] = False,
 ) -> None:
-    """A pagina Analise: cada cripto contra o Bitcoin por mes e ano, com beta e correlacao."""
+    """A pagina Analise: cada cripto (e commodity) contra o Bitcoin, com beta e correlacao."""
     import httpx
 
-    from scanner.cripto import analise_diaria, binance, kraken
+    from scanner.cripto import analise_diaria, binance, commodities, futuros, kraken
     from scanner.storage.engine import build_engine
 
     if not mercado.e_cripto():
@@ -668,6 +668,8 @@ def cripto_analise(
             binance=lambda m, p, d: binance.buscar_barras(m, p, d, cliente=cliente),
             kraken=lambda m, p, d: kraken.buscar_barras(m, p, d, cliente=cliente),
             fora_da_binance=mercado.MOEDAS_FORA_DA_BINANCE,
+            futuros=lambda m, p, d: futuros.buscar_barras(m, p, d, cliente=cliente),
+            contratos=commodities.CONTRATOS,
             so_se_faltar=so_se_faltar,
             dry_run=dry_run,
         )

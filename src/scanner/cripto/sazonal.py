@@ -147,8 +147,10 @@ def resultado_por_ano(
         # Janelas de k meses: as linhas sao os comecos, as colunas os k meses.
         blocos = np.lib.stride_tricks.sliding_window_view(valores, k)
         completas = ~np.isnan(blocos).any(axis=1)
-        comeco = meses[: len(blocos)][completas]
-        fim = meses[k - 1 :][completas]
+        # PeriodIndex explicito: fatiado com mascara, os tipos do pandas do CI
+        # (versao do lockfile) perdem o tipo e recusam `.month` e `.year`.
+        comeco = pd.PeriodIndex(meses[: len(blocos)][completas])
+        fim = pd.PeriodIndex(meses[k - 1 :][completas])
         blocos = blocos[completas]
         compra = np.prod(1.0 + blocos, axis=1) * (1.0 - TAXA_A_VISTA) ** 2 - 1.0
         venda = np.prod(1.0 - blocos, axis=1) * (1.0 - TAXA_FUTUROS) ** 2 - 1.0

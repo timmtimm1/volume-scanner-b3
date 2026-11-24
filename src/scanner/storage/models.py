@@ -1156,3 +1156,79 @@ class Tendencia(Base):
     gravado_em: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+
+class AnaliseMoeda(Base):
+    """Uma moeda da analise contra o Bitcoin, com o historico diario dela (24/11/2026).
+
+    E o estado da carga (`scanner.cripto.historico`): `fechamentos` e `volumes`
+    tem um valor por dia do calendario, de `primeiro_dia` a `ultimo_dia`, NaN no
+    dia sem candle. A noite seguinte so pede os dias novos. `fora_por` diz por
+    que a moeda nao entra nas contas (stablecoin, embrulhada, alavancada, acao
+    tokenizada), ou None. So o schema de cripto tem linha.
+    """
+
+    __tablename__ = "analise_moedas"
+
+    moeda: Mapped[str] = mapped_column(Text, primary_key=True)
+    par: Mapped[str] = mapped_column(Text, nullable=False)
+    fonte: Mapped[str] = mapped_column(Text, nullable=False)
+    negociando: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    fora_por: Mapped[str | None] = mapped_column(Text)
+    primeiro_dia: Mapped[date] = mapped_column(Date, nullable=False)
+    ultimo_dia: Mapped[date] = mapped_column(Date, nullable=False)
+    volume_12m: Mapped[float | None] = mapped_column(Float)
+    fechamentos: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
+    volumes: Mapped[list[float]] = mapped_column(ARRAY(Float), nullable=False)
+    atualizado_em: Mapped[datetime] = mapped_column(
+        DateTime(timezone=True), nullable=False, server_default=func.now()
+    )
+
+
+class AnaliseAnual(Base):
+    """Retorno de cada moeda num ano contra o BTC nas mesmas datas, beta e correlacao.
+
+    `ano = 0` e o periodo todo (o trecho mais recente da moeda). Ver
+    `scanner.cripto.analise` para as regras.
+    """
+
+    __tablename__ = "analise_anual"
+
+    moeda: Mapped[str] = mapped_column(Text, primary_key=True)
+    ano: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    fim: Mapped[date] = mapped_column(Date, nullable=False)
+    parcial: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    retorno: Mapped[float] = mapped_column(Float, nullable=False)
+    retorno_btc: Mapped[float | None] = mapped_column(Float)
+    relativo: Mapped[float | None] = mapped_column(Float)
+    beta: Mapped[float | None] = mapped_column(Float)
+    correlacao: Mapped[float | None] = mapped_column(Float)
+    dias: Mapped[int] = mapped_column(Integer, nullable=False)
+
+
+class AnaliseMensal(Base):
+    """Retorno de cada moeda num mes contra o BTC nas mesmas datas (a sazonalidade)."""
+
+    __tablename__ = "analise_mensal"
+
+    moeda: Mapped[str] = mapped_column(Text, primary_key=True)
+    mes: Mapped[date] = mapped_column(Date, primary_key=True)
+    inicio: Mapped[date] = mapped_column(Date, nullable=False)
+    fim: Mapped[date] = mapped_column(Date, nullable=False)
+    parcial: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    retorno: Mapped[float] = mapped_column(Float, nullable=False)
+    retorno_btc: Mapped[float | None] = mapped_column(Float)
+    relativo: Mapped[float | None] = mapped_column(Float)
+
+
+class AnaliseMovel(Base):
+    """Beta e correlacao com o BTC nos 90 dias ate `dia`, um ponto por semana."""
+
+    __tablename__ = "analise_movel"
+
+    moeda: Mapped[str] = mapped_column(Text, primary_key=True)
+    dia: Mapped[date] = mapped_column(Date, primary_key=True)
+    beta: Mapped[float] = mapped_column(Float, nullable=False)
+    correlacao: Mapped[float] = mapped_column(Float, nullable=False)
+    dias: Mapped[int] = mapped_column(SmallInteger, nullable=False)

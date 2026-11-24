@@ -64,6 +64,11 @@ def test_nomes_das_tabelas() -> None:
     # de cripto (entrada na abertura); tambem so tem linha no schema de cripto.
     # `tendencias` (migration 0028) e a inclinacao das medias de cada ativo no
     # ultimo pregao, trocada a cada noite, para o painel de tendencia do site.
+    # `analise_moedas`, `analise_anual`, `analise_mensal` e `analise_movel`
+    # (migration 0030) sao a pagina Analise: cada cripto contra o Bitcoin por mes
+    # e ano, com beta e correlacao. A primeira guarda o historico diario de cada
+    # moeda (o estado da carga noturna); as outras sao derivadas, trocadas a cada
+    # noite. So tem linha no schema de cripto.
     assert {t.name for t in Base.metadata.tables.values()} == {
         "daily_bars",
         "volume_metrics",
@@ -98,6 +103,10 @@ def test_nomes_das_tabelas() -> None:
         "moedas",
         "sinais_estudo",
         "tendencias",
+        "analise_moedas",
+        "analise_anual",
+        "analise_mensal",
+        "analise_movel",
     }
 
 
@@ -128,6 +137,10 @@ def test_contexto_e_por_papel_e_pregao_nao_por_janela() -> None:
         ("arquivos_externos", ["url"]),
         ("juros_historico", ["semana", "serie"]),
         ("arranjos", ["pagina"]),
+        ("analise_moedas", ["moeda"]),
+        ("analise_anual", ["moeda", "ano"]),
+        ("analise_mensal", ["moeda", "mes"]),
+        ("analise_movel", ["moeda", "dia"]),
     ],
 )
 def test_chaves_primarias(name: str, expected: list[str]) -> None:

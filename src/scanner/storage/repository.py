@@ -13,7 +13,7 @@ import json
 from collections.abc import Iterable, Mapping, Sequence
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Any, NamedTuple, cast
+from typing import TYPE_CHECKING, Any, NamedTuple, cast
 
 import pandas as pd
 from sqlalchemy import (
@@ -38,6 +38,10 @@ from scanner.ingest.cotahist import BAR_COLUMNS
 from scanner.rompimentos import DIRECOES, Alerta, Direcao
 from scanner.storage.models import (
     SCHEMA,
+    AnaliseAnual,
+    AnaliseMensal,
+    AnaliseMoeda,
+    AnaliseMovel,
     ArquivoExterno,
     CvmBalanco,
     CvmDocumento,
@@ -66,6 +70,10 @@ from scanner.storage.models import (
 from scanner.storage.models import (
     Provento as ProventoModel,
 )
+
+if TYPE_CHECKING:
+    from scanner.cripto.analise import Analise
+    from scanner.cripto.historico import Historico
 
 # Colunas reescritas quando a linha ja existe. `ingested_at` fica de fora.
 _UPDATABLE = tuple(c for c in BAR_COLUMNS if c not in ("ticker", "trade_date"))
@@ -1988,3 +1996,112 @@ def gravar_tendencias(engine: Engine, frame: pd.DataFrame) -> int:
         if rows:
             conn.execute(insert(Tendencia), rows)
     return len(rows)
+
+
+# --- Analise: cada cripto contra o Bitcoin (migration 0030) --------------------
+
+
+def ler_historicos_de_cripto(engine: Engine) -> dict[str, Historico]:
+    """O estado da carga da analise: o historico diario guardado de cada moeda."""
+    import numpy as np
+
+    from scanner.cripto.historico import Historico
+
+    stmt = select(
+        AnaliseMoeda.moeda,
+        AnaliseMoeda.par,
+        AnaliseMoeda.fonte,
+        AnaliseMoeda.negociando,
+        AnaliseMoeda.primeiro_dia,
+        AnaliseMoeda.fechamentos,
+        AnaliseMoeda.volumes,
+    )
+    with engine.connect() as conn:
+        linhas = conn.execute(stmt).all()
+    return {
+        str(r.moeda): Historico(
+            moeda=str(r.moeda),
+            par=str(r.par),
+            fonte=str(r.fonte),
+            negociando=bool(r.negociando),
+            primeiro_dia=r.primeiro_dia,
+            fechamentos=np.asarray(r.fechamentos, dtype="float64"),
+            volumes=np.asarray(r.volumes, dtype="float64"),
+        )
+        for r in linhas
+    }
+
+
+def analise_em_dia(engine: Engine, dia: date) -> bool:
+    """A analise ja foi gravada com o BTC ate `dia` (o `--so-se-faltar` do workflow)."""
+    with engine.connect() as conn:
+        ultimo = conn.execute(
+            select(AnaliseMoeda.ultimo_dia).where(AnaliseMoeda.moeda == "BTC")
+        ).scalar_one_or_none()
+        tem_tabela = conn.execute(select(func.count()).select_from(AnaliseAnual)).scalar_one()
+    return ultimo is not None and ultimo >= dia and int(tem_tabela) > 0
+
+
+def _copiar(cur: Any, tabela: Table, frame: pd.DataFrame) -> None:
+    """COPY de um DataFrame para a tabela; NaN vira nulo, booleano vira t/f."""
+    if frame.empty:
+        return
+    pronto = frame.copy()
+    for coluna in pronto.columns:
+        if pronto[coluna].dtype == bool:
+            pronto[coluna] = pronto[coluna].map({True: "t", False: "f"})
+    payload = io.StringIO()
+    pronto.to_csv(payload, sep="\t", header=False, index=False, na_rep="\\N")
+    colunas = ", ".join(pronto.columns)
+    with cur.copy(f"COPY {SCHEMA}.{tabela.name} ({colunas}) FROM STDIN") as copia:
+        copia.write(payload.getvalue())
+
+
+def gravar_analise(
+    engine: Engine,
+    historicos: Mapping[str, Historico],
+    fora: Mapping[str, str],
+    analise: Analise,
+) -> dict[str, int]:
+    """Troca as quatro tabelas da analise numa transacao so. Devolve linhas por tabela.
+
+    Quem le no meio da troca ve a analise velha inteira ou a nova inteira.
+    `fora` diz por que cada moeda excluida nao entra nas contas; ela fica em
+    `analise_moedas` mesmo assim, para a carga nao baixa-la de novo.
+    """
+    volume = dict(zip(analise.resumo["moeda"], analise.resumo["volume_12m"], strict=True))
+    moedas = [
+        {
+            "moeda": h.moeda,
+            "par": h.par,
+            "fonte": h.fonte,
+            "negociando": h.negociando,
+            "fora_por": fora.get(h.moeda),
+            "primeiro_dia": h.primeiro_dia,
+            "ultimo_dia": h.ultimo_dia,
+            "volume_12m": None if h.moeda in fora else float(volume.get(h.moeda, 0.0)),
+            "fechamentos": h.fechamentos.tolist(),
+            "volumes": h.volumes.tolist(),
+        }
+        for h in historicos.values()
+    ]
+    tabelas = (
+        (cast(Table, AnaliseAnual.__table__), analise.anual),
+        (cast(Table, AnaliseMensal.__table__), analise.mensal),
+        (cast(Table, AnaliseMovel.__table__), analise.movel),
+    )
+    with engine.begin() as conn:
+        conn.execute(delete(AnaliseMoeda))
+        if moedas:
+            conn.execute(insert(AnaliseMoeda), moedas)
+        raw = conn.connection.driver_connection
+        with raw.cursor() as cur:  # type: ignore[union-attr]
+            for tabela, frame in tabelas:
+                cur.execute(f"DELETE FROM {SCHEMA}.{tabela.name}")
+                _copiar(cur, tabela, frame)
+    return {
+        "moedas": len(moedas),
+        "anual": len(analise.anual),
+        "mensal": len(analise.mensal),
+        "movel": len(analise.movel),
+    }

@@ -852,3 +852,25 @@ def test_semana_enviar_sem_telegram_configurado_nao_marca(monkeypatch: pytest.Mo
 def test_semana_enviar_rejeita_data_invalida() -> None:
     result = runner.invoke(app, ["semana", "enviar", "--semana", "ontem"])
     assert result.exit_code != 0
+
+
+def test_analise_de_cripto_recusa_rodar_no_mercado_da_b3(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SCANNER_MERCADO", raising=False)
+    result = runner.invoke(app, ["cripto", "analise", "--dry-run"])
+    assert result.exit_code != 0
+    assert "SCANNER_MERCADO=cripto" in result.output
+
+
+def test_analise_de_cripto_tem_as_opcoes_do_workflow() -> None:
+    # Pela definicao do comando, e nao pelo texto do --help: no CI a ajuda sai
+    # colorida e os codigos de cor partem o "--so-se-faltar" no meio. (O click
+    # vem embutido no Typer, sem pacote proprio: daí o TyperGroup.)
+    import typer
+    from typer.core import TyperGroup
+
+    raiz = typer.main.get_command(app)
+    assert isinstance(raiz, TyperGroup)
+    cripto = raiz.commands["cripto"]
+    assert isinstance(cripto, TyperGroup)
+    opcoes = {o for p in cripto.commands["analise"].params for o in p.opts}
+    assert {"--so-se-faltar", "--dry-run"} <= opcoes

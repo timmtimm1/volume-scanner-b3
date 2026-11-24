@@ -279,9 +279,18 @@ def test_agenda_externa_cobre_todo_workflow_sem_agendador_proprio() -> None:
     """
     agenda = _agenda_externa()
     declarados = {str(j["workflow"]) for j in agenda["jobs"].values()}
+    arquivo_pelo_nome = {str(_carregar(a)["name"]): a.name for a in WORKFLOWS}
 
     for arquivo in WORKFLOWS:
         gatilhos = _gatilhos(_carregar(arquivo))
+        # Quem roda no fim de outro (`workflow_run`, a analise de cripto depois
+        # do `cripto`) herda a agenda dele -- desde que o de origem esteja nela.
+        if "workflow_run" in gatilhos:
+            for origem in gatilhos["workflow_run"]["workflows"]:
+                assert arquivo_pelo_nome.get(origem) in declarados, (
+                    f"{arquivo.name} roda depois de {origem!r}, que nao esta na agenda"
+                )
+            continue
         # `ci.yml` roda por push/PR: nao precisa de agenda nenhuma.
         if {"push", "pull_request"} & set(gatilhos):
             continue

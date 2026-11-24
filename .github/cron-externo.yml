@@ -109,6 +109,9 @@ jobs:
       fechou as 21:00). Se a primeira ja resolveu, sai na primeira consulta ao
       banco, pelo `--so-se-faltar` que o workflow sempre pede.
 
+  # A analise contra o Bitcoin (`cripto-analise.yml`) NAO tem job no painel:
+  # roda no fim de cada `cripto` acima (workflow_run), as 21:10 e as 00:10.
+
   cripto-rompimentos:
     workflow: cripto-rompimentos.yml
     cron: "7-59/15 * * * *"

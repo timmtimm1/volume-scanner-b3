@@ -64,6 +64,14 @@ Pedido do usuário em 17/11/2026: filtrar os ativos em alta, lateral ou baixa pe
 - Não alimenta alerta, setup, semáforo nem backtest. A etiqueta "em alta / contra a tendência" dos setups continua sendo a da MMA 200.
 - Nas ações, só papéis líquidos (a regra do backtest); em cripto, as 50 maiores, com etiqueta nas pouco líquidas. O padrão é MME 20 + 80, sem a 9 (o 9.4 é a 9 virando para baixo dentro da tendência); o usuário escolhe outras na tela.
 
+## A exceção escrita: análise contra o Bitcoin
+
+Pedido do usuário em 24/11/2026: o retorno de cada cripto que já passou pela Binance, mês a mês e ano a ano, contra o do Bitcoin nas mesmas datas, com beta e correlação (por ano, no período todo e numa janela de 90 dias). Seção 19 do plano.
+
+- É retorno passado, medido e mostrado com a conta à vista (`scanner/cripto/analise.py`). Não diz "compre", não dá nota, não prevê nada.
+- Não alimenta alerta, setup, semáforo nem backtest. Roda à parte, no workflow `cripto-analise`.
+- O que não é cripto fica de fora pela regra de `scanner/cripto/filtros.py` (a mesma do backtest de cripto). Moeda deslistada continua na conta: sem ela o passado parece melhor do que foi.
+
 ## Padrões de código
 
 - Python 3.11+, type hints obrigatórios, `mypy --strict` limpo.

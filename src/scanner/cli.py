@@ -636,6 +636,44 @@ def cripto_sinais(
     typer.echo(estudo.rodar(engine, moedas, avisar=avisar))
 
 
+@cripto_app.command("analise")
+def cripto_analise(
+    so_se_faltar: Annotated[
+        bool,
+        typer.Option(
+            "--so-se-faltar", help="Sai sem fazer nada se a analise de ontem ja foi gravada."
+        ),
+    ] = False,
+    dry_run: Annotated[
+        bool, typer.Option("--dry-run", help="Baixa e calcula, sem gravar no banco.")
+    ] = False,
+) -> None:
+    """A pagina Analise: cada cripto contra o Bitcoin por mes e ano, com beta e correlacao."""
+    import httpx
+
+    from scanner.cripto import analise_diaria, binance, kraken
+    from scanner.storage.engine import build_engine
+
+    if not mercado.e_cripto():
+        raise typer.BadParameter("rode com SCANNER_MERCADO=cripto")
+    engine = build_engine()
+    with httpx.Client(timeout=60) as cliente:
+        pares = binance.buscar_pares(so_negociando=False, cliente=cliente)
+        negociando = set(binance.buscar_pares(cliente=cliente))
+        relatorio = analise_diaria.rodar(
+            engine,
+            ontem=binance.ultimo_dia_fechado(),
+            pares=pares,
+            negociando=negociando,
+            binance=lambda m, p, d: binance.buscar_barras(m, p, d, cliente=cliente),
+            kraken=lambda m, p, d: kraken.buscar_barras(m, p, d, cliente=cliente),
+            fora_da_binance=mercado.MOEDAS_FORA_DA_BINANCE,
+            so_se_faltar=so_se_faltar,
+            dry_run=dry_run,
+        )
+    typer.echo(relatorio.summary())
+
+
 alerta_app = typer.Typer(help="Alertas de rompimento de preco.", no_args_is_help=True)
 app.add_typer(alerta_app, name="alerta")
 

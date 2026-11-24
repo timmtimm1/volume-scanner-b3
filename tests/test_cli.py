@@ -852,3 +852,17 @@ def test_semana_enviar_sem_telegram_configurado_nao_marca(monkeypatch: pytest.Mo
 def test_semana_enviar_rejeita_data_invalida() -> None:
     result = runner.invoke(app, ["semana", "enviar", "--semana", "ontem"])
     assert result.exit_code != 0
+
+
+def test_analise_de_cripto_recusa_rodar_no_mercado_da_b3(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.delenv("SCANNER_MERCADO", raising=False)
+    result = runner.invoke(app, ["cripto", "analise", "--dry-run"])
+    assert result.exit_code != 0
+    assert "SCANNER_MERCADO=cripto" in result.output
+
+
+def test_analise_de_cripto_tem_as_opcoes_do_workflow() -> None:
+    result = runner.invoke(app, ["cripto", "analise", "--help"])
+    assert result.exit_code == 0
+    assert "--so-se-faltar" in result.output
+    assert "--dry-run" in result.output

@@ -863,13 +863,14 @@ def test_analise_de_cripto_recusa_rodar_no_mercado_da_b3(monkeypatch: pytest.Mon
 
 def test_analise_de_cripto_tem_as_opcoes_do_workflow() -> None:
     # Pela definicao do comando, e nao pelo texto do --help: no CI a ajuda sai
-    # colorida e os codigos de cor partem o "--so-se-faltar" no meio.
-    import click
+    # colorida e os codigos de cor partem o "--so-se-faltar" no meio. (O click
+    # vem embutido no Typer, sem pacote proprio: daí o TyperGroup.)
     import typer
+    from typer.core import TyperGroup
 
     raiz = typer.main.get_command(app)
-    assert isinstance(raiz, click.Group)
+    assert isinstance(raiz, TyperGroup)
     cripto = raiz.commands["cripto"]
-    assert isinstance(cripto, click.Group)
+    assert isinstance(cripto, TyperGroup)
     opcoes = {o for p in cripto.commands["analise"].params for o in p.opts}
     assert {"--so-se-faltar", "--dry-run"} <= opcoes

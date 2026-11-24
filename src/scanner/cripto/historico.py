@@ -18,6 +18,9 @@ ultimos 720 dias: o buraco entre as duas fontes fica como buraco (a analise
 recomeca a serie nele), e e por isso que o estado precisa ser guardado -- sem
 ele, a cada noite o comeco da Kraken andaria um dia para frente.
 
+Os contratos de commodity (`commodities.CONTRATOS`) vem do arquivo publico da
+Binance Futures (`scanner.cripto.futuros`), desde o primeiro candle de cada um.
+
 Uma moeda que falha numa noite fica como estava, e a falha vai para o
 relatorio. O BTC e a regua de todas: se ele falha, a carga para.
 """
@@ -34,11 +37,13 @@ import numpy.typing as npt
 import pandas as pd
 
 from scanner.cripto.analise import BENCHMARK
+from scanner.cripto.commodities import Contrato
 from scanner.semana.fontes import FonteIndisponivelError
 
 INICIO = date(2017, 1, 1)
 BINANCE = "binance"
 KRAKEN = "kraken"
+FUTUROS = "binance-futuros"
 
 # (moeda, par, desde) -> barras no formato do banco (trade_date, close,
 # volume_financial, ...), so com dias ja fechados.
@@ -175,13 +180,16 @@ def atualizar(
     binance: BuscarBarras,
     kraken: BuscarBarras,
     fora_da_binance: Mapping[str, str],
+    futuros: BuscarBarras | None = None,
+    contratos: Mapping[str, Contrato] | None = None,
 ) -> tuple[dict[str, Historico], RelatorioDaCarga]:
     """O estado da noite: o de ontem mais os candles que faltam, sem tocar o resto.
 
     `pares`: moeda -> par na Binance, inclusive os deslistados. `negociando`:
     as moedas com o par em TRADING hoje. `fora_da_binance`: moeda -> par na
-    Kraken.
+    Kraken. `contratos`: ticker -> contrato perpetuo, buscado por `futuros`.
     """
+    contratos = contratos or {}
     novo: dict[str, Historico] = dict(estado)
     rel = RelatorioDaCarga()
 
@@ -238,9 +246,42 @@ def atualizar(
             novo[moeda] = replace(juntar(h, barras, fonte=KRAKEN), negociando=True)
             rel.atualizadas += 1
 
+    for moeda, contrato in contratos.items():
+        # Um ticker do contrato que passe a existir tambem a vista misturaria as
+        # duas series: o contrato fica parado, e o log avisa.
+        if moeda in pares or moeda in fora_da_binance:
+            rel.falhas.append(f"{moeda} (ticker repetido no mercado a vista)")
+            continue
+        h = novo.get(moeda)
+        desde = max(INICIO, contrato.estreia) if h is None else h.ultimo_dia + timedelta(days=1)
+        if desde > ontem:
+            if h is not None:
+                novo[moeda] = replace(h, negociando=True)
+                rel.em_dia += 1
+            continue
+        if futuros is None:
+            raise ValueError("contratos sem a busca de futuros")
+        try:
+            rel.chamadas += 1
+            barras = futuros(moeda, contrato.par, desde)
+        except _FALHAS_DE_REDE:
+            rel.falhas.append(moeda)
+            continue
+        if h is None:
+            criado = de_barras(moeda, contrato.par, FUTUROS, True, barras)
+            if criado is not None:
+                novo[moeda] = criado
+                rel.novas += 1
+        else:
+            novo[moeda] = replace(juntar(h, barras, fonte=FUTUROS), negociando=True)
+            rel.atualizadas += 1
+
     # Moeda que sumiu da lista da Binance continua com o historico que tem.
     for moeda, h in novo.items():
-        if moeda not in pares and moeda not in fora_da_binance and h.negociando:
+        fora_das_listas = (
+            moeda not in pares and moeda not in fora_da_binance and moeda not in contratos
+        )
+        if fora_das_listas and h.negociando:
             novo[moeda] = replace(h, negociando=False)
 
     btc = novo.get(BENCHMARK)

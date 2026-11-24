@@ -10,7 +10,8 @@ analise contra o Bitcoin (`scanner.cripto.analise`):
   preco: quem passou a vida a menos de 10% de distancia da propria mediana em
   95% dos dias nao e ativo de risco, tenha o nome que tiver;
 - ouro e bitcoin embrulhados (PAXG, WBTC, ...) saem por lista: o preco deles e
-  o de outro ativo;
+  o de outro ativo. Na analise, o ouro tokenizado volta como commodity, num
+  grupo a parte (`scanner.cripto.commodities`, 24/11/2026);
 - acoes e fundos americanos tokenizados (NVDAB, TSLAB, SQQQB, ...): a Binance
   listou 93 de 11/06 a 28/10/2026, todos com o ticker da bolsa mais um "B". Nao
   ha campo na API que os separe, entao a regra e o nome com a data: termina em

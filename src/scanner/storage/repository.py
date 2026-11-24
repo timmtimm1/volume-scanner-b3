@@ -39,6 +39,9 @@ from scanner.rompimentos import DIRECOES, Alerta, Direcao
 from scanner.storage.models import (
     SCHEMA,
     AnaliseAnual,
+    AnaliseCesta,
+    AnaliseJanela,
+    AnaliseJanelaAno,
     AnaliseMensal,
     AnaliseMoeda,
     AnaliseMovel,
@@ -74,6 +77,7 @@ from scanner.storage.models import (
 if TYPE_CHECKING:
     from scanner.cripto.analise import Analise
     from scanner.cripto.historico import Historico
+    from scanner.cripto.sazonal import Estudo
 
 # Colunas reescritas quando a linha ja existe. `ingested_at` fica de fora.
 _UPDATABLE = tuple(c for c in BAR_COLUMNS if c not in ("ticker", "trade_date"))
@@ -2062,12 +2066,14 @@ def gravar_analise(
     historicos: Mapping[str, Historico],
     fora: Mapping[str, str],
     analise: Analise,
+    estudo: Estudo | None = None,
 ) -> dict[str, int]:
-    """Troca as quatro tabelas da analise numa transacao so. Devolve linhas por tabela.
+    """Troca as tabelas da analise (e do estudo sazonal) numa transacao so.
 
     Quem le no meio da troca ve a analise velha inteira ou a nova inteira.
     `fora` diz por que cada moeda excluida nao entra nas contas; ela fica em
-    `analise_moedas` mesmo assim, para a carga nao baixa-la de novo.
+    `analise_moedas` mesmo assim, para a carga nao baixa-la de novo. Devolve as
+    linhas gravadas por tabela.
     """
     volume = dict(zip(analise.resumo["moeda"], analise.resumo["volume_12m"], strict=True))
     moedas = [
@@ -2085,11 +2091,17 @@ def gravar_analise(
         }
         for h in historicos.values()
     ]
-    tabelas = (
+    tabelas = [
         (cast(Table, AnaliseAnual.__table__), analise.anual),
         (cast(Table, AnaliseMensal.__table__), analise.mensal),
         (cast(Table, AnaliseMovel.__table__), analise.movel),
-    )
+    ]
+    if estudo is not None:
+        tabelas += [
+            (cast(Table, AnaliseCesta.__table__), estudo.cesta),
+            (cast(Table, AnaliseJanela.__table__), estudo.janelas),
+            (cast(Table, AnaliseJanelaAno.__table__), estudo.anos),
+        ]
     with engine.begin() as conn:
         conn.execute(delete(AnaliseMoeda))
         if moedas:
@@ -2101,7 +2113,5 @@ def gravar_analise(
                 _copiar(cur, tabela, frame)
     return {
         "moedas": len(moedas),
-        "anual": len(analise.anual),
-        "mensal": len(analise.mensal),
-        "movel": len(analise.movel),
+        **{tabela.name.removeprefix("analise_"): len(frame) for tabela, frame in tabelas},
     }

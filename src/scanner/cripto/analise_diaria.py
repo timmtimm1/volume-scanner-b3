@@ -22,7 +22,8 @@ from datetime import date
 
 from sqlalchemy import Engine
 
-from scanner.cripto import analise, filtros, historico
+from scanner import mercado
+from scanner.cripto import analise, filtros, historico, sazonal
 from scanner.cripto.historico import BuscarBarras, Historico, RelatorioDaCarga
 
 
@@ -34,6 +35,8 @@ class RelatorioDaAnalise:
     na_conta: int = 0
     fora: dict[str, list[str]] = field(default_factory=dict)
     linhas: dict[str, int] = field(default_factory=dict)
+    # O que o estudo sazonal escolheu, uma linha por lado (para o log).
+    estudo: list[str] = field(default_factory=list)
     dry_run: bool = False
 
     def summary(self) -> str:
@@ -54,6 +57,8 @@ class RelatorioDaAnalise:
                 f"{self.linhas.get('movel', 0):,} na janela movel"
             )
         texto = "; ".join(partes)
+        for linha in self.estudo:
+            texto += f"\n[estudo] {linha}"
         # Quem ficou de fora e por que, por extenso: a regra das acoes tokenizadas
         # e por nome e data, e uma cripto nova poderia cair nela por engano.
         for motivo, moedas in sorted(self.fora.items()):
@@ -85,6 +90,7 @@ def rodar(
     fora_da_binance: Mapping[str, str],
     so_se_faltar: bool = False,
     dry_run: bool = False,
+    periodos: tuple[tuple[int, int], tuple[int, int]] | None = None,
 ) -> RelatorioDaAnalise:
     from scanner.storage.repository import (
         analise_em_dia,
@@ -107,6 +113,7 @@ def rodar(
     entram, fora = separar(estado)
     fech, vol = historico.matrizes(entram)
     resultado = analise.calcular(fech, vol)
+    estudo = sazonal.calcular(fech, vol, periodos or mercado.periodos())
     por_motivo: dict[str, list[str]] = defaultdict(list)
     for moeda, motivo in fora.items():
         por_motivo[motivo].append(moeda)
@@ -116,14 +123,17 @@ def rodar(
             "anual": len(resultado.anual),
             "mensal": len(resultado.mensal),
             "movel": len(resultado.movel),
+            "cesta": len(estudo.cesta),
+            "janelas": len(estudo.janelas),
         }
     else:
-        linhas = gravar_analise(engine, estado, fora, resultado)
+        linhas = gravar_analise(engine, estado, fora, resultado, estudo)
     return RelatorioDaAnalise(
         dia=ontem,
         carga=carga,
         na_conta=len(entram),
         fora=dict(por_motivo),
         linhas=linhas,
+        estudo=sazonal.escolhidas(estudo.janelas),
         dry_run=dry_run,
     )

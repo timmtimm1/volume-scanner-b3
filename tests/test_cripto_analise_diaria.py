@@ -10,7 +10,16 @@ import pytest
 from sqlalchemy import Engine, func, select, text
 
 from scanner.cripto import analise_diaria
-from scanner.storage.models import SCHEMA, AnaliseAnual, AnaliseMensal, AnaliseMoeda, AnaliseMovel
+from scanner.storage.models import (
+    SCHEMA,
+    AnaliseAnual,
+    AnaliseCesta,
+    AnaliseJanela,
+    AnaliseJanelaAno,
+    AnaliseMensal,
+    AnaliseMoeda,
+    AnaliseMovel,
+)
 from scanner.storage.repository import ler_historicos_de_cripto
 
 pytestmark = pytest.mark.db
@@ -43,7 +52,15 @@ class Busca:
 @pytest.fixture
 def limpo(engine: Engine) -> Engine:
     with engine.begin() as conn:
-        for tabela in ("analise_movel", "analise_mensal", "analise_anual", "analise_moedas"):
+        for tabela in (
+            "analise_movel",
+            "analise_mensal",
+            "analise_anual",
+            "analise_moedas",
+            "analise_cesta",
+            "analise_janelas",
+            "analise_janela_anos",
+        ):
             conn.execute(text(f"DELETE FROM {SCHEMA}.{tabela}"))
     return engine
 
@@ -137,3 +154,22 @@ def test_resumo_diz_quem_ficou_de_fora_e_por_que(limpo: Engine) -> None:
     assert "2 criptos na conta (2 fora: 1 acao tokenizada, 1 estavel)" in texto
     assert "[analise] fora (estavel): USDC" in texto
     assert "[analise] fora (acao tokenizada): NVDAB" in texto
+
+
+def test_o_estudo_sazonal_vai_junto_na_mesma_rodada(limpo: Engine) -> None:
+    rel = analise_diaria.rodar(
+        limpo,
+        ontem=ONTEM,
+        pares=PARES,
+        negociando=set(PARES),
+        binance=Busca(),
+        kraken=Busca(),
+        fora_da_binance={},
+        periodos=((2025, 2025), (2026, 2026)),
+    )
+    assert _contar(limpo, AnaliseCesta) == rel.linhas["cesta"] > 0
+    assert _contar(limpo, AnaliseJanela) == rel.linhas["janelas"] == 2 * 12 * 6
+    assert _contar(limpo, AnaliseJanelaAno) == rel.linhas["janela_anos"] > 0
+    texto = rel.summary()
+    assert "[estudo] compra: " in texto
+    assert "[estudo] venda: " in texto

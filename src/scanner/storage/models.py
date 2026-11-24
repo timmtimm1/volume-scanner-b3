@@ -1232,3 +1232,57 @@ class AnaliseMovel(Base):
     beta: Mapped[float] = mapped_column(Float, nullable=False)
     correlacao: Mapped[float] = mapped_column(Float, nullable=False)
     dias: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
+class AnaliseCesta(Base):
+    """O retorno mensal da cesta das 50 criptos mais negociadas (`scanner.cripto.sazonal`)."""
+
+    __tablename__ = "analise_cesta"
+
+    mes: Mapped[date] = mapped_column(Date, primary_key=True)
+    retorno: Mapped[float] = mapped_column(Float, nullable=False)
+    retorno_btc: Mapped[float | None] = mapped_column(Float)
+    moedas: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
+class AnaliseJanela(Base):
+    """Uma janela de compra ou de venda da cesta, julgada pelo protocolo da casa.
+
+    `posicao` e a ordem na escolha (2017-2021) contra uma janela qualquer do
+    mesmo tamanho; `veredito` diz se ela repetiu na conferencia (2022-2026).
+    """
+
+    __tablename__ = "analise_janelas"
+
+    lado: Mapped[str] = mapped_column(Text, primary_key=True)
+    inicio_mes: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    meses: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    posicao: Mapped[int | None] = mapped_column(SmallInteger)
+    veredito: Mapped[str] = mapped_column(Text, nullable=False)
+    escolha_media: Mapped[float | None] = mapped_column(Float)
+    escolha_mediana: Mapped[float | None] = mapped_column(Float)
+    escolha_positivos: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    escolha_anos: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    escolha_controle: Mapped[float | None] = mapped_column(Float)
+    conferencia_media: Mapped[float | None] = mapped_column(Float)
+    conferencia_mediana: Mapped[float | None] = mapped_column(Float)
+    conferencia_positivos: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    conferencia_anos: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    conferencia_controle: Mapped[float | None] = mapped_column(Float)
+    todos_media: Mapped[float | None] = mapped_column(Float)
+    todos_mediana: Mapped[float | None] = mapped_column(Float)
+    todos_positivos: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+    todos_anos: Mapped[int] = mapped_column(SmallInteger, nullable=False)
+
+
+class AnaliseJanelaAno(Base):
+    """O resultado de uma janela num ano (o ano em que ela comeca)."""
+
+    __tablename__ = "analise_janela_anos"
+
+    lado: Mapped[str] = mapped_column(Text, primary_key=True)
+    inicio_mes: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    meses: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    ano: Mapped[int] = mapped_column(SmallInteger, primary_key=True)
+    periodo: Mapped[str] = mapped_column(Text, nullable=False)
+    resultado: Mapped[float] = mapped_column(Float, nullable=False)

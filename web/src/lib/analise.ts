@@ -143,10 +143,10 @@ export function montarTabela(
 }
 
 /** Busca por pedaco do nome e grupo. O BTC e a regua: nunca sai da lista. */
-export function filtrarLinhas(
-  linhas: LinhaDaTabela[],
+export function filtrarLinhas<T extends { moeda: string; negociando: boolean; noTop: boolean }>(
+  linhas: T[],
   { busca, grupo }: { busca: string; grupo: Grupo },
-): LinhaDaTabela[] {
+): T[] {
   const q = busca.trim().toLowerCase();
   return linhas.filter((l) => {
     if (l.moeda === BTC) return true;
@@ -291,4 +291,185 @@ export function pctCurto(v: number | null | undefined): string {
   const texto = nf(casas).format(Math.abs(v) * 100);
   if (Number(texto.replace(/\./g, "").replace(",", ".")) === 0) return `${texto}%`;
   return `${v >= 0 ? "+" : "−"}${texto}%`;
+}
+
+// ---------------------------------------------------------------------------
+// Sazonalidade: a mediana de cada mes do calendario, ao longo dos anos.
+// ---------------------------------------------------------------------------
+
+/** Menos anos completos que isso num mes e pouco para falar em "estacao". */
+export const MINIMO_DE_ANOS = 3;
+
+/** Um mes do calendario (jan..dez) de uma moeda, ou do mercado, ao longo dos anos. */
+export type CelulaSazonal = {
+  retorno: number | null;
+  relativo: number | null;
+  /** Em quantos anos o mes fechou em alta (retorno > 0). */
+  subiu: number;
+  /** Em quantos anos o mes ganhou do BTC (relativo > 0). */
+  ganhou: number;
+  /** Quantos anos completos entraram na conta. */
+  anos: number;
+};
+
+export type LinhaSazonal = {
+  moeda: string;
+  negociando: boolean;
+  noTop: boolean;
+  volume12m: number | null;
+  /** Meses de 1 a 12. */
+  porMes: Record<number, CelulaSazonal>;
+};
+
+export type MesSazonal = {
+  moeda: string;
+  mes: number;
+  retorno: number | null;
+  relativo: number | null;
+  subiu: number;
+  ganhou: number;
+  anos: number;
+};
+
+export type ModoSazonal = "retorno" | "relativo";
+
+/** Uma celula do banco, com os numeros em 4 algarismos significativos. */
+export function celulaSazonal(m: Omit<MesSazonal, "moeda" | "mes">): CelulaSazonal {
+  return {
+    retorno: enxuto(m.retorno),
+    relativo: enxuto(m.relativo),
+    subiu: Number(m.subiu),
+    ganhou: Number(m.ganhou),
+    anos: Number(m.anos),
+  };
+}
+
+/** Junta as medianas mensais de cada moeda numa linha da tabela de sazonalidade. */
+export function montarSazonalidade(moedas: MoedaDaAnalise[], meses: MesSazonal[]): LinhaSazonal[] {
+  const porMoeda = new Map<string, LinhaSazonal>();
+  const linhas = moedas.map((m) => {
+    const linha: LinhaSazonal = {
+      moeda: m.moeda,
+      negociando: m.negociando,
+      noTop: m.noTop,
+      volume12m: enxuto(m.volume12m),
+      porMes: {},
+    };
+    porMoeda.set(m.moeda, linha);
+    return linha;
+  });
+  for (const x of meses) {
+    const linha = porMoeda.get(x.moeda);
+    if (!linha || x.mes < 1 || x.mes > 12) continue;
+    linha.porMes[x.mes] = celulaSazonal(x);
+  }
+  return linhas;
+}
+
+export type ChaveSazonal = "volume" | number;
+
+/** O valor de ordem de um mes, ou `null` se faltam anos ou dado. */
+function valorSazonal(l: LinhaSazonal, mes: number, modo: ModoSazonal): number | null {
+  const c = l.porMes[mes];
+  if (!c || c.anos < MINIMO_DE_ANOS) return null;
+  const v = c[modo];
+  return v === null || v === undefined || !Number.isFinite(v) ? null : v;
+}
+
+/**
+ * Ordena sem mexer na lista original. Por mes: pela mediana do modo escolhido;
+ * quem tem menos de `MINIMO_DE_ANOS` anos (ou nao tem o valor) fica por ultimo
+ * nos dois sentidos. O BTC fica sempre em primeiro.
+ */
+export function ordenarSazonalidade(
+  linhas: LinhaSazonal[],
+  chave: ChaveSazonal,
+  modo: ModoSazonal,
+  sentido: Sentido,
+): LinhaSazonal[] {
+  const f = sentido === "desc" ? -1 : 1;
+  const valor = (l: LinhaSazonal): number | null => {
+    if (chave === "volume") {
+      const v = l.volume12m;
+      return v === null || !Number.isFinite(v) ? null : v;
+    }
+    return valorSazonal(l, chave, modo);
+  };
+  return [...linhas].sort((a, b) => {
+    if (a.moeda === BTC && b.moeda !== BTC) return -1;
+    if (b.moeda === BTC && a.moeda !== BTC) return 1;
+    const va = valor(a);
+    const vb = valor(b);
+    if (va === null && vb === null) return 0;
+    if (va === null) return 1;
+    if (vb === null) return -1;
+    return (va - vb) * f;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Rankings: beta e correlacao contra o BTC em tres periodos.
+// ---------------------------------------------------------------------------
+
+export type Periodo = "90d" | "ano" | "total";
+export type MetricaDoRanking = "beta" | "correlacao";
+
+export type CandidatoAoRanking = {
+  moeda: string;
+  beta90: number | null;
+  correlacao90: number | null;
+  dias90: number | null;
+  betaAno: number | null;
+  correlacaoAno: number | null;
+  diasAno: number | null;
+  betaTotal: number | null;
+  correlacaoTotal: number | null;
+  diasTotal: number | null;
+  /** Primeiro dia do trecho do periodo todo. */
+  desde: string | null;
+};
+
+export type ItemDoRanking = {
+  moeda: string;
+  valor: number;
+  /** A outra metrica do mesmo periodo (correlacao no ranking de beta e vice-versa). */
+  outro: number | null;
+  dias: number | null;
+};
+
+const finito = (v: number | null | undefined): v is number =>
+  v !== null && v !== undefined && Number.isFinite(v);
+
+function doPeriodo(c: CandidatoAoRanking, p: Periodo) {
+  return p === "90d"
+    ? { beta: c.beta90, correlacao: c.correlacao90, dias: c.dias90 }
+    : p === "ano"
+      ? { beta: c.betaAno, correlacao: c.correlacaoAno, dias: c.diasAno }
+      : { beta: c.betaTotal, correlacao: c.correlacaoTotal, dias: c.diasTotal };
+}
+
+/**
+ * As `n` primeiras do ranking. Beta: do maior para o menor. Correlacao: do
+ * MENOR para o maior (a que anda mais sozinha primeiro; pode ser negativa).
+ * Sem valor, e o BTC, ficam de fora; empate se resolve pelo nome.
+ */
+export function rankear(
+  candidatos: CandidatoAoRanking[],
+  periodo: Periodo,
+  chave: MetricaDoRanking,
+  n = 15,
+): ItemDoRanking[] {
+  const outraChave: MetricaDoRanking = chave === "beta" ? "correlacao" : "beta";
+  const itens: ItemDoRanking[] = [];
+  for (const c of candidatos) {
+    if (c.moeda === BTC) continue;
+    const p = doPeriodo(c, periodo);
+    const valor = p[chave];
+    if (!finito(valor)) continue;
+    const outro = p[outraChave];
+    itens.push({ moeda: c.moeda, valor, outro: finito(outro) ? outro : null, dias: p.dias ?? null });
+  }
+  const f = chave === "beta" ? -1 : 1;
+  itens.sort((a, b) => (a.valor - b.valor) * f || a.moeda.localeCompare(b.moeda));
+  return itens.slice(0, n);
 }

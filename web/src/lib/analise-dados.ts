@@ -4,7 +4,14 @@
  * contas moram em `analise.ts`. Sempre depois de `ehDono()`.
  */
 
-import type { LinhaAnual, LinhaMensal, MoedaDaAnalise, PontoMovel } from "./analise";
+import type {
+  CandidatoAoRanking,
+  LinhaAnual,
+  LinhaMensal,
+  MesSazonal,
+  MoedaDaAnalise,
+  PontoMovel,
+} from "./analise";
 import { conexaoDeAlertas } from "./db";
 import { noMercado } from "./mercado-servidor";
 
@@ -184,5 +191,159 @@ export async function lerMoeda(moeda: string) {
     mensais: mensais.map(paraMensal),
     movel: pontos,
     ate: btc[0]?.ultimo_dia ?? null,
+  };
+}
+
+type LinhaDeSazonal = {
+  moeda?: string;
+  mes: number;
+  retorno: number | null;
+  relativo: number | null;
+  subiu: number;
+  ganhou: number;
+  anos: number;
+};
+
+const paraSazonal = (r: LinhaDeSazonal): MesSazonal => ({
+  moeda: r.moeda ?? "",
+  mes: Number(r.mes),
+  retorno: r.retorno,
+  relativo: r.relativo,
+  subiu: Number(r.subiu),
+  ganhou: Number(r.ganhou),
+  anos: Number(r.anos),
+});
+
+/**
+ * A aba Sazonalidade: a mediana de cada mes do calendario, por moeda e para o
+ * mercado. So entra mes completo. `mercado` e a moeda tipica: para cada mes de
+ * cada ano, a mediana entre as moedas (sem o BTC); depois, a mediana dos anos.
+ */
+export async function lerSazonalidade() {
+  const { moedas, meses, mercado } = await noMercado(MERCADO, async () => {
+    const pool = conexaoDeAlertas();
+    const [{ rows: moedas }, { rows: meses }, { rows: mercado }] = await Promise.all([
+      pool.query<LinhaDeMoeda>(
+        `SELECT ${COLUNAS_DA_MOEDA}
+           FROM volume_scanner.analise_moedas m
+           LEFT JOIN volume_scanner.moedas t ON t.ticker = m.moeda
+          WHERE m.fora_por IS NULL
+          ORDER BY m.moeda`,
+      ),
+      pool.query<LinhaDeSazonal>(
+        `SELECT x.moeda, extract(month FROM x.mes)::int AS mes,
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY x.retorno) AS retorno,
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY x.relativo) AS relativo,
+                count(*) FILTER (WHERE x.retorno > 0)::int AS subiu,
+                count(*) FILTER (WHERE x.relativo > 0)::int AS ganhou,
+                count(*)::int AS anos
+           FROM volume_scanner.analise_mensal x
+           JOIN volume_scanner.analise_moedas m ON m.moeda = x.moeda
+          WHERE NOT x.parcial AND m.fora_por IS NULL
+          GROUP BY 1, 2`,
+      ),
+      pool.query<LinhaDeSazonal>(
+        `WITH tipica AS (
+           SELECT x.mes,
+                  percentile_cont(0.5) WITHIN GROUP (ORDER BY x.retorno) AS retorno,
+                  percentile_cont(0.5) WITHIN GROUP (ORDER BY x.relativo) AS relativo
+             FROM volume_scanner.analise_mensal x
+             JOIN volume_scanner.analise_moedas m ON m.moeda = x.moeda
+            WHERE NOT x.parcial AND m.fora_por IS NULL AND x.moeda <> 'BTC'
+            GROUP BY x.mes
+         )
+         SELECT extract(month FROM mes)::int AS mes,
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY retorno) AS retorno,
+                percentile_cont(0.5) WITHIN GROUP (ORDER BY relativo) AS relativo,
+                count(*) FILTER (WHERE retorno > 0)::int AS subiu,
+                count(*) FILTER (WHERE relativo > 0)::int AS ganhou,
+                count(*)::int AS anos
+           FROM tipica GROUP BY 1`,
+      ),
+    ]);
+    return { moedas, meses, mercado };
+  });
+
+  const lista = moedas.map(paraMoeda);
+  const btc = lista.find((m) => m.moeda === "BTC");
+  return {
+    ate: btc?.ultimoDia ?? null,
+    moedas: lista,
+    meses: meses.map(paraSazonal),
+    mercado: mercado.map(paraSazonal),
+  };
+}
+
+/** US$ 1 milhão por dia, em média, nos últimos 12 meses (o volume_12m soma o ano: 365 milhões). */
+export const LIQUIDEZ_DO_RANKING = 365_000_000;
+
+type LinhaDeRanking = {
+  moeda: string;
+  beta_90: number | null;
+  correlacao_90: number | null;
+  dias_90: number | null;
+  beta_ano: number | null;
+  correlacao_ano: number | null;
+  dias_ano: number | null;
+  beta_total: number | null;
+  correlacao_total: number | null;
+  dias_total: number | null;
+  desde: string | null;
+};
+
+const comoNumero = (v: number | string | null): number | null => (v === null ? null : Number(v));
+
+/** A aba Rankings: as moedas vivas e líquidas, com beta e correlação em 3 períodos. */
+export async function lerRanking() {
+  const { candidatos, btc, dia90 } = await noMercado(MERCADO, async () => {
+    const pool = conexaoDeAlertas();
+    const [{ rows: candidatos }, { rows: btc }, { rows: dia90 }] = await Promise.all([
+      pool.query<LinhaDeRanking>(
+        `SELECT m.moeda,
+                v.beta AS beta_90, v.correlacao AS correlacao_90, v.dias::int AS dias_90,
+                a.beta AS beta_ano, a.correlacao AS correlacao_ano, a.dias::int AS dias_ano,
+                t.beta AS beta_total, t.correlacao AS correlacao_total, t.dias::int AS dias_total,
+                t.inicio::text AS desde
+           FROM volume_scanner.analise_moedas m
+           LEFT JOIN volume_scanner.analise_movel v ON v.moeda = m.moeda
+                 AND v.dia = (SELECT max(dia) FROM volume_scanner.analise_movel WHERE moeda = 'BTC')
+           LEFT JOIN volume_scanner.analise_anual a ON a.moeda = m.moeda
+                 AND a.ano = (SELECT extract(year FROM ultimo_dia)::int
+                                FROM volume_scanner.analise_moedas WHERE moeda = 'BTC')
+           LEFT JOIN volume_scanner.analise_anual t ON t.moeda = m.moeda AND t.ano = 0
+          WHERE m.fora_por IS NULL AND m.negociando AND m.volume_12m >= $1 AND m.moeda <> 'BTC'
+          ORDER BY m.moeda`,
+        [LIQUIDEZ_DO_RANKING],
+      ),
+      pool.query<{ ultimo_dia: string; ano: number }>(
+        `SELECT ultimo_dia::text AS ultimo_dia, extract(year FROM ultimo_dia)::int AS ano
+           FROM volume_scanner.analise_moedas
+          WHERE moeda = 'BTC'`,
+      ),
+      pool.query<{ dia: string | null }>(
+        `SELECT max(dia)::text AS dia FROM volume_scanner.analise_movel WHERE moeda = 'BTC'`,
+      ),
+    ]);
+    return { candidatos, btc, dia90 };
+  });
+
+  const lista: CandidatoAoRanking[] = candidatos.map((r) => ({
+    moeda: r.moeda,
+    beta90: r.beta_90,
+    correlacao90: r.correlacao_90,
+    dias90: comoNumero(r.dias_90),
+    betaAno: r.beta_ano,
+    correlacaoAno: r.correlacao_ano,
+    diasAno: comoNumero(r.dias_ano),
+    betaTotal: r.beta_total,
+    correlacaoTotal: r.correlacao_total,
+    diasTotal: comoNumero(r.dias_total),
+    desde: r.desde,
+  }));
+  return {
+    ate: btc[0]?.ultimo_dia ?? null,
+    ano: btc[0] ? Number(btc[0].ano) : null,
+    dia90: dia90[0]?.dia ?? null,
+    candidatos: lista,
   };
 }

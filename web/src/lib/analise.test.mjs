@@ -4,13 +4,17 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  MINIMO_DE_ANOS,
   corDaCelula,
   filtrarLinhas,
   mapaMensal,
+  montarSazonalidade,
   montarTabela,
   nivelDeCor,
   ordenarLinhas,
+  ordenarSazonalidade,
   pctCurto,
+  rankear,
   sazonalidade,
 } from "./analise.ts";
 
@@ -299,5 +303,160 @@ describe("pctCurto", () => {
     assert.equal(pctCurto(Number.NaN), "—");
     assert.equal(pctCurto(0), "0,0%");
     assert.equal(pctCurto(-0.00001), "0,0%");
+  });
+});
+
+describe("filtrarLinhas genérico", () => {
+  it("funciona com linhas de sazonalidade e mantém o BTC", () => {
+    const linhas = montarSazonalidade(
+      [moeda("BTC"), moeda("ETH"), moeda("XYZ", { negociando: false })],
+      [],
+    );
+    const r = filtrarLinhas(linhas, { busca: "xy", grupo: "todas" });
+    assert.deepEqual(r.map((l) => l.moeda), ["BTC", "XYZ"]);
+    const so = filtrarLinhas(linhas, { busca: "", grupo: "negociando" });
+    assert.deepEqual(so.map((l) => l.moeda), ["BTC", "ETH"]);
+  });
+});
+
+const mes = (m, n, retorno, relativo, anos, extra = {}) => ({
+  moeda: m,
+  mes: n,
+  retorno,
+  relativo,
+  subiu: Math.floor(anos / 2),
+  ganhou: Math.floor(anos / 3),
+  anos,
+  ...extra,
+});
+
+describe("montarSazonalidade", () => {
+  it("junta os meses por moeda e arredonda", () => {
+    const linhas = montarSazonalidade(
+      [moeda("BTC"), moeda("ETH", { volume12m: 123456.789 })],
+      [mes("ETH", 3, 0.123456789, -0.0123456, 5), mes("ETH", 13, 1, 1, 5), mes("ZZZ", 1, 1, 1, 5)],
+    );
+    assert.equal(linhas.length, 2);
+    const eth = linhas[1];
+    assert.equal(eth.volume12m, 123500);
+    assert.equal(eth.porMes[3].retorno, 0.1235);
+    assert.equal(eth.porMes[3].relativo, -0.01235);
+    assert.equal(eth.porMes[3].anos, 5);
+    assert.equal(eth.porMes[13], undefined);
+    assert.deepEqual(linhas[0].porMes, {});
+  });
+});
+
+describe("ordenarSazonalidade", () => {
+  const linhas = montarSazonalidade(
+    [
+      moeda("BTC", { volume12m: 1 }),
+      moeda("AAA", { volume12m: 50 }),
+      moeda("BBB", { volume12m: 90 }),
+      moeda("CCC", { volume12m: 70 }),
+      moeda("DDD", { volume12m: 10 }),
+    ],
+    [
+      mes("BTC", 1, -0.5, null, 8),
+      mes("AAA", 1, 0.1, 0.3, 5),
+      mes("BBB", 1, 0.2, -0.2, 4),
+      mes("CCC", 1, 0.9, 0.9, MINIMO_DE_ANOS - 1),
+      // DDD nao tem janeiro
+    ],
+  );
+  const nomes = (l) => l.map((x) => x.moeda);
+
+  it("por mes, no modo escolhido, com BTC primeiro", () => {
+    assert.deepEqual(nomes(ordenarSazonalidade(linhas, 1, "retorno", "desc")), [
+      "BTC",
+      "BBB",
+      "AAA",
+      "CCC",
+      "DDD",
+    ]);
+    assert.deepEqual(nomes(ordenarSazonalidade(linhas, 1, "relativo", "desc")).slice(0, 3), [
+      "BTC",
+      "AAA",
+      "BBB",
+    ]);
+  });
+
+  it("poucos anos e sem dado ficam por ultimo nos dois sentidos", () => {
+    const asc = nomes(ordenarSazonalidade(linhas, 1, "retorno", "asc"));
+    assert.deepEqual(asc.slice(0, 3), ["BTC", "AAA", "BBB"]);
+    assert.deepEqual(asc.slice(3).sort(), ["CCC", "DDD"]);
+    const desc = nomes(ordenarSazonalidade(linhas, 1, "retorno", "desc"));
+    assert.deepEqual(desc.slice(3).sort(), ["CCC", "DDD"]);
+  });
+
+  it("por volume", () => {
+    assert.deepEqual(nomes(ordenarSazonalidade(linhas, "volume", "retorno", "desc")), [
+      "BTC",
+      "BBB",
+      "CCC",
+      "AAA",
+      "DDD",
+    ]);
+  });
+
+  it("nao mexe na lista original", () => {
+    const antes = nomes(linhas);
+    ordenarSazonalidade(linhas, 1, "retorno", "asc");
+    assert.deepEqual(nomes(linhas), antes);
+  });
+});
+
+describe("rankear", () => {
+  const cand = (m, b90, c90, extra = {}) => ({
+    moeda: m,
+    beta90: b90,
+    correlacao90: c90,
+    dias90: 90,
+    betaAno: b90 === null ? null : b90 + 1,
+    correlacaoAno: c90 === null ? null : c90 + 0.1,
+    diasAno: 300,
+    betaTotal: null,
+    correlacaoTotal: null,
+    diasTotal: 2000,
+    desde: "2018-01-01",
+    ...extra,
+  });
+  const todos = [
+    cand("AAA", 1.5, 0.8),
+    cand("BTC", 1, 1),
+    cand("CCC", 2.5, -0.2),
+    cand("BBB", 2.5, 0.1),
+    cand("DDD", null, 0.05),
+    cand("EEE", 0.5, null),
+  ];
+
+  it("beta: do maior para o menor, empate pelo nome, sem BTC nem nulos", () => {
+    const r = rankear(todos, "90d", "beta");
+    assert.deepEqual(r.map((x) => x.moeda), ["BBB", "CCC", "AAA", "EEE"]);
+    assert.equal(r[0].valor, 2.5);
+    assert.equal(r[0].outro, 0.1);
+    assert.equal(r[0].dias, 90);
+    assert.equal(r[3].outro, null);
+  });
+
+  it("correlacao: do menor para o maior, negativas primeiro", () => {
+    const r = rankear(todos, "90d", "correlacao");
+    assert.deepEqual(r.map((x) => x.moeda), ["CCC", "DDD", "BBB", "AAA"]);
+    assert.equal(r[0].valor, -0.2);
+    assert.equal(r[1].outro, null);
+  });
+
+  it("usa o periodo pedido", () => {
+    const r = rankear(todos, "ano", "beta");
+    assert.equal(r[0].valor, 3.5);
+    assert.equal(r[0].dias, 300);
+    assert.deepEqual(rankear(todos, "total", "beta"), []);
+  });
+
+  it("respeita n", () => {
+    assert.equal(rankear(todos, "90d", "beta", 2).length, 2);
+    assert.equal(rankear(todos, "90d", "beta", 0).length, 0);
+    const muitos = Array.from({ length: 40 }, (_, i) => cand(`M${String(i).padStart(2, "0")}`, i, 0.5));
+    assert.equal(rankear(muitos, "90d", "beta").length, 15);
   });
 });

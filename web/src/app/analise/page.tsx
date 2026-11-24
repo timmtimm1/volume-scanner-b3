@@ -1,10 +1,11 @@
 import { ehDono, signIn } from "@/auth";
 import { SecaoRecolhida } from "@/components/SecaoRecolhida";
 import Link from "next/link";
+import { EstudoSazonal } from "@/components/EstudoSazonal";
 import { RankingsDaAnalise } from "@/components/RankingsDaAnalise";
 import { SazonalidadeDaAnalise } from "@/components/SazonalidadeDaAnalise";
 import { TabelaDaAnalise } from "@/components/TabelaDaAnalise";
-import { lerRanking, lerSazonalidade, lerVisaoGeral } from "@/lib/analise-dados";
+import { lerEstudoSazonal, lerRanking, lerSazonalidade, lerVisaoGeral } from "@/lib/analise-dados";
 import { celulaSazonal, montarSazonalidade, montarTabela, type CelulaSazonal } from "@/lib/analise";
 import { semCripto } from "@/lib/cripto";
 import { data } from "@/lib/formato";
@@ -88,14 +89,26 @@ export default async function Analise({
 
   // O JSX so e montado depois do try: erro de renderizacao nao passa por ele.
   type Dados =
-    | { aba: "sazonalidade"; ate: string | null; v: Awaited<ReturnType<typeof lerSazonalidade>> }
+    | {
+        aba: "sazonalidade";
+        ate: string | null;
+        v: Awaited<ReturnType<typeof lerSazonalidade>>;
+        estudo: Awaited<ReturnType<typeof lerEstudoSazonal>> | null;
+      }
     | { aba: "rankings"; ate: string | null; v: Awaited<ReturnType<typeof lerRanking>> }
     | { aba: "ano"; ate: string | null; v: Awaited<ReturnType<typeof lerVisaoGeral>> };
   let dados: Dados;
   try {
     if (aba === "sazonalidade") {
-      const v = await lerSazonalidade();
-      dados = { aba, ate: v.ate, v };
+      // Sem as tabelas do estudo (42P01) a aba abre mesmo assim, com o aviso.
+      const [v, estudo] = await Promise.all([
+        lerSazonalidade(),
+        lerEstudoSazonal().catch((erro: unknown) => {
+          if ((erro as { code?: string }).code === "42P01") return null;
+          throw erro;
+        }),
+      ]);
+      dados = { aba, ate: v.ate, v, estudo };
     } else if (aba === "rankings") {
       const v = await lerRanking();
       dados = { aba, ate: v.ate, v };
@@ -156,10 +169,13 @@ export default async function Analise({
       </nav>
 
       {dados.aba === "sazonalidade" && (
-        <SazonalidadeDaAnalise
-          linhas={montarSazonalidade(dados.v.moedas, dados.v.meses)}
-          mercado={mercadoPorMes}
-        />
+        <>
+          <EstudoSazonal estudo={dados.estudo} />
+          <SazonalidadeDaAnalise
+            linhas={montarSazonalidade(dados.v.moedas, dados.v.meses)}
+            mercado={mercadoPorMes}
+          />
+        </>
       )}
       {dados.aba === "rankings" && (
         <RankingsDaAnalise

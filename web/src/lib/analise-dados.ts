@@ -5,12 +5,18 @@
  */
 
 import type {
+  AnoDaJanela,
   CandidatoAoRanking,
+  JanelaDoEstudo,
+  LadoDoEstudo,
   LinhaAnual,
   LinhaMensal,
+  MesDaCesta,
   MesSazonal,
   MoedaDaAnalise,
+  PeriodoDoAno,
   PontoMovel,
+  VereditoDoEstudo,
 } from "./analise";
 import { conexaoDeAlertas } from "./db";
 import { noMercado } from "./mercado-servidor";
@@ -271,6 +277,121 @@ export async function lerSazonalidade() {
     moedas: lista,
     meses: meses.map(paraSazonal),
     mercado: mercado.map(paraSazonal),
+  };
+}
+
+type LinhaDeCesta = { mes: string; retorno: number; retorno_btc: number | null; moedas: number };
+
+type LinhaDeJanela = {
+  lado: string;
+  inicio_mes: number;
+  meses: number;
+  posicao: number | null;
+  veredito: string;
+  escolha_media: number | null;
+  escolha_mediana: number | null;
+  escolha_positivos: number;
+  escolha_anos: number;
+  escolha_controle: number | null;
+  conferencia_media: number | null;
+  conferencia_mediana: number | null;
+  conferencia_positivos: number;
+  conferencia_anos: number;
+  conferencia_controle: number | null;
+  todos_media: number | null;
+  todos_mediana: number | null;
+  todos_positivos: number;
+  todos_anos: number;
+};
+
+type LinhaDeAnoDaJanela = {
+  lado: string;
+  inicio_mes: number;
+  meses: number;
+  ano: number;
+  periodo: string;
+  resultado: number;
+};
+
+const paraJanela = (r: LinhaDeJanela): JanelaDoEstudo => ({
+  lado: r.lado as LadoDoEstudo,
+  inicioMes: Number(r.inicio_mes),
+  meses: Number(r.meses),
+  posicao: r.posicao === null ? null : Number(r.posicao),
+  veredito: r.veredito as VereditoDoEstudo,
+  escolhaMedia: r.escolha_media,
+  escolhaMediana: r.escolha_mediana,
+  escolhaPositivos: Number(r.escolha_positivos),
+  escolhaAnos: Number(r.escolha_anos),
+  escolhaControle: r.escolha_controle,
+  conferenciaMedia: r.conferencia_media,
+  conferenciaMediana: r.conferencia_mediana,
+  conferenciaPositivos: Number(r.conferencia_positivos),
+  conferenciaAnos: Number(r.conferencia_anos),
+  conferenciaControle: r.conferencia_controle,
+  todosMedia: r.todos_media,
+  todosMediana: r.todos_mediana,
+  todosPositivos: Number(r.todos_positivos),
+  todosAnos: Number(r.todos_anos),
+});
+
+/**
+ * O estudo "quando comprar e quando vender" (`scanner/cripto/sazonal.py`): a
+ * cesta mes a mes, as 144 janelas e o resultado de cada janela em cada ano.
+ * Se as tabelas ainda nao existem, o Postgres responde 42P01 (ver `semCripto`).
+ */
+export async function lerEstudoSazonal() {
+  const { cesta, janelas, anos } = await noMercado(MERCADO, async () => {
+    const pool = conexaoDeAlertas();
+    const [{ rows: cesta }, { rows: janelas }, { rows: anos }] = await Promise.all([
+      pool.query<LinhaDeCesta>(
+        `SELECT mes::text AS mes, retorno, retorno_btc, moedas::int AS moedas
+           FROM volume_scanner.analise_cesta
+          ORDER BY mes`,
+      ),
+      pool.query<LinhaDeJanela>(
+        `SELECT lado, inicio_mes::int AS inicio_mes, meses::int AS meses, posicao::int AS posicao,
+                veredito,
+                escolha_media, escolha_mediana, escolha_positivos::int AS escolha_positivos,
+                escolha_anos::int AS escolha_anos, escolha_controle,
+                conferencia_media, conferencia_mediana,
+                conferencia_positivos::int AS conferencia_positivos,
+                conferencia_anos::int AS conferencia_anos, conferencia_controle,
+                todos_media, todos_mediana, todos_positivos::int AS todos_positivos,
+                todos_anos::int AS todos_anos
+           FROM volume_scanner.analise_janelas
+          ORDER BY lado, posicao NULLS LAST, inicio_mes, meses`,
+      ),
+      pool.query<LinhaDeAnoDaJanela>(
+        `SELECT lado, inicio_mes::int AS inicio_mes, meses::int AS meses, ano::int AS ano,
+                periodo, resultado
+           FROM volume_scanner.analise_janela_anos
+          ORDER BY lado, inicio_mes, meses, ano`,
+      ),
+    ]);
+    return { cesta, janelas, anos };
+  });
+
+  return {
+    cesta: cesta.map(
+      (r): MesDaCesta => ({
+        mes: r.mes,
+        retorno: r.retorno,
+        retornoBtc: r.retorno_btc,
+        moedas: Number(r.moedas),
+      }),
+    ),
+    janelas: janelas.map(paraJanela),
+    anos: anos.map(
+      (r): AnoDaJanela => ({
+        lado: r.lado as LadoDoEstudo,
+        inicioMes: Number(r.inicio_mes),
+        meses: Number(r.meses),
+        ano: Number(r.ano),
+        periodo: r.periodo as PeriodoDoAno,
+        resultado: r.resultado,
+      }),
+    ),
   };
 }
 

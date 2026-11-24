@@ -4,7 +4,19 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 
 import {
+  ANOS_DA_CONFERENCIA,
+  ANOS_DA_ESCOLHA,
+  MESES_CURTOS,
   MINIMO_DE_ANOS,
+  alturaDaBarra,
+  anosDaJanela,
+  escolhidaDoLado,
+  explicacaoDoVeredito,
+  melhorEPiorMes,
+  perfilDaCesta,
+  primeirasDoLado,
+  rotuloDaJanela,
+  tetoDasBarras,
   corDaCelula,
   filtrarLinhas,
   mapaMensal,
@@ -458,5 +470,189 @@ describe("rankear", () => {
     assert.equal(rankear(todos, "90d", "beta", 0).length, 0);
     const muitos = Array.from({ length: 40 }, (_, i) => cand(`M${String(i).padStart(2, "0")}`, i, 0.5));
     assert.equal(rankear(muitos, "90d", "beta").length, 15);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Estudo sazonal
+// ---------------------------------------------------------------------------
+
+const janela = (lado, inicioMes, meses, posicao, extra = {}) => ({
+  lado,
+  inicioMes,
+  meses,
+  posicao,
+  veredito: "em parte",
+  escolhaMedia: 2.73,
+  escolhaMediana: 0.5,
+  escolhaPositivos: 2,
+  escolhaAnos: 4,
+  escolhaControle: 0.76,
+  conferenciaMedia: -0.005,
+  conferenciaMediana: -0.1,
+  conferenciaPositivos: 1,
+  conferenciaAnos: 4,
+  conferenciaControle: -0.094,
+  todosMedia: 0,
+  todosMediana: 0,
+  todosPositivos: 0,
+  todosAnos: 8,
+  ...extra,
+});
+
+describe("rotuloDaJanela", () => {
+  it("um mes, varios meses e a virada do ano", () => {
+    assert.equal(rotuloDaJanela(4, 1), "abr");
+    assert.equal(rotuloDaJanela(5, 6), "mai a out");
+    assert.equal(rotuloDaJanela(11, 6), "nov a abr");
+    assert.equal(rotuloDaJanela(12, 2), "dez a jan");
+    assert.equal(rotuloDaJanela(1, 12), "jan a dez");
+    assert.equal(MESES_CURTOS.length, 12);
+  });
+});
+
+describe("escolhida e primeiras", () => {
+  const js = [
+    janela("compra", 3, 2, 3),
+    janela("compra", 11, 6, 1),
+    janela("venda", 6, 6, 1),
+    janela("compra", 1, 1, null),
+    janela("compra", 7, 3, 2),
+    janela("compra", 2, 4, 7),
+  ];
+
+  it("escolhida: a posicao 1 do lado, ou null", () => {
+    assert.equal(escolhidaDoLado(js, "compra").inicioMes, 11);
+    assert.equal(escolhidaDoLado(js, "venda").inicioMes, 6);
+    assert.equal(escolhidaDoLado([janela("compra", 1, 1, null)], "compra"), null);
+    assert.equal(escolhidaDoLado([], "venda"), null);
+  });
+
+  it("primeiras: ordenadas, sem nulos nem alem de n", () => {
+    assert.deepEqual(primeirasDoLado(js, "compra").map((j) => j.posicao), [1, 2, 3]);
+    assert.deepEqual(primeirasDoLado(js, "compra", 2).map((j) => j.posicao), [1, 2]);
+    assert.deepEqual(primeirasDoLado(js, "venda").map((j) => j.posicao), [1]);
+  });
+});
+
+describe("anosDaJanela", () => {
+  it("so a janela pedida, do ano mais antigo ao mais novo", () => {
+    const a = (lado, ano, resultado, inicioMes = 11, meses = 6) => ({
+      lado,
+      inicioMes,
+      meses,
+      ano,
+      periodo: ano <= 2021 ? "escolha" : "conferencia",
+      resultado,
+    });
+    const r = anosDaJanela(
+      [a("compra", 2019, 1), a("compra", 2017, 2), a("venda", 2018, 3), a("compra", 2018, 4, 5), a("compra", 2018, 5)],
+      "compra",
+      11,
+      6,
+    );
+    assert.deepEqual(r.map((x) => x.ano), [2017, 2018, 2019]);
+  });
+});
+
+describe("perfilDaCesta", () => {
+  const cesta = [
+    { mes: "2018-04-01", retorno: 0.2, retornoBtc: 0.1, moedas: 7 },
+    { mes: "2019-04-01", retorno: -0.1, retornoBtc: null, moedas: 20 },
+    { mes: "2020-04-01", retorno: 0.4, retornoBtc: 0.3, moedas: 50 },
+    { mes: "2018-06-01", retorno: -0.3, retornoBtc: -0.2, moedas: 7 },
+  ];
+
+  it("sempre 12 meses; media, mediana, subiu e anos", () => {
+    const p = perfilDaCesta(cesta);
+    assert.equal(p.length, 12);
+    assert.deepEqual(p.map((x) => x.mes), [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]);
+    const abril = p[3];
+    assert.ok(Math.abs(abril.media - 0.5 / 3) < 1e-12);
+    assert.equal(abril.mediana, 0.2);
+    assert.equal(abril.subiu, 2);
+    assert.equal(abril.anos, 3);
+    assert.ok(Math.abs(abril.mediaBtc - 0.2) < 1e-12);
+  });
+
+  it("mes sem dado fica vazio", () => {
+    const janeiro = perfilDaCesta(cesta)[0];
+    assert.equal(janeiro.media, null);
+    assert.equal(janeiro.mediana, null);
+    assert.equal(janeiro.mediaBtc, null);
+    assert.equal(janeiro.anos, 0);
+  });
+
+  it("mediana de quantidade par e o meio dos dois", () => {
+    const p = perfilDaCesta([
+      { mes: "2018-02-01", retorno: 0.1, retornoBtc: null, moedas: 5 },
+      { mes: "2019-02-01", retorno: 0.3, retornoBtc: null, moedas: 5 },
+    ]);
+    assert.ok(Math.abs(p[1].mediana - 0.2) < 1e-12);
+  });
+});
+
+describe("melhorEPiorMes", () => {
+  const item = (mes, mediana, subiu = 0, anos = 0) => ({ mes, media: mediana, mediana, subiu, anos, mediaBtc: null });
+
+  it("pela mediana, empate no mes mais cedo", () => {
+    const r = melhorEPiorMes([item(3, 0.1), item(4, 0.14), item(5, 0.14), item(6, -0.21), item(7, -0.21)]);
+    assert.equal(r.melhor.mes, 4);
+    assert.equal(r.pior.mes, 6);
+  });
+
+  it("ignora quem nao tem mediana; sem dado, null", () => {
+    const r = melhorEPiorMes([item(1, null), item(2, 0.05)]);
+    assert.equal(r.melhor.mes, 2);
+    assert.equal(r.pior.mes, 2);
+    assert.equal(melhorEPiorMes([item(1, null)]), null);
+    assert.equal(melhorEPiorMes([]), null);
+  });
+});
+
+describe("explicacaoDoVeredito", () => {
+  it("repetiu", () => {
+    const t = explicacaoDoVeredito(janela("compra", 4, 1, 1, { veredito: "repetiu" }));
+    assert.match(t, /voltou a dar lucro e a ganhar de uma janela qualquer/);
+    assert.ok(t.includes(ANOS_DA_ESCOLHA) && t.includes(ANOS_DA_CONFERENCIA));
+  });
+
+  it("em parte diz qual das duas aconteceu", () => {
+    const ganhouSemLucro = explicacaoDoVeredito(janela("compra", 4, 1, 1)); // -0,5% contra -9,4%
+    assert.match(ganhouSemLucro, /ganhou de uma janela qualquer, mas não deu lucro/);
+    const lucroSemGanhar = explicacaoDoVeredito(
+      janela("compra", 4, 1, 1, { conferenciaMedia: 0.1, conferenciaControle: 0.3 }),
+    );
+    assert.match(lucroSemGanhar, /deu lucro, mas não ganhou de uma janela qualquer/);
+  });
+
+  it("nao repetiu e sem conferencia", () => {
+    assert.match(
+      explicacaoDoVeredito(janela("venda", 6, 6, 1, { veredito: "nao repetiu" })),
+      /não deu lucro nem ganhou de uma janela qualquer/,
+    );
+    assert.equal(
+      explicacaoDoVeredito(janela("venda", 6, 6, 1, { veredito: "sem conferencia" })),
+      "Ainda não há anos de conferência.",
+    );
+  });
+});
+
+describe("barras dos anos", () => {
+  it("teto: 1,2 vez o segundo maior, sem passar do maior", () => {
+    assert.ok(Math.abs(tetoDasBarras([5, -0.5, 0.25]) - 0.6) < 1e-12);
+    assert.equal(tetoDasBarras([1, -0.9]), 1);
+    assert.equal(tetoDasBarras([0.4]), 0.4);
+    assert.equal(tetoDasBarras([]), 1);
+    assert.equal(tetoDasBarras([0, 0]), 1);
+    assert.equal(tetoDasBarras([3, 0]), 3);
+  });
+
+  it("altura: fracao do teto e marca de corte", () => {
+    const teto = tetoDasBarras([5, -0.5, 0.25]);
+    assert.deepEqual(alturaDaBarra(5, teto), { fracao: 1, cortada: true });
+    assert.equal(alturaDaBarra(-0.3, teto).fracao, 0.5);
+    assert.equal(alturaDaBarra(-0.3, teto).cortada, false);
+    assert.equal(alturaDaBarra(0, teto).fracao, 0);
   });
 });

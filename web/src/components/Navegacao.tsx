@@ -40,6 +40,16 @@ const ITENS: Item[] = [
     ),
   },
   {
+    href: "/analise",
+    nome: "Análise",
+    icone: (
+      <svg width="18" height="18" viewBox="0 0 20 20" aria-hidden {...traco}>
+        <path d="M5.5 17v-6M14.5 17V6" />
+        <path d="M3 8.5h14" strokeDasharray="2 2.2" />
+      </svg>
+    ),
+  },
+  {
     href: "/patrimonio",
     nome: "Patrimônio",
     icone: (

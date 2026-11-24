@@ -11,13 +11,9 @@ deslistados que a API ainda conhece: testar so as moedas que sobreviveram ate
 hoje inflaria o resultado (o controle sorteado tambem vem dessa lista, entao o
 vies que sobra vale para os dois lados).
 
-Ficam de fora o que nao e "cripto que se mexe":
-- tokens alavancados da Binance (BTCUP, ETHDOWN, ...), pelo nome;
-- stablecoins e moeda estatal tokenizada (USDC, EUR, ...), pelo proprio preco:
-  quem passou a vida a menos de 10% de distancia da propria mediana em 95% dos
-  dias nao e ativo de risco, tenha o nome que tiver;
-- ouro e bitcoin embrulhados (PAXG, WBTC, ...), por lista: o preco deles e de
-  outro ativo.
+Fica de fora o que nao e "cripto que se mexe" (alavancados, stablecoins,
+embrulhados): a regra mora em `scanner.cripto.filtros`, a mesma da analise
+contra o Bitcoin.
 """
 
 from __future__ import annotations
@@ -30,21 +26,9 @@ import httpx
 import pandas as pd
 
 from scanner.cripto import binance
+from scanner.cripto.filtros import motivo_de_fora
 
 INICIO = date(2017, 1, 1)
-# Preco de outro ativo: ouro, bitcoin e ether embrulhados.
-EMBRULHADOS = frozenset({"PAXG", "XAUT", "WBTC", "WBETH", "BETH", "BNSOL"})
-# Stablecoin: a 95% dos dias a menos de 10% da propria mediana.
-FAIXA_ESTAVEL = 0.10
-DIAS_ESTAVEIS = 0.95
-
-
-def e_estavel(fechamento: pd.Series) -> bool:
-    if len(fechamento) < 30:
-        return False
-    mediana = float(fechamento.median())
-    perto = ((fechamento / mediana - 1).abs() < FAIXA_ESTAVEL).mean()
-    return bool(perto >= DIAS_ESTAVEIS)
 
 
 def main(pasta: Path) -> None:
@@ -73,7 +57,8 @@ def main(pasta: Path) -> None:
         if b.empty:
             continue
         moeda = arquivo.stem
-        if moeda in EMBRULHADOS or e_estavel(b["close"]):
+        # Indexada pela data: a regra das acoes tokenizadas olha a estreia.
+        if motivo_de_fora(moeda, b.set_index("trade_date")["close"]) is not None:
             fora.append(moeda)
             continue
         partes.append(b)

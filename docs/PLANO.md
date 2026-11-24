@@ -865,3 +865,22 @@ Migration 0030: `analise_moedas`, `analise_anual` (`ano = 0` é o período todo)
 `/analise`: a tabela de todas as moedas por ano contra o BTC (o BTC em cima, com o retorno dele em dólar), período todo, beta e correlação; busca, filtro Todas / Negociando hoje / As 50 da aba Cripto, e ordenação por qualquer coluna (padrão: as mais negociadas em 12 meses). `/analise/MOEDA`: os números do período todo, o ano a ano, o mapa mês a mês (contra o BTC ou em dólar) com a sazonalidade, e o gráfico do beta e da correlação de 90 dias. Só logado, como o resto da cripto.
 
 É descrição do passado, não previsão: não alimenta alerta, setup, semáforo nem backtest.
+
+### Sazonalidade e rankings (24/11/2026, mesmo dia)
+
+Pedido do usuário: ver as melhores épocas do ano para cada moeda, e um ranking das 15 com maior beta e das 15 com menor correlação com o BTC. Decisões dele:
+
+| Pergunta | Escolha |
+|---|---|
+| Como ver a sazonalidade | Mapa moeda × mês: a mediana de cada mês do calendário e em quantos anos ele subiu; no topo, o BTC e o mercado |
+| Ações da B3 | Fora por enquanto (o banco do site só tem 400 pregões; os 30 anos estão na máquina dele) |
+| Período dos rankings | Escolhido na tela: últimos 90 dias (padrão), o ano atual ou o período todo |
+| Quem entra nos rankings | Só moedas negociando hoje com pelo menos US$ 1 milhão por dia, em média, em 12 meses (274 em 23/11/2026); o BTC fica de fora, é a régua |
+
+As duas viram abas da página Análise (`/analise?aba=sazonalidade` e `?aba=rankings`), ao lado da tabela por ano. Saem das tabelas que já existem, calculadas na consulta (sem migration):
+
+- **Sazonalidade de cada moeda**: a mediana do mês em todos os anos em que ele ficou completo, e em quantos subiu (ou ganhou do BTC). Com menos de 3 anos no mês, a célula fica cinza e vai para o fim da ordem: um março só não é estação.
+- **Mercado**: a moeda típica. Em cada mês de cada ano, a mediana entre as moedas (sem o BTC); depois, a mediana dos anos, para cada ano pesar igual (2021 tinha quatro vezes mais moedas que 2018).
+- **Rankings**: o beta do período escolhido, do maior para o menor, e a correlação do menor para o maior (pode ser negativa).
+
+O que a primeira olhada mostrou (histórico até 23/11/2026): **a moeda típica perde em quase todos os meses** (mediana negativa em 11 de 12; junho −26%, dezembro −17%; só abril positivo, +2%): a maioria das moedas cai com o tempo, e é o que a lista com as deslistadas mostra. O BTC tem abril (+11,8%, subiu em 6 de 9 anos), outubro (+10,6%, 7 de 10) e julho (+8,0%, 7 de 9) como melhores meses, e junho e agosto como piores. Maior beta nos últimos 90 dias: CHIP, STRK, AR; no período todo, memecoins e moedas de IA (VIRTUAL, PEPE, WIF, BONK). Menor correlação em 90 dias: SOPH, DODO, FF, e moedas do ecossistema Tron (TRX, JST).

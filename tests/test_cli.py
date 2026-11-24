@@ -862,7 +862,14 @@ def test_analise_de_cripto_recusa_rodar_no_mercado_da_b3(monkeypatch: pytest.Mon
 
 
 def test_analise_de_cripto_tem_as_opcoes_do_workflow() -> None:
-    result = runner.invoke(app, ["cripto", "analise", "--help"])
-    assert result.exit_code == 0
-    assert "--so-se-faltar" in result.output
-    assert "--dry-run" in result.output
+    # Pela definicao do comando, e nao pelo texto do --help: no CI a ajuda sai
+    # colorida e os codigos de cor partem o "--so-se-faltar" no meio.
+    import click
+    import typer
+
+    raiz = typer.main.get_command(app)
+    assert isinstance(raiz, click.Group)
+    cripto = raiz.commands["cripto"]
+    assert isinstance(cripto, click.Group)
+    opcoes = {o for p in cripto.commands["analise"].params for o in p.opts}
+    assert {"--so-se-faltar", "--dry-run"} <= opcoes

@@ -1603,6 +1603,20 @@ Os trades de cripto entram no mesmo `/trades`, com o filtro Tudo / Ações / Cri
 
 Depois do merge, rode o workflow `cripto` uma vez (ou espere o das 21:10): ele aplica a migration 0027 no schema de cripto, e até lá o banco recusa quantidade fracionada.
 
+### Análise contra o Bitcoin
+
+A página **Análise** (`/analise`, só logado) mostra toda cripto que já passou pela Binance desde 2017, ano a ano e mês a mês, **contra o Bitcoin**: quanto de bitcoin a mais (verde) ou a menos (vermelho) teria quem trocasse 1 BTC pela moeda no começo do período. Na página de cada moeda (`/analise/ETH`) ficam o mapa mês a mês com a sazonalidade (a mediana de cada mês do calendário e em quantos anos ele ganhou do BTC), o beta e a correlação por ano e o gráfico da janela de 90 dias. Regras e achados na seção 19 do [plano](docs/PLANO.md).
+
+```bash
+export SCANNER_MERCADO=cripto
+uv run scanner cripto analise --dry-run   # baixa o que falta e calcula, sem gravar
+uv run scanner cripto analise             # grava as quatro tabelas analise_*
+```
+
+Roda sozinha pelo workflow `cripto-analise`, no fim de cada `cripto` (`workflow_run`): não precisa de job no cron-job.org. O histórico diário de cada moeda fica guardado em `analise_moedas` (uma lista compacta de fechamentos por moeda, ~10 MB), então cada noite só pede à Binance o dia novo das ~490 moedas que ainda negociam. A primeira execução baixa tudo (~1.600 pedidos). As quatro tabelas ocupam ~24 MB.
+
+O log diz quem ficou de fora e por quê: stablecoins (pelo preço), moedas embrulhadas (WBTC, PAXG...), os alavancados BULL e BEAR, e as ações e fundos americanos tokenizados que a Binance listou desde junho de 2026 (NVDAB, TSLAB, SPYB..., todos terminando em "B"). Uma cripto nova terminada em B cairia nessa regra por engano: se aparecer no log, a regra está em `scanner/cripto/filtros.py`.
+
 ### O que ainda não tem em cripto
 
 Alerta de preço durante o dia, ajustes por setup e a página de backtest completa (curva e ano a ano). Estão na lista da seção 15.

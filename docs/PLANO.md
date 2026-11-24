@@ -821,3 +821,47 @@ Pedido do usuário: focar em cripto, deixar as ações em segundo plano e tornar
 - **Zerar** (`lib/zerar-trades.ts`, `/api/patrimonio/zerar`): baixa o backup em JSON, pede a palavra ZERAR e apaga numa transação, só se a quantidade de trades ainda for a mostrada na tela. O mercado é fixo na rota e a função recusa rodar fora de cripto: ações, alertas e capital não são tocados.
 - **Navegação**: Cripto, Patrimônio, Trades e Alertas na barra; Setups, Scanner, Histórico, Semana e Papéis no menu Ações.
 - **Monero pela Kraken** (mesmo dia, pedido do usuário, que tem posição em XMR): o par XMR/USDT está suspenso na Binance, então a moeda nunca passava no filtro das 50 maiores. Ela vem da Kraken (XMR/USD, candle diário em UTC), na carga, no aviso de entrada e no preço de agora do site. Entra no seu lugar do ranking sem tirar nenhuma das 50. O volume é só o da Kraken, então vale para comparar a moeda com ela mesma. Fica fora dos setups do estudo, medidos em candles da Binance.
+
+
+## 19. Análise: cada cripto contra o Bitcoin (24/11/2026)
+
+Pedido do usuário: uma aba de análise para ver quais criptos ficaram mais fortes ou mais fracas que o Bitcoin com o passar do tempo, ano a ano e na sazonalidade, com beta e correlação. Decisões dele, por perguntas:
+
+| Pergunta | Escolha |
+|---|---|
+| Nível de detalhe | Ano e mês: tabela por ano e, na moeda, o mapa ano × mês com a sazonalidade |
+| Quais moedas | Todas que já passaram pela Binance, inclusive as deslistadas |
+| Beta e correlação | Por ano e no período todo, e a janela móvel de 90 dias em gráfico |
+| Onde | Página Análise no menu, ao lado de Cripto |
+
+### As contas (`scanner/cripto/analise.py`)
+
+- **Retorno do período** (mês ou ano civil, em dias UTC): do último fechamento antes do período até o último dentro dele. Quem estreou no meio parte do primeiro fechamento e fica marcada como parcial; quem parou antes do fim (deslistada, ou o período de hoje) também.
+- **O BTC é medido nas mesmas duas datas da moeda.** Uma moeda que estreou em 10 de março é comparada com o BTC de 10 de março em diante.
+- **Contra o BTC** = (1 + retorno da moeda) / (1 + retorno do BTC) − 1: a moeda medida em bitcoin. Positivo é mais forte que o BTC.
+- **Beta e correlação** dos retornos diários (só com os dois dias presentes na moeda e no BTC), com pelo menos 60 dias na conta; por ano, no período todo e numa janela de 90 dias guardada a cada 7 dias (o último ponto é sempre o dia mais recente).
+- **Sazonalidade** (no site): para cada mês do calendário, a mediana do mês em todos os anos e em quantos anos ele ganhou do BTC (ou subiu, em dólar). Mediana e não média: um mês de +500% puxaria a média sozinho. Meses parciais ficam fora.
+
+### O que a primeira rodada sobre o histórico mostrou
+
+Rodando a conta sobre o histórico de 684 moedas (2017 a 15/11/2026), três problemas apareceram, e a regra ficou por causa deles:
+
+- **Troca de token com mudança de escala.** A COCOS aparecia com +828.000% em 2021: em janeiro daquele ano ela ficou 4 dias parada e voltou valendo 1.295 vezes mais (redenominação). O mesmo em DREP (×108), QUICK (÷1.243), SUN (÷834), BNX (÷111), STRAX, BTCST e VIDT (perto de ÷10), e a LUNA nova em 31/05/2022 (×177.400 depois de 18 dias: outra moeda no mesmo par). Regra: depois de uma pausa de 2 dias ou mais, preço que volta 5 vezes maior ou menor recomeça a série. Também recomeça em buraco de mais de 30 dias (FTT parada 311 dias depois da quebra da FTX, CVC, a VEN virando VET). Nenhum retorno atravessa o recomeço, e o "período todo" é o trecho mais recente.
+- **Queda sem pausa conta inteira.** O único salto de mais de 20 vezes num dia, sem pausa, é o −99,97% da LUNA em 12/05/2022, e ele aconteceu: maio de 2022 da LUNA aparece com −99,9999%.
+- **O que não é cripto.** BULL e BEAR (tokens alavancados do BTC de 2020) davam beta −3 e correlação −0,99: têm 4 letras e escapavam da regra do nome. E a Binance listou ações e fundos americanos tokenizados desde 11/06/2026 (113 até 23/11: NVDAB, TSLAB, SPYB, SQQQB...), todos com o ticker da bolsa mais um "B". Não há campo na API que os separe, então a regra é o nome com a data (termina em B e estreou a partir de 01/06/2026). Toda cripto com esse final estreou antes (BNB, SHIB, ARB, CKB, TRB, a última foi a YB em 10/2025). Os filtros (`scanner/cripto/filtros.py`) valem também para o backtest de cripto, se ele for refeito.
+
+Conferido contra o que se sabe: BTC −73% em 2018, +302% em 2020, −64% em 2022, +156% em 2023, +121% em 2024; ETH +399% em 2021. Os maiores anos contra o BTC são os de 2021 (AXS, SAND, MATIC, FTM, LUNA, SOL). Em 23/11/2026: 589 criptos na conta e 145 fora (113 ações tokenizadas, 24 stablecoins, 6 embrulhadas, 2 alavancadas).
+
+### Carga e armazenamento (`scanner/cripto/historico.py`, `analise_diaria.py`)
+
+O banco do site guarda 400 dias das 50 maiores; a análise precisa de ~800 mil candles. Como linhas soltas, isso pesaria no banco grátis de 0,5 GB. Cada moeda vira uma linha de `analise_moedas` com duas listas (fechamento e volume em dólar, um valor por dia desde a estreia, NaN no dia sem candle): ~10 MB. É o estado da carga: cada noite só pede à Binance o que falta (moeda nova vem inteira desde 2017; moeda viva, os dias depois do último; deslistada, nada). Moeda que falha fica como estava; falha ou atraso no BTC param a rodada, porque ele é a régua.
+
+A Monero tem a Binance até a suspensão (20/02/2024) e depois a Kraken, que só devolve os últimos 720 dias: o buraco entre as duas (até 03/12/2024) fica como buraco. É mais um motivo para guardar o estado: sem ele, o começo da Kraken andaria um dia para a frente a cada noite.
+
+Migration 0030: `analise_moedas`, `analise_anual` (`ano = 0` é o período todo), `analise_mensal` e `analise_movel`, trocadas numa transação por noite (~24 MB no total). Workflow `cripto-analise.yml`, no fim de cada `cripto` (`workflow_run`), com `--so-se-faltar`; fora do grupo de concorrência `pregao`, porque no Actions um pendente novo cancela o pendente antigo do mesmo grupo. Medido na máquina do usuário contra a Binance real, a partir do histórico de 16/11: 537 pedidos em 5 minutos.
+
+### Site
+
+`/analise`: a tabela de todas as moedas por ano contra o BTC (o BTC em cima, com o retorno dele em dólar), período todo, beta e correlação; busca, filtro Todas / Negociando hoje / As 50 da aba Cripto, e ordenação por qualquer coluna (padrão: as mais negociadas em 12 meses). `/analise/MOEDA`: os números do período todo, o ano a ano, o mapa mês a mês (contra o BTC ou em dólar) com a sazonalidade, e o gráfico do beta e da correlação de 90 dias. Só logado, como o resto da cripto.
+
+É descrição do passado, não previsão: não alimenta alerta, setup, semáforo nem backtest.

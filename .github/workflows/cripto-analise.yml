@@ -1,0 +1,98 @@
+name: cripto analise
+
+# A pagina Analise (cada cripto contra o Bitcoin, por mes e ano, com beta e
+# correlacao): baixa so os candles que faltam de toda moeda que ja passou pela
+# Binance, refaz as contas e troca as tabelas `analise_*` do schema de cripto.
+#
+# Roda sozinho no fim de cada execucao do `cripto` (workflow_run), entao herda
+# a agenda dele no cron externo (21:10 e 00:10 de Brasilia) sem job proprio no
+# painel. As duas rodadas pedem `--so-se-faltar`: a primeira faz, a segunda ve
+# a analise do dia gravada e sai. A primeira execucao de todas baixa o
+# historico inteiro (~700 moedas desde 2017, uns 1.600 pedidos): por isso o
+# teto de tempo e folgado.
+#
+# Fica fora do grupo de concorrencia `pregao` de proposito: no Actions um
+# pendente novo CANCELA o pendente antigo do mesmo grupo, e a analise na fila
+# poderia derrubar o pregao das acoes. O `workflow_run` ja garante que o
+# `cripto` (que tambem aplica migrations neste schema) terminou.
+#
+# Se falhar, o pregao de cripto nao e afetado: a pagina mostra a analise da
+# noite anterior.
+on:
+  workflow_run:
+    workflows: ["cripto"]
+    types: [completed]
+  workflow_dispatch:
+    inputs:
+      refazer:
+        description: "Refazer mesmo que a analise de ontem ja esteja gravada"
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  analise:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    concurrency:
+      group: cripto-analise
+      cancel-in-progress: false
+    env:
+      SCANNER_MERCADO: cripto
+      SCANNER_DATABASE_URL: ${{ secrets.SCANNER_DATABASE_URL }}
+      SCANNER_TELEGRAM_BOT_TOKEN: ${{ secrets.SCANNER_TELEGRAM_BOT_TOKEN }}
+      SCANNER_TELEGRAM_CHAT_ID: ${{ secrets.SCANNER_TELEGRAM_CHAT_ID }}
+      # Negar antes, com o texto vazio no fim (ver o cripto.yml).
+      SO_SE_FALTAR: ${{ !inputs.refazer && '--so-se-faltar' || '' }}
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: "3.12"
+          enable-cache: true
+
+      - name: Instalar dependencias
+        id: deps
+        run: uv sync --locked --no-dev
+
+      - name: Conferir os segredos
+        run: test -n "$SCANNER_DATABASE_URL" || { echo "::error::SCANNER_DATABASE_URL ausente"; exit 1; }
+
+      - name: Migrations (schema de cripto)
+        id: migrations
+        # Normalmente nao faz nada: o `cripto` acabou de aplicar. Fica para o
+        # disparo a mao logo depois de um merge com migration nova.
+        run: uv run --no-sync alembic upgrade head
+
+      - name: Analise contra o Bitcoin
+        id: analise
+        shell: bash
+        run: |
+          set -o pipefail
+          uv run --no-sync scanner cripto analise $SO_SE_FALTAR 2>&1 | tee /tmp/analise.log
+
+      - name: Avisar no Telegram se algo falhou
+        if: ${{ failure() && env.SCANNER_TELEGRAM_BOT_TOKEN != '' && env.SCANNER_TELEGRAM_CHAT_ID != '' }}
+        shell: bash
+        env:
+          RES_DEPS: ${{ steps.deps.outcome }}
+          RES_MIGRATIONS: ${{ steps.migrations.outcome }}
+        run: |
+          onde="carga ou calculo da analise"
+          if [ "$RES_DEPS" = failure ]; then
+            onde="instalacao das dependencias"
+          elif [ "$RES_MIGRATIONS" = failure ]; then
+            onde="migrations"
+          fi
+          texto=$(printf '⚠️ <b>A análise de cripto contra o Bitcoin falhou</b>\nOnde: %s\nA página mostra a análise da noite anterior; o resto da cripto não depende disto.\n\n<a href="%s/%s/actions/runs/%s">ver o que aconteceu</a>' \
+            "$onde" "$GITHUB_SERVER_URL" "$GITHUB_REPOSITORY" "$GITHUB_RUN_ID")
+          curl -sS --retry 3 --retry-delay 2 --retry-connrefused -o /dev/null -X POST \
+            "https://api.telegram.org/bot${SCANNER_TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d chat_id="$SCANNER_TELEGRAM_CHAT_ID" \
+            -d parse_mode=HTML \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=$texto"

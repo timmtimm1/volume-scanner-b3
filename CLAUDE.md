@@ -71,6 +71,7 @@ Pedido do usuário em 24/11/2026: o retorno de cada cripto que já passou pela B
 - É retorno passado, medido e mostrado com a conta à vista (`scanner/cripto/analise.py`). Não diz "compre", não dá nota, não prevê nada.
 - Não alimenta alerta, setup, semáforo nem backtest. Roda à parte, no workflow `cripto-analise`.
 - O que não é cripto fica de fora pela regra de `scanner/cripto/filtros.py` (a mesma do backtest de cripto). Moeda deslistada continua na conta: sem ela o passado parece melhor do que foi.
+- Commodities (pedido em 24/11/2026): o ouro tokenizado (PAXG, XAUT) e os contratos perpétuos de commodity da Binance entram num grupo próprio (`scanner/cripto/commodities.py`), contra o mesmo BTC, e ficam fora da cesta do estudo sazonal e da moeda típica. No backtest de cripto o ouro tokenizado continua de fora.
 - O estudo sazonal (`scanner/cripto/sazonal.py`, pedido em 24/11/2026) segue o protocolo da casa: a janela de compra e a de venda são escolhidas com 2017–2021, contra uma janela qualquer do mesmo tamanho, e conferidas em 2022–2026; a tela diz "repetiu", "em parte" ou "não repetiu" e mostra cada ano. Mudar a cesta, as taxas ou o tamanho das janelas é refazer a escolha, nunca olhando a conferência.
 
 ## Padrões de código

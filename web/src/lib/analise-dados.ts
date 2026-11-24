@@ -18,6 +18,7 @@ import type {
   PontoMovel,
   VereditoDoEstudo,
 } from "./analise";
+import type { Grupo } from "./commodities";
 import { conexaoDeAlertas } from "./db";
 import { noMercado } from "./mercado-servidor";
 
@@ -100,8 +101,8 @@ const COLUNAS_DA_MOEDA = `m.moeda, m.fonte, m.negociando, m.primeiro_dia::text A
 const COLUNAS_ANUAIS = `a.moeda, a.ano::int AS ano, a.inicio::text AS inicio, a.fim::text AS fim,
        a.parcial, a.retorno, a.retorno_btc, a.relativo, a.beta, a.correlacao, a.dias::int AS dias`;
 
-/** Todas as moedas da analise (as que ficaram de fora vao so em contagem). */
-export async function lerVisaoGeral() {
+/** As moedas do grupo (o BTC entra sempre, como regua); as que ficaram de fora vao so em contagem. */
+export async function lerVisaoGeral(grupo: Grupo) {
   const { moedas, anuais, fora } = await noMercado(MERCADO, async () => {
     const pool = conexaoDeAlertas();
     const [{ rows: moedas }, { rows: anuais }, { rows: fora }] = await Promise.all([
@@ -109,15 +110,17 @@ export async function lerVisaoGeral() {
         `SELECT ${COLUNAS_DA_MOEDA}
            FROM volume_scanner.analise_moedas m
            LEFT JOIN volume_scanner.moedas t ON t.ticker = m.moeda
-          WHERE m.fora_por IS NULL
+          WHERE m.fora_por IS NULL AND (m.grupo = $1 OR m.moeda = 'BTC')
           ORDER BY m.moeda`,
+        [grupo],
       ),
       pool.query<LinhaDeAnual>(
         `SELECT ${COLUNAS_ANUAIS}
            FROM volume_scanner.analise_anual a
            JOIN volume_scanner.analise_moedas m ON m.moeda = a.moeda
-          WHERE m.fora_por IS NULL
+          WHERE m.fora_por IS NULL AND (m.grupo = $1 OR m.moeda = 'BTC')
           ORDER BY a.moeda, a.ano`,
+        [grupo],
       ),
       pool.query<{ motivo: string; n: number }>(
         `SELECT fora_por AS motivo, count(*)::int AS n
@@ -146,8 +149,8 @@ export async function lerMoeda(moeda: string) {
     const pool = conexaoDeAlertas();
     const [{ rows: cabeca }, { rows: anuais }, { rows: mensais }, { rows: movel }, { rows: btc }] =
       await Promise.all([
-        pool.query<LinhaDeMoeda & { fora_por: string | null }>(
-          `SELECT ${COLUNAS_DA_MOEDA}, m.fora_por
+        pool.query<LinhaDeMoeda & { fora_por: string | null; grupo: Grupo }>(
+          `SELECT ${COLUNAS_DA_MOEDA}, m.fora_por, m.grupo
              FROM volume_scanner.analise_moedas m
              LEFT JOIN volume_scanner.moedas t ON t.ticker = m.moeda
             WHERE m.moeda = $1`,
@@ -193,6 +196,7 @@ export async function lerMoeda(moeda: string) {
   }));
   return {
     moeda: paraMoeda(cabeca[0]),
+    grupo: cabeca[0].grupo,
     anuais: anuais.map(paraAnual),
     mensais: mensais.map(paraMensal),
     movel: pontos,
@@ -225,7 +229,7 @@ const paraSazonal = (r: LinhaDeSazonal): MesSazonal => ({
  * mercado. So entra mes completo. `mercado` e a moeda tipica: para cada mes de
  * cada ano, a mediana entre as moedas (sem o BTC); depois, a mediana dos anos.
  */
-export async function lerSazonalidade() {
+export async function lerSazonalidade(grupo: Grupo) {
   const { moedas, meses, mercado } = await noMercado(MERCADO, async () => {
     const pool = conexaoDeAlertas();
     const [{ rows: moedas }, { rows: meses }, { rows: mercado }] = await Promise.all([
@@ -233,8 +237,9 @@ export async function lerSazonalidade() {
         `SELECT ${COLUNAS_DA_MOEDA}
            FROM volume_scanner.analise_moedas m
            LEFT JOIN volume_scanner.moedas t ON t.ticker = m.moeda
-          WHERE m.fora_por IS NULL
+          WHERE m.fora_por IS NULL AND (m.grupo = $1 OR m.moeda = 'BTC')
           ORDER BY m.moeda`,
+        [grupo],
       ),
       pool.query<LinhaDeSazonal>(
         `SELECT x.moeda, extract(month FROM x.mes)::int AS mes,
@@ -245,8 +250,9 @@ export async function lerSazonalidade() {
                 count(*)::int AS anos
            FROM volume_scanner.analise_mensal x
            JOIN volume_scanner.analise_moedas m ON m.moeda = x.moeda
-          WHERE NOT x.parcial AND m.fora_por IS NULL
+          WHERE NOT x.parcial AND m.fora_por IS NULL AND (m.grupo = $1 OR m.moeda = 'BTC')
           GROUP BY 1, 2`,
+        [grupo],
       ),
       pool.query<LinhaDeSazonal>(
         `WITH tipica AS (
@@ -256,6 +262,7 @@ export async function lerSazonalidade() {
              FROM volume_scanner.analise_mensal x
              JOIN volume_scanner.analise_moedas m ON m.moeda = x.moeda
             WHERE NOT x.parcial AND m.fora_por IS NULL AND x.moeda <> 'BTC'
+              AND m.grupo = 'cripto'
             GROUP BY x.mes
          )
          SELECT extract(month FROM mes)::int AS mes,
@@ -414,8 +421,8 @@ type LinhaDeRanking = {
 
 const comoNumero = (v: number | string | null): number | null => (v === null ? null : Number(v));
 
-/** A aba Rankings: as moedas vivas e líquidas, com beta e correlação em 3 períodos. */
-export async function lerRanking() {
+/** A aba Rankings: as moedas do grupo, vivas e líquidas, com beta e correlação em 3 períodos. */
+export async function lerRanking(grupo: Grupo) {
   const { candidatos, btc, dia90 } = await noMercado(MERCADO, async () => {
     const pool = conexaoDeAlertas();
     const [{ rows: candidatos }, { rows: btc }, { rows: dia90 }] = await Promise.all([
@@ -433,8 +440,9 @@ export async function lerRanking() {
                                 FROM volume_scanner.analise_moedas WHERE moeda = 'BTC')
            LEFT JOIN volume_scanner.analise_anual t ON t.moeda = m.moeda AND t.ano = 0
           WHERE m.fora_por IS NULL AND m.negociando AND m.volume_12m >= $1 AND m.moeda <> 'BTC'
+            AND m.grupo = $2
           ORDER BY m.moeda`,
-        [LIQUIDEZ_DO_RANKING],
+        [LIQUIDEZ_DO_RANKING, grupo],
       ),
       pool.query<{ ultimo_dia: string; ano: number }>(
         `SELECT ultimo_dia::text AS ultimo_dia, extract(year FROM ultimo_dia)::int AS ano

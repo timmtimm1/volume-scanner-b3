@@ -21,6 +21,7 @@ import {
   type LinhaDaTabela,
   type Sentido,
 } from "@/lib/analise";
+import { commodityDe } from "@/lib/commodities";
 import { data, numero } from "@/lib/formato";
 
 const PASSO = 100;
@@ -63,7 +64,16 @@ function CelulaDeAno({ c, moeda }: { c: CelulaAnual | null | undefined; moeda: s
   );
 }
 
-export function TabelaDaAnalise({ anos, linhas }: { anos: number[]; linhas: LinhaDaTabela[] }) {
+export function TabelaDaAnalise({
+  anos,
+  linhas,
+  commodities = false,
+}: {
+  anos: number[];
+  linhas: LinhaDaTabela[];
+  /** Na visão de commodities, o nome da commodity aparece ao lado do ticker. */
+  commodities?: boolean;
+}) {
   const [busca, setBusca] = useState("");
   const [grupo, setGrupo] = useState<Grupo>("todas");
   const [chave, setChave] = useState<ChaveDeOrdem>("volume");
@@ -135,7 +145,7 @@ export function TabelaDaAnalise({ anos, linhas }: { anos: number[]; linhas: Linh
           className="toque h-10 min-w-0 rounded-full border border-linha-2 bg-painel px-4 text-[14px] font-semibold text-tinta placeholder:text-tinta-3 md:w-56"
         />
         <div role="group" aria-label="Grupo de moedas" className="flex flex-wrap gap-1.5">
-          {GRUPOS.map((g) => (
+          {GRUPOS.filter((g) => !commodities || g.valor !== "top50").map((g) => (
             <button
               key={g.valor}
               type="button"
@@ -218,6 +228,11 @@ export function TabelaDaAnalise({ anos, linhas }: { anos: number[]; linhas: Linh
                     >
                       {eBtc ? "BTC (régua)" : l.moeda}
                     </Link>
+                    {commodities && !eBtc && (
+                      <span className="ml-1.5 text-[11px] font-semibold text-tinta-3">
+                        {commodityDe(l.moeda)?.nome}
+                      </span>
+                    )}
                     {!l.negociando && (
                       <span
                         title="Esta moeda não é mais negociada na Binance"

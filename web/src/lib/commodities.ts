@@ -140,3 +140,19 @@ export function eCommodity(ticker: string): boolean {
 export function commodityDe(ticker: string): Commodity | null {
   return eCommodity(ticker) ? COMMODITIES[ticker] : null;
 }
+
+/** O que a página Análise mostra: as criptos (padrão) ou as commodities. */
+export type Grupo = "cripto" | "commodity";
+
+/** `?grupo=commodity` abre as commodities; qualquer outra coisa é cripto. */
+export function grupoDaUrl(v: string | string[] | undefined): Grupo {
+  return v === "commodity" ? "commodity" : "cripto";
+}
+
+/** O endereço de uma aba da Análise, mantendo o grupo. */
+export function hrefDaAnalise(aba: "ano" | "sazonalidade" | "rankings", grupo: Grupo): string {
+  const partes: string[] = [];
+  if (aba !== "ano") partes.push(`aba=${aba}`);
+  if (grupo === "commodity") partes.push("grupo=commodity");
+  return partes.length === 0 ? "/analise" : `/analise?${partes.join("&")}`;
+}

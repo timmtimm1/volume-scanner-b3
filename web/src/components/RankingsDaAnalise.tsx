@@ -2,7 +2,7 @@
 
 /**
  * Os rankings: as 15 moedas com maior beta e as 15 com menor correlacao contra o
- * Bitcoin, em tres periodos. As contas moram em `lib/analise.ts`.
+ * Bitcoin, em tres periodos (ou, na visao de commodities, so as que houver). As contas moram em `lib/analise.ts`.
  */
 
 import Link from "next/link";
@@ -14,6 +14,7 @@ import {
   type MetricaDoRanking,
   type Periodo,
 } from "@/lib/analise";
+import { commodityDe } from "@/lib/commodities";
 import { data, numero } from "@/lib/formato";
 
 const TAMANHO = 15;
@@ -23,11 +24,15 @@ function Cartao({
   chave,
   itens,
   periodo,
+  rotulo,
+  commodities,
 }: {
   titulo: string;
   chave: MetricaDoRanking;
   itens: ItemDoRanking[];
   periodo: Periodo;
+  rotulo: string;
+  commodities: boolean;
 }) {
   const nomeDoValor = chave === "beta" ? "beta" : "correlação";
   const nomeDoOutro = chave === "beta" ? "correlação" : "beta";
@@ -36,7 +41,7 @@ function Cartao({
       <h2 className="text-[16px] font-extrabold tracking-tight">{titulo}</h2>
       {itens.length === 0 ? (
         <p className="py-4 text-[13px] font-semibold text-tinta-3">
-          Nenhuma moeda com dado nesse período.
+          Nenhuma {rotulo} com dado nesse período.
         </p>
       ) : (
         <ol className="divide-y divide-linha">
@@ -50,6 +55,11 @@ function Cartao({
                 className="min-w-0 truncate text-[14px] font-extrabold text-tinta hover:text-acento"
               >
                 {item.moeda}
+                {commodities && (
+                  <span className="ml-1.5 text-[11px] font-semibold text-tinta-3">
+                    {commodityDe(item.moeda)?.nome}
+                  </span>
+                )}
               </Link>
               <span className="num ml-auto whitespace-nowrap text-[15px] font-extrabold">
                 <span className="mr-1 text-[11px] font-semibold text-tinta-3">{nomeDoValor}</span>
@@ -74,12 +84,18 @@ export function RankingsDaAnalise({
   ano,
   dia90,
   total,
+  commodities = false,
 }: {
   candidatos: CandidatoAoRanking[];
   ano: number | null;
   dia90: string | null;
   total: number;
+  /** Rankings entre as commodities, e não entre as criptos. */
+  commodities?: boolean;
 }) {
+  const rotulo = commodities ? "commodity" : "moeda";
+  // Só 10 commodities: "as 15" seria mentira.
+  const tamanhoDoTitulo = commodities ? Math.min(TAMANHO, candidatos.length) : TAMANHO;
   const [periodo, setPeriodo] = useState<Periodo>("90d");
 
   const PERIODOS: { valor: Periodo; nome: string }[] = [
@@ -102,17 +118,17 @@ export function RankingsDaAnalise({
       <section className="cartao flex flex-col gap-3 p-4 md:p-5">
         <div className="flex flex-col gap-2 text-[13px] leading-relaxed text-tinta-2">
           <p>
-            <b className="text-tinta">Beta.</b> Num dia em que o Bitcoin mexe 1%, a moeda costuma
+            <b className="text-tinta">Beta.</b> Num dia em que o Bitcoin mexe 1%, {commodities ? "a commodity" : "a moeda"} costuma
             mexer beta% no mesmo sentido. Beta alto amplifica o Bitcoin, para cima e para baixo.
           </p>
           <p>
-            <b className="text-tinta">Correlação.</b> Vai de −1 a 1 e diz o quanto a moeda se mexe
+            <b className="text-tinta">Correlação.</b> Vai de −1 a 1 e diz o quanto {commodities ? "a commodity" : "a moeda"} se mexe
             junto com o Bitcoin. Correlação baixa: ela anda por conta própria, o que pode ajudar a
-            diversificar, mas muitas vezes quer dizer que o movimento vem de notícia da própria
-            moeda.
+            diversificar, mas muitas vezes quer dizer que o movimento vem de notícia da própria{" "}
+            {commodities ? "commodity" : "moeda"}.
           </p>
           <p>
-            Entram as {total} moedas negociando hoje com pelo menos US$ 1 milhão por dia, em média,
+            Entram {commodities ? `as ${total} commodities` : `as ${total} moedas`} negociando hoje com pelo menos US$ 1 milhão por dia, em média,
             nos últimos 12 meses. O BTC fica de fora: é a régua.
             {periodo === "90d" && dia90 !== null && ` Janela de 90 dias até ${data(dia90)}.`}
           </p>
@@ -139,16 +155,20 @@ export function RankingsDaAnalise({
 
       <div className="grid gap-4 md:grid-cols-2">
         <Cartao
-          titulo={`As ${TAMANHO} com maior beta`}
+          titulo={`As ${tamanhoDoTitulo} com maior beta`}
           chave="beta"
           itens={porBeta}
           periodo={periodo}
+          rotulo={rotulo}
+          commodities={commodities}
         />
         <Cartao
-          titulo={`As ${TAMANHO} com menor correlação`}
+          titulo={`As ${tamanhoDoTitulo} com menor correlação`}
           chave="correlacao"
           itens={porCorrelacao}
           periodo={periodo}
+          rotulo={rotulo}
+          commodities={commodities}
         />
       </div>
     </div>
